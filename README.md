@@ -1,11 +1,10 @@
 # GUARD
 
-A portable backup and data protection utility for Windows. GUARD backs up your
-chosen folders to any destination (a local drive, an external disk or a network
-share) and can keep a list of your installed apps so they are easy to reinstall
-after a clean OS install.
+A portable backup and data protection utility for Windows that is fully accessible and doesn't depend on specific resources. GUARD enables you to easily back up your chosen folders to any destination (a local drive, an external disk or a network share) as well as keep a list of your installed apps so they are easy to reinstall after a clean OS install.
 
-> Version 0.1 (pre-release). Expect rough edges, and many future improvements.
+The goal is to become the ultimate portable data protection toolkit. More functionality to come!
+
+> Version 0.1 (pre-release). Expect rough edges and many future improvements.
 
 ## Current Features
 
@@ -22,6 +21,7 @@ after a clean OS install.
 ## Planned Features & Improvements
 
 - **UX improvements** such as better window sizing and inclusion of a menu bar.
+- Improved interface for folder / file exclusions.
 - More backup scheduling options (e.g. hourly, weekly, etc.)
 - More intuitive progress with a more granular progress bar and cleaner output field text.
 - New features planned, such as full system images and application data export/import
@@ -47,7 +47,7 @@ Or run the compiler directly (see the command at the top of `Guard.cs`).
 ## Usage
 
 <!-- PLACEHOLDER - TODO: walk through the File Backup tab, the App Inventory tab, and the
-     scheduled task. Add a screenshot. -->
+     scheduled task. Consider adding screenshot. -->
 
 ### Exported app list
 
