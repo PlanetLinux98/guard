@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="GuardWui3.Views.AboutDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="About GUARD"
+    CloseButtonText="Close"
+    DefaultButton="Close">
+
+    <StackPanel Width="380" Spacing="6">
+        <TextBlock Text="GUARD" FontSize="26" FontWeight="Bold" AutomationProperties.Name="GUARD" />
+        <TextBlock x:Name="VersionText" Margin="0,0,0,8" />
+        <TextBlock Text="A backup and app inventory utility for Windows." />
+        <TextBlock Text="Created by PlanetLinux98." />
+        <TextBlock Text="Released under the MIT License." Margin="0,0,0,10" />
+        <Button Content="Project Page" AccessKey="P" HorizontalAlignment="Left"
+                AutomationProperties.Name="Open the GUARD project page in your browser"
+                Click="OnProjectPage" />
+    </StackPanel>
+</ContentDialog>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="GuardWui3.Views.FolderDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Add Folder"
+    PrimaryButtonText="OK"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimary">
+
+    <StackPanel Width="440" Spacing="8">
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="TxtSource" Grid.Column="0" Header="Source folder:" AccessKey="S"
+                     AutomationProperties.Name="Source folder path" />
+            <Button Grid.Column="1" Content="Browse..." AccessKey="B" VerticalAlignment="Bottom"
+                    AutomationProperties.Name="Browse for source folder" Click="OnBrowse" />
+        </Grid>
+        <TextBox x:Name="TxtSub" Header="Subfolder:" AccessKey="B"
+                 AutomationProperties.Name="Subfolder name" />
+        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                   Text="The subfolder is the name used under the backup destination root." />
+    </StackPanel>
+</ContentDialog>
