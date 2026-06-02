@@ -5,3 +5,6 @@ GUARD.exe
 backup-settings.ini
 guard-backup.cmd
 Logs/
+
+# Personal Claude Code project context
+CLAUDE.md
