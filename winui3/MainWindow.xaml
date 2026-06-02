@@ -96,7 +96,7 @@
                             </ScrollViewer>
                         </Border>
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-                            <Button Content="Add Folder..." AccessKey="D"
+                            <Button Content="Add Folder..." AccessKey="F"
                                     AutomationProperties.Name="Add a folder to back up" Click="OnAddFolder" />
                             <Button Content="Remove Folder" AccessKey="R"
                                     AutomationProperties.Name="Remove the selected folder" Click="OnRemoveFolder" />
@@ -104,11 +104,11 @@
 
                         <!-- Mode -->
                         <TextBlock Text="Mode" FontWeight="SemiBold" Margin="0,12,0,0" />
-                        <RadioButton x:Name="RbAdditive" GroupName="Mode" IsChecked="True"
+                        <RadioButton x:Name="RbAdditive" GroupName="Mode" IsChecked="True" AccessKey="I"
                                      Checked="OnDirtyChecked"
                                      Content="Additive  (copy new and changed files; nothing at the destination is ever deleted)"
                                      AutomationProperties.Name="Additive mode. Copies new and changed files. Nothing at the destination is ever deleted." />
-                        <RadioButton x:Name="RbMirror" GroupName="Mode"
+                        <RadioButton x:Name="RbMirror" GroupName="Mode" AccessKey="M"
                                      Checked="OnDirtyChecked"
                                      Content="Mirror  (make the destination match the source exactly; files deleted from the source are also deleted at the destination)"
                                      AutomationProperties.Name="Mirror mode. Makes the destination match the source exactly. Files deleted from the source are also deleted at the destination." />
@@ -134,7 +134,7 @@
                         <!-- Schedule -->
                         <TextBlock Text="Schedule" FontWeight="SemiBold" Margin="0,12,0,0" />
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <CheckBox x:Name="ChkSchedule" Content="Run daily at:" IsChecked="True"
+                            <CheckBox x:Name="ChkSchedule" Content="Run daily at:" IsChecked="True" AccessKey="Y"
                                       VerticalAlignment="Center" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked"
                                       AutomationProperties.Name="Run daily" />
                             <TextBox x:Name="TxtTime" Width="64" VerticalAlignment="Center"
@@ -143,7 +143,7 @@
                             <Button Content="Create / Update Task" AccessKey="U"
                                     AutomationProperties.Name="Create or update the daily scheduled task"
                                     Click="OnCreateTask" />
-                            <Button Content="Remove Task"
+                            <Button Content="Remove Task" AccessKey="K"
                                     AutomationProperties.Name="Remove the daily scheduled task"
                                     Click="OnRemoveTask" />
                         </StackPanel>
@@ -155,13 +155,13 @@
                             <Button Content="Save Settings" AccessKey="S" Style="{ThemeResource AccentButtonStyle}"
                                     AutomationProperties.Name="Save settings and regenerate the backup script and scheduled task"
                                     Click="OnSave" />
-                            <Button Content="Run Now" AccessKey="R"
+                            <Button Content="Run Now" AccessKey="N"
                                     AutomationProperties.Name="Run the backup now" Click="OnRunNow" />
                             <Button Content="Preview" AccessKey="P"
                                     AutomationProperties.Name="Preview the backup without making changes" Click="OnPreview" />
                             <Button Content="Open Last Log" AccessKey="L"
                                     AutomationProperties.Name="Open the last backup log" Click="OnOpenLog" />
-                            <Button Content="Open Destination"
+                            <Button Content="Open Destination" AccessKey="O"
                                     AutomationProperties.Name="Open the backup destination folder" Click="OnOpenDest" />
                         </StackPanel>
 
@@ -203,14 +203,14 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtAppDest" Grid.Column="0" Header="List destination:"
+                            <TextBox x:Name="TxtAppDest" Grid.Column="0" Header="List destination:" AccessKey="D"
                                      AutomationProperties.Name="App list destination path" />
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
                                         VerticalAlignment="Bottom" Margin="8,0,0,0">
-                                <Button Content="Browse..."
+                                <Button Content="Browse..." AccessKey="B"
                                         AutomationProperties.Name="Browse for the app list destination folder"
                                         Click="OnBrowseApp" />
-                                <Button Content="Test"
+                                <Button Content="Test" AccessKey="T"
                                         AutomationProperties.Name="Test the app list destination"
                                         Click="OnTestApp" />
                             </StackPanel>
@@ -220,11 +220,11 @@
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0" VerticalAlignment="Center">
                             <Button x:Name="BtnAppRefresh" Content="Refresh List" AccessKey="R"
                                     AutomationProperties.Name="Rescan installed apps" Click="OnRefreshApps" />
-                            <Button x:Name="BtnAppAll" Content="Select All"
+                            <Button x:Name="BtnAppAll" Content="Select All" AccessKey="L"
                                     AutomationProperties.Name="Tick all visible apps" Click="OnSelectAll" />
-                            <Button x:Name="BtnAppNone" Content="Select None"
+                            <Button x:Name="BtnAppNone" Content="Select None" AccessKey="O"
                                     AutomationProperties.Name="Untick all visible apps" Click="OnSelectNone" />
-                            <TextBox x:Name="TxtAppFilter" Width="180" Header="Filter:" VerticalAlignment="Center"
+                            <TextBox x:Name="TxtAppFilter" Width="180" Header="Filter:" AccessKey="F" VerticalAlignment="Center"
                                      AutomationProperties.Name="Filter apps by name" TextChanged="OnFilterChanged" />
                         </StackPanel>
 
@@ -285,7 +285,7 @@
                                     AutomationProperties.Name="Import an app list from a file" Click="OnImportApps" />
                             <Button x:Name="BtnAppReinstall" Content="Reinstall Selected" AccessKey="S"
                                     AutomationProperties.Name="Reinstall the ticked Winget apps" Click="OnReinstall" />
-                            <Button Content="Open Folder"
+                            <Button Content="Open Folder" AccessKey="P"
                                     AutomationProperties.Name="Open the app list destination folder" Click="OnOpenAppDest" />
                         </StackPanel>
 

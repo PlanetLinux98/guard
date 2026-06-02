@@ -20,7 +20,7 @@
             <Button Grid.Column="1" Content="Browse..." AccessKey="B" VerticalAlignment="Bottom"
                     AutomationProperties.Name="Browse for source folder" Click="OnBrowse" />
         </Grid>
-        <TextBox x:Name="TxtSub" Header="Subfolder:" AccessKey="B"
+        <TextBox x:Name="TxtSub" Header="Subfolder:" AccessKey="U"
                  AutomationProperties.Name="Subfolder name" />
         <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                    Text="The subfolder is the name used under the backup destination root." />
