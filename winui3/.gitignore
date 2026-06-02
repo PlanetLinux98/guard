@@ -1,0 +1,12 @@
+# Build output
+bin/
+obj/
+
+# Shipped single-file build (regenerate with publish-singlefile.cmd)
+/GUARD.exe
+/GUARD.pdb
+
+# Runtime-generated, portable working files (written next to the exe)
+backup-settings.ini
+guard-backup.cmd
+Logs/

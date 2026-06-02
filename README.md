@@ -1,66 +1,35 @@
 # GUARD
 
-A portable backup and data protection utility for Windows that is fully accessible and doesn't depend on specific resources. GUARD enables you to easily back up your chosen folders to any destination (a local drive, an external disk or a network share) as well as keep a list of your installed apps so they are easy to reinstall after a clean OS install.
+A portable Windows backup and app-inventory utility. GUARD backs up your chosen
+folders to any destination (local drive, external disk, or network share) by
+generating a standalone Robocopy script and a daily scheduled task, and it
+inventories your installed apps so you can export the list and reinstall the
+winget-capable ones after an OS reinstall.
 
-The goal is to become the ultimate portable data protection toolkit. More functionality to come!
+This repo contains **two editions** of the app:
 
-> Version 0.1 (pre-release). Expect rough edges and many future improvements.
+| Edition | Folder | Stack | Status |
+|---|---|---|---|
+| **WinUI 3** | [`winui3/`](winui3/) | .NET 10 + Windows App SDK 1.8 (SDK-style project) | **Primary.** Screen-reader-first, native dark/light Mica theming. |
+| WPF | [`wpf/`](wpf/) | .NET Framework 4.x, single `Guard.cs`, in-box `csc.exe` | Original. Zero-dependency, single-file source; no SDK required to build. |
 
-## Current Features
+Both are feature-equivalent. The WinUI 3 edition is the one to use going forward
+(better accessibility and theming); the WPF edition is kept for its dead-simple,
+no-SDK build and as the original reference.
 
-- **File backup** to any folder: local, external or a network share.
-- **Additive** or **Mirror** copy modes (built on Robocopy).
-- Per-folder progress, a preview (dry-run) mode and a saved log.
-- Optional **daily scheduled task** so backups run unattended.
-- **App Inventory**: lists installed apps from the Windows registry, marks the
-  ones winget can reinstall, and exports the list as plain JSON.
-- Light/dark theming that follows the Windows setting.
-- Built for screen-reader use (NVDA/JAWS): every control has access keys and the save status
-  line announces itself as a live region.
+## Which one do I want?
 
-## Planned Features & Improvements
-
-- **UX improvements** such as better window sizing and inclusion of a menu bar.
-- Improved interface for folder / file exclusions.
-- More backup scheduling options (e.g. hourly, weekly, etc.)
-- More intuitive progress with a more granular progress bar and cleaner output field text.
-- New features planned, such as full system images and application data export/import
-
-## Requirements
-
-- Windows 10 or 11 (earlier versions haven’t been tested).
-- .NET Framework 4.x (ships with Windows; no separate SDK needed).
-- winget (optional) for automatic app reinstalls. Without it, the app list is
-  still read from the registry and can be exported for reference.
+- **Just want to run it:** grab the WinUI 3 release exe (see [`winui3/README.md`](winui3/README.md)).
+  It is a single self-contained `GUARD.exe` - no .NET or runtime install needed,
+  64-bit Windows 10 1809+.
+- **Want to build from source with no tooling:** the WPF edition compiles with
+  the in-box compiler via [`wpf/build.cmd`](wpf/build.cmd) - no SDK, no NuGet.
 
 ## Building
 
-GUARD is a single C# source file compiled by the in-box .NET Framework compiler.
-No SDK or project file is required. From this folder:
+- WinUI 3: `cd winui3 && publish-singlefile.cmd` (see [`winui3/README.md`](winui3/README.md)).
+- WPF: `cd wpf && build.cmd` (see [`wpf/`](wpf/)).
 
-```
-build.cmd
-```
+## License
 
-Or run the compiler directly (see the command at the top of `Guard.cs`).
-
-## Usage
-
-<!-- PLACEHOLDER - TODO: walk through the File Backup tab, the App Inventory tab, and the
-     scheduled task. Consider adding screenshot. -->
-
-### Exported app list
-
-The App Inventory export is plain, indented JSON. You can open it in any text
-editor to read your installed-app list by hand. Each entry records the app name,
-version, publisher, and (where known) its winget package id, so you can also run
-`winget install --id <id>` yourself.
-
-## Licence
-
-GUARD is released under the MIT License. See the [LICENSE](LICENSE) file for the
-full text.
-
----
-
-*GUARD is developed by [PlanetLinux98](https://github.com/PlanetLinux98/guard).*
+MIT - see [LICENSE](LICENSE). Applies to both editions.
