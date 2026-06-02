@@ -1,0 +1,7 @@
+# Compiled output
+GUARD.exe
+
+# Generated at runtime by the app
+backup-settings.ini
+guard-backup.cmd
+Logs/
