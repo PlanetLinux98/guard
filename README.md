@@ -138,6 +138,23 @@ limitation (see microsoft/WindowsAppSDK discussion #3856). The shipping build
 is therefore ReadyToRun, not AOT. Will revisit AOT in the future, but am open to
 development assistance in this regard.
 
+## Contributing & branching
+
+GUARD uses a simple **trunk-based** workflow:
+
+- **`main` is always releasable.** Every commit on `main` should build and run.
+  Tagged commits on `main` are the releases.
+- **Work happens on short-lived branches off `main`**, one per change, named by
+  type: `feature/<short-name>`, `fix/<short-name>`, `chore/<short-name>`,
+  `docs/<short-name>`. Open a pull request into `main`, then delete the branch
+  after it merges. Branches live hours-to-days, not weeks.
+- **Releases are git tags** using [SemVer](https://semver.org/) with a `v`
+  prefix (`v0.1.0`). Each tag gets a [GitHub Release](https://github.com/PlanetLinux98/guard/releases)
+  with the built `GUARD.exe` attached as an asset (the binary is gitignored, so
+  the Release is where it ships).
+- **Every change updates [CHANGELOG.md](CHANGELOG.md)** under `[Unreleased]`;
+  cutting a release moves those entries under the new version heading.
+
 ## Licence
 
 GUARD is released under the MIT License. See the [LICENSE](LICENSE) file for the
