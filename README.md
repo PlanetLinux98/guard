@@ -42,7 +42,9 @@ theming. It targets **.NET 10 + Windows App SDK 1.8**.
 
 ## Requirements
 
-- Windows 10 or 11 (earlier versions have not been tested).
+- Windows 10 version 1809 (build 17763) or later, including Windows 11. Note
+  that Windows 10 reached end of support on October 14, 2025; GUARD still runs
+  there, but it is outside Microsoft's support window for the Windows App SDK.
 - **Nothing to install to run it.** The shipping `GUARD.exe` is self-contained:
   the .NET 10 runtime and Windows App SDK are bundled inside it.
 - winget (optional) for automatic app reinstalls. Without it, the app list is
