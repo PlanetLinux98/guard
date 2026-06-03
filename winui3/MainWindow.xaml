@@ -73,7 +73,9 @@
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <ItemsControl x:Name="FolderList" ItemsSource="{x:Bind Folders}"
-                                              AutomationProperties.Name="Folders to back up">
+                                              AutomationProperties.Name="Folders to back up"
+                                              TabFocusNavigation="Once"
+                                              XYFocusKeyboardNavigation="Enabled">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:FolderPair">
                                             <CheckBox Margin="3,2" HorizontalAlignment="Stretch"
@@ -247,7 +249,9 @@
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <ItemsControl x:Name="AppListControl" ItemsSource="{x:Bind AppRows}"
-                                              AutomationProperties.Name="Installed applications">
+                                              AutomationProperties.Name="Installed applications"
+                                              TabFocusNavigation="Once"
+                                              XYFocusKeyboardNavigation="Enabled">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:AppEntry">
                                             <CheckBox Margin="3,2" HorizontalAlignment="Stretch"

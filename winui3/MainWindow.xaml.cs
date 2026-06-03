@@ -14,6 +14,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
@@ -35,6 +36,8 @@ public sealed partial class MainWindow : Window
     private bool _allowClose;
 
     private FolderPair? _currentFolder;
+    private FrameworkElement? _lastFolderFocus;
+    private FrameworkElement? _lastAppFocus;
     private readonly List<AppEntry> _allApps = new();
     private string _appFilter = "";
 
@@ -65,6 +68,12 @@ public sealed partial class MainWindow : Window
         // referenced from inside a DataTemplate is not reliably resolvable and
         // gets trimmed under NativeAOT.
         FolderList.GotFocus += OnFolderListGotFocus;
+
+        // TabFocusNavigation="Once" re-enters each list at its first row. Send
+        // focus back to the row that last held it when Tab arrives from outside.
+        FolderList.GettingFocus += OnFolderListGettingFocus;
+        AppListControl.GotFocus += OnAppListGotFocus;
+        AppListControl.GettingFocus += OnAppListGettingFocus;
 
         WireFolderDirty();
         RefreshNextRun();
@@ -106,7 +115,42 @@ public sealed partial class MainWindow : Window
 
     private void OnFolderListGotFocus(object sender, RoutedEventArgs e)
     {
-        if (e.OriginalSource is FrameworkElement fe && fe.DataContext is FolderPair f) _currentFolder = f;
+        if (e.OriginalSource is FrameworkElement fe && fe.DataContext is FolderPair f)
+        {
+            _currentFolder = f;
+            _lastFolderFocus = fe;
+        }
+    }
+
+    private void OnAppListGotFocus(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is FrameworkElement fe) _lastAppFocus = fe;
+    }
+
+    private void OnFolderListGettingFocus(UIElement sender, GettingFocusEventArgs args)
+        => RestoreListFocus(FolderList, _lastFolderFocus, args);
+
+    private void OnAppListGettingFocus(UIElement sender, GettingFocusEventArgs args)
+        => RestoreListFocus(AppListControl, _lastAppFocus, args);
+
+    // When keyboard focus enters a list from outside, redirect it to the row that
+    // last held focus instead of the first row. A remembered element whose XamlRoot
+    // is null was detached (its row was removed or filtered out) - ignore it and let
+    // the default first-row behaviour stand.
+    private static void RestoreListFocus(ItemsControl list, FrameworkElement? remembered, GettingFocusEventArgs args)
+    {
+        if (args.InputDevice != FocusInputDeviceKind.Keyboard) return;
+        if (remembered is null || remembered.XamlRoot is null) return;
+        if (args.OldFocusedElement is DependencyObject old && IsDescendant(list, old)) return; // moving within the list
+        if (args.NewFocusedElement is DependencyObject nw && !IsDescendant(list, nw)) return;  // not actually entering it
+        if (args.TrySetNewFocusedElement(remembered)) args.Handled = true;
+    }
+
+    private static bool IsDescendant(DependencyObject ancestor, DependencyObject? node)
+    {
+        for (var d = node; d is not null; d = VisualTreeHelper.GetParent(d))
+            if (ReferenceEquals(d, ancestor)) return true;
+        return false;
     }
 
     private void RefreshScriptStatus()
