@@ -3,7 +3,8 @@
 WinUI 3 rewrite of the WPF GUARD backup / app-inventory utility. Unpackaged,
 self-contained, .NET 10 + Windows App SDK 1.8. Two tabs (File Backup, App
 Inventory), dark/light Mica theming following the OS, and a screen-reader-first
-UI (each list row is a real check box, not a selectable grid row).
+UI (each list row is a real check box, not a selectable grid row; arrow keys move
+between rows and Tab steps in and out of each list in one stop).
 
 ## Layout
 
