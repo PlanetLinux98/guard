@@ -2,7 +2,7 @@
 GUARD.exe
 GUARD.pdb
 
-# .NET SDK build output (winui3)
+# .NET SDK build output
 bin/
 obj/
 
