@@ -10,24 +10,21 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <Pivot x:Name="Tabs" Margin="4,4,4,8"
+           AutomationProperties.Name="Backup sections"
+           SelectionChanged="OnTabChanged">
 
-        <!-- Top bar: Help and About, visible above both tabs -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right"
-                    Margin="0,8,12,0" Spacing="6">
-            <Button x:Name="BtnHelp" Content="Help" AccessKey="H"
-                    Click="OnHelp" />
-            <Button x:Name="BtnAbout" Content="About" AccessKey="A"
-                    Click="OnAbout" />
-        </StackPanel>
-
-        <Pivot Grid.Row="1" x:Name="Tabs" Margin="4,4,4,8"
-               AutomationProperties.Name="Backup sections"
-               SelectionChanged="OnTabChanged">
+        <!-- Help and About sit inline at the right end of the tab strip
+             (RightHeader), so they read as part of the app chrome rather than
+             floating alone, and stay visible above both tabs. -->
+        <Pivot.RightHeader>
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Button x:Name="BtnHelp" Content="Help" AccessKey="H"
+                        Click="OnHelp" />
+                <Button x:Name="BtnAbout" Content="About" AccessKey="A"
+                        Click="OnAbout" />
+            </StackPanel>
+        </Pivot.RightHeader>
 
             <!-- ============================ FILE BACKUP ============================ -->
             <PivotItem Header="File Backup">
@@ -325,6 +322,5 @@
                     </StackPanel>
                 </ScrollViewer>
             </PivotItem>
-        </Pivot>
-    </Grid>
+    </Pivot>
 </Window>

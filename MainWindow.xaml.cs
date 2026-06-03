@@ -49,7 +49,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "GUARD";
-        SizeToDips(1040, 900);
+        SizeToDips(820, 900);
 
         _cfg = SettingsStore.Load();
 
