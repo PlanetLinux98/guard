@@ -8,9 +8,10 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
-First public pre-release (v0.1.0, not yet tagged). WinUI 3 edition
-(.NET 10 + Windows App SDK 1.8), shipping as a single self-contained `GUARD.exe`.
-When tagging, move these entries under a `## [0.1.0] - <date>` heading.
+## [0.1.0] - 2026-06-03
+
+First public pre-release. WinUI 3 edition (.NET 10 + Windows App SDK 1.8),
+shipping as a single self-contained `GUARD.exe`.
 
 ### Added
 - File backup to any local, external, or network destination, built on Robocopy.
@@ -24,4 +25,5 @@ When tagging, move these entries under a `## [0.1.0] - <date>` heading.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/commits/main
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/PlanetLinux98/guard/releases/tag/v0.1.0
