@@ -156,9 +156,6 @@ GUARD uses a simple **trunk-based** workflow:
   the Release is where it ships).
 - **Every change updates [CHANGELOG.md](CHANGELOG.md)** under `[Unreleased]`;
   cutting a release moves those entries under the new version heading.
-- **Fixes reference their issue.** A fix PR uses a closing keyword (`Fixes #N`)
-  so merging auto-closes the reported issue, and the `### Fixed` changelog line
-  cites that issue number, e.g. `- Backup skipped hidden files (#42).`
 
 ## Licence
 
