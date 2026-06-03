@@ -30,4 +30,34 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
   </ItemGroup>
 
+  <!-- Trim the publish output. GUARD never touches the Windows Copilot Runtime
+       on-device AI stack (LanguageModel/Phi Silica, ImageScaler, TextRecognizer,
+       ObjectDetector, custom ONNX inference) that Windows App SDK drags in, nor
+       does a shipped portable build need the managed-debugger / crash-dump
+       diagnostics. Stripping both groups cuts ~45 MB of uncompressed payload
+       (~20 MB off the compressed single file) with no loss of functionality.
+       Reversible: delete this target and the files return on the next publish.
+       If a future feature needs the AI APIs, remove the ONNX/DirectML names
+       below (the App SDK will repackage them automatically). -->
+  <!-- Semicolon-delimited (leading+trailing ';' so Contains() can match exact
+       filenames). The versioned DAC mscordaccore_<arch>_<ver>.dll is matched by
+       prefix below rather than listed here. -->
+  <PropertyGroup>
+    <GuardExcludedFiles>;onnxruntime.dll;DirectML.dll;Microsoft.ML.OnnxRuntime.dll;onnxruntime_providers_shared.dll;System.Numerics.Tensors.dll;mscordbi.dll;mscordaccore.dll;Microsoft.DiaSymReader.Native.amd64.dll;createdump.exe;</GuardExcludedFiles>
+  </PropertyGroup>
+
+  <Target Name="TrimGuardPublishPayload"
+          AfterTargets="ComputeFilesToPublish"
+          BeforeTargets="_ComputeFilesToBundle;GenerateSingleFileBundle">
+    <ItemGroup>
+      <!-- Drop from the folder-publish set and the single-file bundle set alike. -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$(GuardExcludedFiles.Contains(';%(Filename)%(Extension);'))
+                or $([System.String]::Copy('%(Filename)').StartsWith('mscordaccore_'))" />
+      <FilesToBundle Remove="@(FilesToBundle)"
+        Condition="$(GuardExcludedFiles.Contains(';%(Filename)%(Extension);'))
+                or $([System.String]::Copy('%(Filename)').StartsWith('mscordaccore_'))" />
+    </ItemGroup>
+  </Target>
+
 </Project>
