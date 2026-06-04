@@ -19,6 +19,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Tooltips on the exclude-folder and exclude-file fields noting that wildcards
   (`*`, `?`) are supported, e.g. `*.iso`.
 
+### Fixed
+- The window now centres in the display work area on open instead of using the
+  OS cascade position, so a tall window no longer appears with its title bar
+  partway down the screen and its bottom running off the display.
+
 ## [0.1.0] - 2026-06-03
 
 First public pre-release. WinUI 3 edition (.NET 10 + Windows App SDK 1.8),
