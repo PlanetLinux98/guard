@@ -60,7 +60,12 @@ public sealed partial class MainWindow : Window
         TxtExDirs.Text = _cfg.ExcludeDirs;
         TxtExFiles.Text = _cfg.ExcludeFiles;
         ChkSchedule.IsChecked = _cfg.ScheduleEnabled;
-        TxtTime.Text = _cfg.ScheduleTime;
+        // Follow the system's 12- vs 24-hour clock preference (like the Mica
+        // theme follows the OS), rather than pinning one in XAML. Clocks lists
+        // the user's preferred identifiers; the first is the effective one.
+        var clocks = Windows.System.UserProfile.GlobalizationPreferences.Clocks;
+        if (clocks.Count > 0) TimeSchedule.ClockIdentifier = clocks[0];
+        TimeSchedule.SelectedTime = ParseScheduleTime(_cfg.ScheduleTime);
         TxtAppDest.Text = _cfg.AppListDest;
 
         // Track which folder row last held focus (for Remove). Handled at the
@@ -99,6 +104,7 @@ public sealed partial class MainWindow : Window
     // =====================================================================
     private void OnDirtyChanged(object sender, TextChangedEventArgs e) { _dirty = true; RefreshScriptStatus(); }
     private void OnDirtyChecked(object sender, RoutedEventArgs e) { _dirty = true; RefreshScriptStatus(); }
+    private void OnScheduleTimeChanged(TimePicker sender, TimePickerSelectedValueChangedEventArgs args) { _dirty = true; RefreshScriptStatus(); }
 
     private void WireFolderDirty()
     {
@@ -198,7 +204,7 @@ public sealed partial class MainWindow : Window
         _cfg.ExcludeDirs = TxtExDirs.Text;
         _cfg.ExcludeFiles = TxtExFiles.Text;
         _cfg.ScheduleEnabled = ChkSchedule.IsChecked == true;
-        _cfg.ScheduleTime = NormalizeTime(TxtTime.Text, _cfg.ScheduleTime);
+        _cfg.ScheduleTime = FormatScheduleTime(TimeSchedule.SelectedTime, _cfg.ScheduleTime);
         _cfg.AppListDest = (TxtAppDest.Text ?? "").Trim();
     }
 
@@ -252,14 +258,23 @@ public sealed partial class MainWindow : Window
         LblNextRun.Text = next == null ? "Next run: (no scheduled task)" : "Next run: " + next;
     }
 
-    private static string NormalizeTime(string? text, string fallback)
+    // Settings store the daily run time as an "HH:mm" string; the TimePicker
+    // works in TimeSpan. These convert between the two, falling back to the
+    // existing value if the picker has no selection.
+    private static TimeSpan? ParseScheduleTime(string? text)
     {
         text = (text ?? "").Trim();
         if (DateTime.TryParseExact(text, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var t))
-            return t.ToString("HH:mm");
+            return t.TimeOfDay;
         if (DateTime.TryParseExact(text, "H:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out t))
-            return t.ToString("HH:mm");
-        return fallback;
+            return t.TimeOfDay;
+        return null;
+    }
+
+    private static string FormatScheduleTime(TimeSpan? selected, string fallback)
+    {
+        if (selected is not TimeSpan ts) return fallback;
+        return new TimeOnly(ts.Hours, ts.Minutes).ToString("HH:mm", CultureInfo.InvariantCulture);
     }
 
     // =====================================================================
