@@ -4,8 +4,8 @@ A portable, fully accessible backup and data-protection utility for Windows.
 GUARD lets you back up your chosen folders to any destination (a local drive, an
 external disk, or a network share) and keep an inventory of your installed apps
 so they are easy to reinstall after a clean OS install. It carries no installer
-and no dependencies to track down: the shipping release build is a single
-self-contained `GUARD.exe` you can drop anywhere and run.
+and no dependencies to track down: the shipping release is a small `GUARD.zip`
+you extract to a self-contained `GUARD\` folder, then run the `GUARD.exe` inside.
 
 The goal is to become the ultimate portable data-protection toolkit. More
 functionality to come!
@@ -45,26 +45,28 @@ theming. It targets **.NET 10 + Windows App SDK 1.8**.
 - Windows 10 version 1809 (build 17763) or later, including Windows 11. Note
   that Windows 10 reached end of support on October 14, 2025; GUARD still runs
   there, but it is outside Microsoft's support window for the Windows App SDK.
-- **Nothing to install to run it.** The shipping `GUARD.exe` is self-contained:
-  the .NET 10 runtime and Windows App SDK are bundled inside it.
+- **Nothing to install to run it.** The `GUARD.exe` inside the release zip is
+  self-contained: the .NET 10 runtime and Windows App SDK are bundled inside it.
 - winget (optional) for automatic app reinstalls. Without it, the app list is
   still read from the registry and can be exported for reference.
 - To **build from source** you need the .NET 10 SDK (see [Building](#building)).
 
 ## Building
 
-### Shipping build: standalone single-file GUARD.exe (recommended)
+### Shipping build: single-file GUARD.exe in a release zip (recommended)
 
 ```
 publish-singlefile.cmd
 ```
 
-Produces one ~88 MB `GUARD.exe` (self-contained, compressed, ReadyToRun) in the
-project root. It is a true standalone file: move it anywhere and double-click.
-The bundled runtime extracts once to a per-user temp cache and is reused on later
-launches (it does not scatter DLLs beside the exe). Being a portable app, GUARD
-writes its working files (`backup-settings.ini`, `guard-backup.cmd`, `Logs\`)
-into whatever folder the exe is run from.
+Produces one ~88 MB `GUARD.exe` (self-contained, compressed, ReadyToRun), staged
+inside a `GUARD\` folder alongside `README.md` and zipped to `GUARD.zip` in the
+project root. The bundled runtime extracts once to a per-user temp cache and is
+reused on later launches (it does not scatter DLLs beside the exe). Being a
+portable app, GUARD writes its working files (`backup-settings.ini`,
+`guard-backup.cmd`, `Logs\`) into the folder the exe sits in, so shipping it
+inside a folder keeps everything together instead of littering the folder the zip
+was downloaded to.
 
 ### Build and run (development)
 
@@ -89,9 +91,9 @@ Output folder: `bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\`
 | `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, JSON I/O, process helpers |
 | `MainWindow.xaml(.cs)` | Both tabs and all wiring |
 | `Views/` | FolderDialog, AboutDialog (ContentDialogs) |
-| `publish-singlefile.cmd` | Build the shipping single-file `GUARD.exe` |
+| `publish-singlefile.cmd` | Build the shipping `GUARD.exe` and stage it into `GUARD.zip` |
 | `publish-aot.cmd` | Opt-in NativeAOT publish (see note below) |
-| `GUARD.exe` | The built single-file app (project root; not source) |
+| `GUARD\`, `GUARD.zip` | The staged release folder and its zip (project root; not source) |
 
 ## Usage
 
@@ -152,7 +154,7 @@ GUARD uses a simple **trunk-based** workflow:
   after it merges. Branches live hours-to-days, not weeks.
 - **Releases are git tags** using [SemVer](https://semver.org/) with a `v`
   prefix (`v0.1.0`). Each tag gets a [GitHub Release](https://github.com/PlanetLinux98/guard/releases)
-  with the built `GUARD.exe` attached as an asset (the binary is gitignored, so
+  with the built `GUARD.zip` attached as an asset (the binary is gitignored, so
   the Release is where it ships).
 - **Every change updates [CHANGELOG.md](CHANGELOG.md)** under `[Unreleased]`;
   cutting a release moves those entries under the new version heading.
