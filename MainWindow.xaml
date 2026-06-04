@@ -152,9 +152,10 @@
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <CheckBox x:Name="ChkSchedule" Content="Run daily at:" IsChecked="True" AccessKey="Y"
                                       VerticalAlignment="Center" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
-                            <TextBox x:Name="TxtTime" Width="64" VerticalAlignment="Center"
-                                     AutomationProperties.Name="Daily run time, 24-hour HH colon mm"
-                                     TextChanged="OnDirtyChanged" />
+                            <TimePicker x:Name="TimeSchedule" VerticalAlignment="Center"
+                                        MinuteIncrement="1"
+                                        AutomationProperties.Name="Daily run time"
+                                        SelectedTimeChanged="OnScheduleTimeChanged" />
                             <Button Content="Create / Update Task" AccessKey="U"
                                     ToolTipService.ToolTip="Create or update the daily scheduled task"
                                     Click="OnCreateTask" />
