@@ -9,6 +9,10 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Changed
+- Replaced the free-type schedule time box with a native WinUI `TimePicker`:
+  hour and minute are separate spin columns you arrow through or pick from a
+  flyout, instead of typing `HH:mm` by hand. It follows the system 12-/24-hour
+  clock setting (the stored schedule stays 24-hour `HH:mm` regardless).
 - Documented the actual minimum OS as Windows 10 version 1809 (build 17763),
   matching the Windows App SDK floor, instead of "Windows 10 or 11".
 
