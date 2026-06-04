@@ -9,8 +9,15 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Changed
+- Renamed the backup folder list's "Subfolder" column to "Destination subfolder"
+  (and matched the Add Folder dialog's field and help text), making clear it names
+  the folder created under the backup destination root rather than a source path.
 - Documented the actual minimum OS as Windows 10 version 1809 (build 17763),
   matching the Windows App SDK floor, instead of "Windows 10 or 11".
+
+### Added
+- Tooltips on the exclude-folder and exclude-file fields noting that wildcards
+  (`*`, `?`) are supported, e.g. `*.iso`.
 
 ## [0.1.0] - 2026-06-03
 

@@ -59,7 +59,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Source folder" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock Grid.Column="1" Text="Subfolder" FontWeight="SemiBold"
+                            <TextBlock Grid.Column="1" Text="Destination subfolder" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
                         <Border BorderThickness="1" Height="180" CornerRadius="4"
@@ -129,10 +129,12 @@
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="TxtExDirs" Grid.Column="0" Header="Exclude folder names (one per line):"
                                      AcceptsReturn="True" Height="80" TextWrapping="NoWrap"
+                                     ToolTipService.ToolTip="One name or pattern per line. Wildcards work: * matches any text, ? matches one character (e.g. node_modules, temp*)."
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      TextChanged="OnDirtyChanged" />
                             <TextBox x:Name="TxtExFiles" Grid.Column="1" Header="Exclude file names (one per line):"
                                      AcceptsReturn="True" Height="80" TextWrapping="NoWrap"
+                                     ToolTipService.ToolTip="One name or pattern per line. Wildcards work: * matches any text, ? matches one character (e.g. *.iso, *.tmp, ~$*)."
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      TextChanged="OnDirtyChanged" />
                         </Grid>
