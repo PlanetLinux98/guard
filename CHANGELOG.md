@@ -23,6 +23,8 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - The window now centres in the display work area on open instead of using the
   OS cascade position, so a tall window no longer appears with its title bar
   partway down the screen and its bottom running off the display.
+- The App Inventory "Filter" label now sits inline to the left of the filter
+  box, on the same row as the toolbar buttons, instead of floating above it.
 
 ## [0.1.0] - 2026-06-03
 

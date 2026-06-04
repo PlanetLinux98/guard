@@ -235,8 +235,12 @@
                             <Button x:Name="BtnAppNone" Content="Select None" AccessKey="O"
                                     ToolTipService.ToolTip="Untick all visible apps"
                                     Click="OnSelectNone" />
-                            <TextBox x:Name="TxtAppFilter" Width="180" Header="Filter:" AccessKey="F" VerticalAlignment="Center"
-                                     TextChanged="OnFilterChanged" />
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock x:Name="LblAppFilter" Text="Filter:" VerticalAlignment="Center" />
+                                <TextBox x:Name="TxtAppFilter" Width="180" AccessKey="F" VerticalAlignment="Center"
+                                         AutomationProperties.LabeledBy="{x:Bind LblAppFilter}"
+                                         TextChanged="OnFilterChanged" />
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- App list -->
