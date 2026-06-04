@@ -19,9 +19,17 @@
              floating alone, and stay visible above both tabs. -->
         <Pivot.RightHeader>
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <Button x:Name="BtnHelp" Content="Help" AccessKey="H"
-                        Click="OnHelp" />
-                <Button x:Name="BtnAbout" Content="About" AccessKey="A"
+                <!-- Help uses the conventional F1 accelerator rather than an
+                     Alt mnemonic; About is secondary chrome and carries none,
+                     so Alt+A is free for Add Folder. -->
+                <Button x:Name="BtnHelp" Content="Help"
+                        ToolTipService.ToolTip="Help (F1)"
+                        Click="OnHelp">
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="F1" />
+                    </Button.KeyboardAccelerators>
+                </Button>
+                <Button x:Name="BtnAbout" Content="About"
                         Click="OnAbout" />
             </StackPanel>
         </Pivot.RightHeader>
@@ -59,7 +67,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Source folder" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock Grid.Column="1" Text="Subfolder" FontWeight="SemiBold"
+                            <TextBlock Grid.Column="1" Text="Destination subfolder" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
                         <Border BorderThickness="1" Height="180" CornerRadius="4"
@@ -92,7 +100,7 @@
                             </ScrollViewer>
                         </Border>
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-                            <Button Content="Add Folder..." AccessKey="F"
+                            <Button Content="Add Folder..." AccessKey="A"
                                     Click="OnAddFolder" />
                             <Button Content="Remove Folder" AccessKey="R"
                                     Click="OnRemoveFolder" />
@@ -129,10 +137,12 @@
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="TxtExDirs" Grid.Column="0" Header="Exclude folder names (one per line):"
                                      AcceptsReturn="True" Height="80" TextWrapping="NoWrap"
+                                     ToolTipService.ToolTip="One name or pattern per line. Wildcards work: * matches any text, ? matches one character (e.g. node_modules, temp*)."
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      TextChanged="OnDirtyChanged" />
                             <TextBox x:Name="TxtExFiles" Grid.Column="1" Header="Exclude file names (one per line):"
                                      AcceptsReturn="True" Height="80" TextWrapping="NoWrap"
+                                     ToolTipService.ToolTip="One name or pattern per line. Wildcards work: * matches any text, ? matches one character (e.g. *.iso, *.tmp, ~$*)."
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      TextChanged="OnDirtyChanged" />
                         </Grid>
@@ -234,8 +244,12 @@
                             <Button x:Name="BtnAppNone" Content="Select None" AccessKey="O"
                                     ToolTipService.ToolTip="Untick all visible apps"
                                     Click="OnSelectNone" />
-                            <TextBox x:Name="TxtAppFilter" Width="180" Header="Filter:" AccessKey="F" VerticalAlignment="Center"
-                                     TextChanged="OnFilterChanged" />
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock x:Name="LblAppFilter" Text="Filter:" VerticalAlignment="Center" />
+                                <TextBox x:Name="TxtAppFilter" Width="180" AccessKey="F" VerticalAlignment="Center"
+                                         AutomationProperties.LabeledBy="{x:Bind LblAppFilter}"
+                                         TextChanged="OnFilterChanged" />
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- App list -->

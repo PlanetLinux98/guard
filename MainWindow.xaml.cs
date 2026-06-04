@@ -720,10 +720,28 @@ public sealed partial class MainWindow : Window
         {
             uint dpi = GetDpiForWindow(WindowHandle);
             double scale = dpi == 0 ? 1.0 : dpi / 96.0;
-            AppWindow.Resize(new Windows.Graphics.SizeInt32(
-                (int)(dipWidth * scale), (int)(dipHeight * scale)));
+            int w = (int)(dipWidth * scale);
+            int h = (int)(dipHeight * scale);
+            AppWindow.Resize(new Windows.Graphics.SizeInt32(w, h));
+            CenterInWorkArea(w, h);
         }
         catch { }
+    }
+
+    // Centre the window in the display work area after resizing. The OS default
+    // cascade position can open a tall window with its title bar partway down
+    // the screen, running the bottom off the display; clamping x/y to at least
+    // the work-area origin keeps the title bar at the top when the window is
+    // taller than the work area, and otherwise centres it.
+    private void CenterInWorkArea(int width, int height)
+    {
+        var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+            AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest);
+        if (area is null) return;
+        var work = area.WorkArea;
+        int x = work.X + Math.Max(0, (work.Width - width) / 2);
+        int y = work.Y + Math.Max(0, (work.Height - height) / 2);
+        AppWindow.Move(new Windows.Graphics.PointInt32(x, y));
     }
 
     private async System.Threading.Tasks.Task ShowMessageAsync(string title, string content)
