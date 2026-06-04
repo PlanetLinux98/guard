@@ -12,6 +12,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Documented the actual minimum OS as Windows 10 version 1809 (build 17763),
   matching the Windows App SDK floor, instead of "Windows 10 or 11".
 
+### Fixed
+- The window now centres in the display work area on open instead of using the
+  OS cascade position, so a tall window no longer appears with its title bar
+  partway down the screen and its bottom running off the display.
+
 ## [0.1.0] - 2026-06-03
 
 First public pre-release. WinUI 3 edition (.NET 10 + Windows App SDK 1.8),
