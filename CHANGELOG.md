@@ -12,6 +12,14 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Renamed the backup folder list's "Subfolder" column to "Destination subfolder"
   (and matched the Add Folder dialog's field and help text), making clear it names
   the folder created under the backup destination root rather than a source path.
+- Help now uses the conventional `F1` shortcut instead of an `Alt+H` mnemonic,
+  and the About button no longer carries `Alt+A`; that frees `Alt+A` for the
+  Add Folder button (previously the unintuitive `Alt+F`), which in turn leaves
+  `Alt+F` to the App Inventory filter box.
+- The About dialog's project-page button now reads "Open Project Page" with its
+  visible label as its accessible name (the longer description moved to a hover
+  tooltip), instead of a verbose `AutomationProperties.Name` that did not match
+  the visible text.
 - Documented the actual minimum OS as Windows 10 version 1809 (build 17763),
   matching the Windows App SDK floor, instead of "Windows 10 or 11".
 

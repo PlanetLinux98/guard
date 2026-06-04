@@ -19,9 +19,17 @@
              floating alone, and stay visible above both tabs. -->
         <Pivot.RightHeader>
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <Button x:Name="BtnHelp" Content="Help" AccessKey="H"
-                        Click="OnHelp" />
-                <Button x:Name="BtnAbout" Content="About" AccessKey="A"
+                <!-- Help uses the conventional F1 accelerator rather than an
+                     Alt mnemonic; About is secondary chrome and carries none,
+                     so Alt+A is free for Add Folder. -->
+                <Button x:Name="BtnHelp" Content="Help"
+                        ToolTipService.ToolTip="Help (F1)"
+                        Click="OnHelp">
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="F1" />
+                    </Button.KeyboardAccelerators>
+                </Button>
+                <Button x:Name="BtnAbout" Content="About"
                         Click="OnAbout" />
             </StackPanel>
         </Pivot.RightHeader>
@@ -92,7 +100,7 @@
                             </ScrollViewer>
                         </Border>
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-                            <Button Content="Add Folder..." AccessKey="F"
+                            <Button Content="Add Folder..." AccessKey="A"
                                     Click="OnAddFolder" />
                             <Button Content="Remove Folder" AccessKey="R"
                                     Click="OnRemoveFolder" />
