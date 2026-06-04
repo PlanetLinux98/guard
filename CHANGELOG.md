@@ -9,6 +9,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Changed
+- The shipping release now ships as `GUARD.zip` containing a `GUARD\` folder
+  (the exe plus `README.md`) instead of a bare `GUARD.exe`. Extracting it gives a
+  self-contained app folder, so GUARD's working files stay together next to the
+  exe instead of scattering into wherever a loose exe was saved (e.g. Downloads).
+  Bundling `README.md` also makes the in-app Help button open it offline.
 - Renamed the backup folder list's "Subfolder" column to "Destination subfolder"
   (and matched the Add Folder dialog's field and help text), making clear it names
   the folder created under the backup destination root rather than a source path.
@@ -32,6 +37,21 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   (`*`, `?`) are supported, e.g. `*.iso`.
 
 ### Fixed
+- The root-level build scripts (`publish-aot.cmd`, `publish-singlefile.cmd`) were
+  bundled into the shipping single-file `GUARD.exe` and extracted to the runtime
+  self-extraction cache, because the SDK globbed them as default project items.
+  They are now excluded from the build, so they no longer ship inside the app.
+- Several more stray repo and source files (`README.md`, `CHANGELOG.md`,
+  `CLAUDE.md`, `LICENSE`, `.gitignore`, `app.manifest`, and the `.xaml` source)
+  were likewise bundled into the single-file `GUARD.exe` and extracted to the
+  self-extraction cache. The doc/metadata files are now excluded from the build;
+  the `.xaml` and `app.manifest` stay as build inputs but their redundant loose
+  copies are stripped from the publish output, so none of them ship inside the app.
+- The shipping single-file build wrote its working files (`backup-settings.ini`,
+  `guard-backup.cmd`, `Logs\`) into a temporary self-extraction cache instead of
+  next to the exe, because it derived paths from `AppContext.BaseDirectory`, which
+  points at the extraction directory under single-file self-extraction. Paths now
+  derive from `Environment.ProcessPath`, so they land next to the exe as intended.
 - The window now centres in the display work area on open instead of using the
   OS cascade position, so a tall window no longer appears with its title bar
   partway down the screen and its bottom running off the display.

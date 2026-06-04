@@ -2,6 +2,10 @@
 GUARD.exe
 GUARD.pdb
 
+# Shipping artifacts: staged release folder and its zip (publish-singlefile.cmd)
+/GUARD/
+GUARD.zip
+
 # .NET SDK build output
 bin/
 obj/

@@ -20,9 +20,26 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AssemblyName>GUARD</AssemblyName>
-    <!-- The shipped single-file GUARD.exe lives in the project root; keep the
-         SDK from globbing it as a project item (it collides with publish output). -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe</DefaultItemExcludes>
+    <!-- The shipped single-file GUARD.exe and the staged release folder/zip live
+         in the project root; keep the SDK from globbing them as project items.
+         (GUARD.exe collides with publish output; GUARD\ and GUARD.zip would
+         otherwise be bundled as content into the single-file publish, inflating
+         it recursively on every rebuild.) The root-level build scripts
+         (publish-*.cmd) are also globbed as default None items and bundled into
+         the single-file exe (extracted to the runtime self-extraction cache);
+         they have no business inside the shipped app, so exclude them too.
+         The repo doc/metadata files (README.md, CHANGELOG.md, CLAUDE.md, LICENSE,
+         .gitignore) are likewise globbed as default None items and bundled into
+         the exe; none are build inputs, so exclude them as well. (README.md is
+         still shipped: publish-singlefile.cmd copies it into the staged GUARD\
+         folder for the offline Help button - that copy is independent of this.)
+         The .xaml source and app.manifest also leak into the bundle but are real
+         build inputs (Page/ApplicationDefinition and the ApplicationManifest), so
+         they are NOT excluded here - excluding *.xaml would also drop it from the
+         WinUI Page glob (which honors DefaultItemExcludes) and break the build.
+         Their redundant loose copy is instead stripped from the publish/bundle
+         output in TrimGuardPublishPayload below. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe;GUARD.zip;GUARD\**;*.cmd;*.md;LICENSE;.gitignore</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -57,6 +74,20 @@
       <FilesToBundle Remove="@(FilesToBundle)"
         Condition="$(GuardExcludedFiles.Contains(';%(Filename)%(Extension);'))
                 or $([System.String]::Copy('%(Filename)').StartsWith('mscordaccore_'))" />
+
+      <!-- Drop our own loose source build inputs (the .xaml files and app.manifest)
+           from the shipped output. The .xaml compile to XBF embedded in GUARD.pri
+           and app.manifest is embedded into the exe as a Win32 resource, so the
+           loose source copies are dead weight at runtime; left in, the SDK globs
+           them as default None items and single-file publish bundles them into the
+           self-extraction cache. Removing them here strips only the redundant
+           shipped copy, never the Page/ApplicationDefinition/ApplicationManifest
+           build inputs, so compilation is unaffected. (No runtime payload ships a
+           loose .xaml or app.manifest, so matching by extension/name is safe.) -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(Extension)' == '.xaml' or '%(Filename)%(Extension)' == 'app.manifest'" />
+      <FilesToBundle Remove="@(FilesToBundle)"
+        Condition="'%(Extension)' == '.xaml' or '%(Filename)%(Extension)' == 'app.manifest'" />
     </ItemGroup>
   </Target>
 
