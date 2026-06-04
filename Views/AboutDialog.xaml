@@ -13,8 +13,8 @@
         <TextBlock Text="A backup and app inventory utility for Windows." />
         <TextBlock Text="Created by PlanetLinux98." />
         <TextBlock Text="Released under the MIT License." Margin="0,0,0,10" />
-        <Button Content="Project Page" AccessKey="P" HorizontalAlignment="Left"
-                AutomationProperties.Name="Open the GUARD project page in your browser"
+        <Button Content="Open Project Page" AccessKey="P" HorizontalAlignment="Left"
+                ToolTipService.ToolTip="Open the GUARD project page in your browser"
                 Click="OnProjectPage" />
     </StackPanel>
 </ContentDialog>
