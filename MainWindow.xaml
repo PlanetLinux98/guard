@@ -158,13 +158,11 @@
                             <!-- Day picker: all seven ticked = daily, one = weekly, any
                                  mix = custom. Seven real CheckBoxes (one accessible name
                                  each) instead of a frequency mode, matching the lists'
-                                 screen-reader idiom. The group is a single tab stop;
-                                 arrow keys move between days within it. -->
+                                 screen-reader idiom. -->
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,4,0,0">
                                 <TextBlock Text="On:" VerticalAlignment="Center" />
                                 <StackPanel x:Name="DayGroup" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
-                                            AutomationProperties.Name="Backup days"
-                                            TabFocusNavigation="Once" XYFocusKeyboardNavigation="Enabled">
+                                            AutomationProperties.Name="Backup days">
                                     <StackPanel.Resources>
                                         <!-- The default CheckBox style reserves ~120px MinWidth, which
                                              spaced the seven days into wide uniform columns that ran off
