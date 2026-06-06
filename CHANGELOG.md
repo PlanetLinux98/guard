@@ -23,14 +23,14 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Consolidated scheduling into Save Settings as the single place to apply it:
   removed the separate "Create/Update Task" and "Remove Task" buttons. Saving now
   registers the task when "Run a scheduled backup" is ticked and removes it when
-  not, so there is one clear save action. The day and time controls grey out while
-  the schedule is off.
+  not, so there is one clear save action.
+- The day and time controls grey out while the schedule is off.
 
 ### Fixed
 - The About dialog reported version 0.1 instead of the actual release version.
 - Pressing an access key that opens a dialog (e.g. Alt+R, Remove Folder) while
-  another dialog such as About was already open crashed the app; only one dialog
-  is opened at a time now.
+  another dialog such as About was already open crashed the app; handling added
+  to ensure only one dialog is opened at a time.
 - The saved-status line no longer re-announces itself to screen readers on every
   checkbox or field change when its text has not actually changed.
 - Exclude lists with more than one entry were silently truncated to the first
