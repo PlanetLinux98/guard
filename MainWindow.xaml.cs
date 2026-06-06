@@ -414,11 +414,27 @@ public sealed partial class MainWindow : Window
         string f = _appFilter.ToLowerInvariant();
         foreach (var a in _allApps)
         {
-            if (f.Length == 0 ||
-                (a.Name != null && a.Name.ToLowerInvariant().IndexOf(f, StringComparison.Ordinal) >= 0))
+            if (f.Length == 0 || MatchesFilter(a, f))
                 AppRows.Add(a);
         }
     }
+
+    private static bool MatchesFilter(AppEntry a, string f)
+    {
+        if (Contains(a.Name, f) || Contains(a.Publisher, f) || Contains(a.Id, f) || Contains(a.SourceLabel, f))
+            return true;
+
+        // Type aliases not covered by SourceLabel
+        return a.Source switch
+        {
+            "manual"  => f is "installer",
+            "msstore" => f is "msstore" or "ms store" or "microsoft store",
+            _         => false,
+        };
+    }
+
+    private static bool Contains(string? s, string f) =>
+        !string.IsNullOrEmpty(s) && s.ToLowerInvariant().IndexOf(f, StringComparison.Ordinal) >= 0;
 
     private void OnSelectAll(object sender, RoutedEventArgs e) { foreach (var a in AppRows) a.Include = true; }
     private void OnSelectNone(object sender, RoutedEventArgs e) { foreach (var a in AppRows) a.Include = false; }

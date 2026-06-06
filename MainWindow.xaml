@@ -273,6 +273,8 @@
                                 <TextBlock x:Name="LblAppFilter" Text="Filter:" VerticalAlignment="Center" />
                                 <TextBox x:Name="TxtAppFilter" Width="180" AccessKey="F" VerticalAlignment="Center"
                                          AutomationProperties.LabeledBy="{x:Bind LblAppFilter}"
+                                         PlaceholderText="Name, publisher or type…"
+                                         ToolTipService.ToolTip="Filter by name, publisher, app type (winget / store / manual) or package ID"
                                          TextChanged="OnFilterChanged" />
                             </StackPanel>
                         </StackPanel>
