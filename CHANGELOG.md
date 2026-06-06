@@ -8,7 +8,31 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+- Choose which days of the week the scheduled backup runs on: tick any mix of
+  weekdays (all seven for daily, one for weekly, or a custom set), replacing the
+  previous daily-only schedule.
+
+### Changed
+- Scheduled backups are now off by default on a fresh install; you opt in by
+  ticking "Run a scheduled backup", so a new user is never given a scheduled task
+  they did not ask for.
+- Renamed the Windows scheduled task from "Daily GUARD Backup" to "GUARD Backup"
+  (the schedule is no longer always daily). The old task is removed automatically
+  when you next save, so upgraders are not left running two backups.
+- Consolidated scheduling into Save Settings as the single place to apply it:
+  removed the separate "Create/Update Task" and "Remove Task" buttons. Saving now
+  registers the task when "Run a scheduled backup" is ticked and removes it when
+  not, so there is one clear save action. The day and time controls grey out while
+  the schedule is off.
+
 ### Fixed
+- The About dialog reported version 0.1 instead of the actual release version.
+- Pressing an access key that opens a dialog (e.g. Alt+R, Remove Folder) while
+  another dialog such as About was already open crashed the app; only one dialog
+  is opened at a time now.
+- The saved-status line no longer re-announces itself to screen readers on every
+  checkbox or field change when its text has not actually changed.
 - Exclude lists with more than one entry were silently truncated to the first
   line across a save/reload. A WinUI multi-line text box separates lines with a
   bare carriage return, which the settings writer left unescaped in

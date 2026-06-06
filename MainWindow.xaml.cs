@@ -29,11 +29,27 @@ public sealed partial class MainWindow : Window
     private bool _dirty;
     private int _progTotal;
 
+    // Only one ContentDialog may be open at a time; WinUI throws otherwise. An
+    // access key on the main window (e.g. Alt+R for Remove Folder) still fires
+    // while a dialog is up, so guard every show through this flag.
+    private bool _dialogOpen;
+
+    // Last text announced on the status live region, so a screen reader is not
+    // re-notified on every checkbox toggle when the status text is unchanged.
+    private string? _lastAnnouncedStatus;
+
+    // Problem reported by the last scheduled-task registration during a save, or
+    // null if it succeeded; surfaced by OnSave after the save completes.
+    private string? _taskError;
+
     private bool _appScanned;
     private bool _scanning;
     private bool _reinstalling;
     private bool _wingetAvailable;
     private bool _allowClose;
+
+    // The seven schedule-day checkboxes paired with the day each represents.
+    private (CheckBox box, DayOfWeek day)[] _dayBoxes = Array.Empty<(CheckBox, DayOfWeek)>();
 
     private FolderPair? _currentFolder;
     private FrameworkElement? _lastFolderFocus;
@@ -60,6 +76,16 @@ public sealed partial class MainWindow : Window
         TxtExDirs.Text = _cfg.ExcludeDirs;
         TxtExFiles.Text = _cfg.ExcludeFiles;
         ChkSchedule.IsChecked = _cfg.ScheduleEnabled;
+        _dayBoxes = new[]
+        {
+            (ChkMon, DayOfWeek.Monday), (ChkTue, DayOfWeek.Tuesday),
+            (ChkWed, DayOfWeek.Wednesday), (ChkThu, DayOfWeek.Thursday),
+            (ChkFri, DayOfWeek.Friday), (ChkSat, DayOfWeek.Saturday),
+            (ChkSun, DayOfWeek.Sunday),
+        };
+        foreach (var (box, day) in _dayBoxes)
+            box.IsChecked = _cfg.ScheduleDays.Contains(day);
+        UpdateScheduleEnabledState();
         // Follow the system's 12- vs 24-hour clock preference (like the Mica
         // theme follows the OS), rather than pinning one in XAML. Clocks lists
         // the user's preferred identifiers; the first is the effective one.
@@ -86,7 +112,8 @@ public sealed partial class MainWindow : Window
         // Initial population fired the dirty handlers; reset so the status
         // reflects the on-disk script.
         _dirty = false;
-        RefreshScriptStatus();
+        // Seed the status text without announcing it at launch.
+        RefreshScriptStatus(announce: false);
 
         AppWindow.Closing += OnAppWindowClosing;
     }
@@ -104,6 +131,24 @@ public sealed partial class MainWindow : Window
     // =====================================================================
     private void OnDirtyChanged(object sender, TextChangedEventArgs e) { _dirty = true; RefreshScriptStatus(); }
     private void OnDirtyChecked(object sender, RoutedEventArgs e) { _dirty = true; RefreshScriptStatus(); }
+
+    // The schedule on/off box also greys out the day/time controls so it is clear
+    // they only apply when a scheduled backup is enabled.
+    private void OnScheduleEnabledChanged(object sender, RoutedEventArgs e)
+    {
+        _dirty = true;
+        UpdateScheduleEnabledState();
+        RefreshScriptStatus();
+    }
+
+    private void UpdateScheduleEnabledState()
+    {
+        // StackPanel has no IsEnabled (it is a Panel, not a Control), so grey out
+        // the interactive leaves directly.
+        bool on = ChkSchedule.IsChecked == true;
+        foreach (var (box, _) in _dayBoxes) box.IsEnabled = on;
+        if (TimeSchedule != null) TimeSchedule.IsEnabled = on;
+    }
     private void OnScheduleTimeChanged(TimePicker sender, TimePickerSelectedValueChangedEventArgs args) { _dirty = true; RefreshScriptStatus(); }
 
     private void WireFolderDirty()
@@ -159,7 +204,7 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    private void RefreshScriptStatus()
+    private void RefreshScriptStatus(bool announce = true)
     {
         if (ScriptDot == null || ScriptStatusText == null) return;
         var green = Color.FromArgb(0xFF, 0x3F, 0xB9, 0x50);
@@ -180,7 +225,12 @@ public sealed partial class MainWindow : Window
             ScriptStatusText.Text = "Settings saved. Last updated " +
                 File.GetLastWriteTime(GuardPaths.ScriptPath).ToString("yyyy-MM-dd HH:mm") + ".";
         }
-        Announce(ScriptStatusText);
+        // Only re-announce when the message actually changed; otherwise toggling
+        // each day checkbox would re-read the status line on top of the box's own
+        // checked/unchecked state.
+        if (announce && ScriptStatusText.Text != _lastAnnouncedStatus)
+            Announce(ScriptStatusText);
+        _lastAnnouncedStatus = ScriptStatusText.Text;
     }
 
     private static void Announce(UIElement el)
@@ -204,6 +254,9 @@ public sealed partial class MainWindow : Window
         _cfg.ExcludeDirs = TxtExDirs.Text;
         _cfg.ExcludeFiles = TxtExFiles.Text;
         _cfg.ScheduleEnabled = ChkSchedule.IsChecked == true;
+        _cfg.ScheduleDays = new List<DayOfWeek>();
+        foreach (var (box, day) in _dayBoxes)
+            if (box.IsChecked == true) _cfg.ScheduleDays.Add(day);
         _cfg.ScheduleTime = FormatScheduleTime(TimeSchedule.SelectedTime, _cfg.ScheduleTime);
         _cfg.AppListDest = (TxtAppDest.Text ?? "").Trim();
     }
@@ -217,10 +270,17 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "Enter a backup destination first.\n\nType a folder path next to \"Backup destination\", or use the Browse button to pick one.");
             return false;
         }
+        if (_cfg.ScheduleEnabled && _cfg.ScheduleDays.Count == 0)
+        {
+            await ShowMessageAsync("GUARD", "Pick at least one day for the scheduled backup, or turn the schedule off.");
+            return false;
+        }
         SettingsStore.Save(_cfg);
         BackupScript.Write(_cfg);
-        if (_cfg.ScheduleEnabled) ScheduledTasks.UpdateFileTask(_cfg);
-        else ScheduledTasks.RemoveTask(GuardPaths.FileTaskName);
+        // Save Settings is the single source of truth for the scheduled task:
+        // register it when enabled, remove it (current + legacy name) when not.
+        _taskError = _cfg.ScheduleEnabled ? ScheduledTasks.UpdateFileTask(_cfg) : null;
+        if (!_cfg.ScheduleEnabled) ScheduledTasks.RemoveAllTasks();
         RefreshNextRun();
         _dirty = false;
         RefreshScriptStatus();
@@ -229,26 +289,13 @@ public sealed partial class MainWindow : Window
 
     private async void OnSave(object sender, RoutedEventArgs e)
     {
-        if (await SaveAllAsync())
-            await ShowMessageAsync("GUARD", "Settings saved. The backup script and scheduled task have been updated.");
-    }
-
-    // =====================================================================
-    //  SCHEDULE
-    // =====================================================================
-    private async void OnCreateTask(object sender, RoutedEventArgs e)
-    {
         if (!await SaveAllAsync()) return;
-        var err = ScheduledTasks.UpdateFileTask(_cfg);
-        if (err != null) await ShowMessageAsync("GUARD", "Create/Update daily task reported a problem:\n\n" + err);
-        RefreshNextRun();
-    }
-
-    private async void OnRemoveTask(object sender, RoutedEventArgs e)
-    {
-        ScheduledTasks.RemoveTask(GuardPaths.FileTaskName);
-        RefreshNextRun();
-        await ShowMessageAsync("GUARD", "Removed scheduled task: " + GuardPaths.FileTaskName);
+        if (_taskError != null)
+            await ShowMessageAsync("GUARD", "Settings saved, but registering the scheduled task reported a problem:\n\n" + _taskError);
+        else
+            await ShowMessageAsync("GUARD", _cfg.ScheduleEnabled
+                ? "Settings saved. The backup script and scheduled task have been updated."
+                : "Settings saved. The backup script has been updated; no scheduled task is set.");
     }
 
     private void RefreshNextRun()
@@ -283,7 +330,7 @@ public sealed partial class MainWindow : Window
     private async void OnAddFolder(object sender, RoutedEventArgs e)
     {
         var dlg = new Views.FolderDialog { XamlRoot = Content.XamlRoot, WindowHandle = WindowHandle };
-        var result = await dlg.ShowAsync();
+        var result = await ShowDialogAsync(dlg);
         if (result == ContentDialogResult.Primary)
             _cfg.Folders.Add(new FolderPair(true, dlg.SourcePath, dlg.SubFolder));
     }
@@ -700,7 +747,7 @@ public sealed partial class MainWindow : Window
     private async void OnAbout(object sender, RoutedEventArgs e)
     {
         var dlg = new Views.AboutDialog { XamlRoot = Content.XamlRoot };
-        await dlg.ShowAsync();
+        await ShowDialogAsync(dlg);
     }
 
     // =====================================================================
@@ -744,6 +791,17 @@ public sealed partial class MainWindow : Window
         AppWindow.Move(new Windows.Graphics.PointInt32(x, y));
     }
 
+    // Single funnel for every ContentDialog.ShowAsync so two can never overlap.
+    // Returns None if a dialog is already open (e.g. an access key fired behind a
+    // modal dialog), which callers treat as "no/cancel".
+    private async System.Threading.Tasks.Task<ContentDialogResult> ShowDialogAsync(ContentDialog dlg)
+    {
+        if (_dialogOpen) return ContentDialogResult.None;
+        _dialogOpen = true;
+        try { return await dlg.ShowAsync(); }
+        finally { _dialogOpen = false; }
+    }
+
     private async System.Threading.Tasks.Task ShowMessageAsync(string title, string content)
     {
         var dlg = new ContentDialog
@@ -753,7 +811,7 @@ public sealed partial class MainWindow : Window
             Content = content,
             CloseButtonText = "OK"
         };
-        await dlg.ShowAsync();
+        await ShowDialogAsync(dlg);
     }
 
     private async System.Threading.Tasks.Task<bool> ShowConfirmAsync(string title, string content, string yes = "Yes", string no = "No")
@@ -767,7 +825,7 @@ public sealed partial class MainWindow : Window
             CloseButtonText = no,
             DefaultButton = ContentDialogButton.Primary
         };
-        return await dlg.ShowAsync() == ContentDialogResult.Primary;
+        return await ShowDialogAsync(dlg) == ContentDialogResult.Primary;
     }
 
     // =====================================================================

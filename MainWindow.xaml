@@ -147,21 +147,48 @@
                                      TextChanged="OnDirtyChanged" />
                         </Grid>
 
-                        <!-- Schedule -->
+                        <!-- Schedule. Save Settings is the single source of truth:
+                             ticking this box and saving registers the task; unticking
+                             and saving removes it (see OnSave / SaveAllAsync). The
+                             day/time controls grey out while the box is off. -->
                         <TextBlock Text="Schedule" FontWeight="SemiBold" Margin="0,12,0,0" />
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <CheckBox x:Name="ChkSchedule" Content="Run daily at:" IsChecked="True" AccessKey="Y"
-                                      VerticalAlignment="Center" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
-                            <TimePicker x:Name="TimeSchedule" VerticalAlignment="Center"
-                                        MinuteIncrement="1"
-                                        AutomationProperties.Name="Daily run time"
-                                        SelectedTimeChanged="OnScheduleTimeChanged" />
-                            <Button Content="Create / Update Task" AccessKey="U"
-                                    ToolTipService.ToolTip="Create or update the daily scheduled task"
-                                    Click="OnCreateTask" />
-                            <Button Content="Remove Task" AccessKey="K"
-                                    ToolTipService.ToolTip="Remove the daily scheduled task"
-                                    Click="OnRemoveTask" />
+                        <CheckBox x:Name="ChkSchedule" Content="Run a scheduled backup" IsChecked="False" AccessKey="Y"
+                                  Checked="OnScheduleEnabledChanged" Unchecked="OnScheduleEnabledChanged" />
+                        <StackPanel x:Name="ScheduleConfig">
+                            <!-- Day picker: all seven ticked = daily, one = weekly, any
+                                 mix = custom. Seven real CheckBoxes (one accessible name
+                                 each) instead of a frequency mode, matching the lists'
+                                 screen-reader idiom. The group is a single tab stop;
+                                 arrow keys move between days within it. -->
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,4,0,0">
+                                <TextBlock Text="On:" VerticalAlignment="Center" />
+                                <StackPanel x:Name="DayGroup" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
+                                            AutomationProperties.Name="Backup days"
+                                            TabFocusNavigation="Once" XYFocusKeyboardNavigation="Enabled">
+                                    <StackPanel.Resources>
+                                        <!-- The default CheckBox style reserves ~120px MinWidth, which
+                                             spaced the seven days into wide uniform columns that ran off
+                                             the window. Shrink to content width so Spacing is the only gap. -->
+                                        <Style TargetType="CheckBox">
+                                            <Setter Property="MinWidth" Value="0" />
+                                        </Style>
+                                    </StackPanel.Resources>
+                                    <CheckBox x:Name="ChkMon" Content="Monday" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                                    <CheckBox x:Name="ChkTue" Content="Tuesday" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                                    <CheckBox x:Name="ChkWed" Content="Wednesday" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                                    <CheckBox x:Name="ChkThu" Content="Thursday" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                                    <CheckBox x:Name="ChkFri" Content="Friday" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                                    <CheckBox x:Name="ChkSat" Content="Saturday" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                                    <CheckBox x:Name="ChkSun" Content="Sunday" Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,4,0,0">
+                                <TextBlock Text="at" VerticalAlignment="Center" />
+                                <TimePicker x:Name="TimeSchedule" VerticalAlignment="Center"
+                                            MinuteIncrement="1"
+                                            AutomationProperties.Name="Backup run time"
+                                            SelectedTimeChanged="OnScheduleTimeChanged" />
+                            </StackPanel>
                         </StackPanel>
                         <TextBlock x:Name="LblNextRun" Text="Next run: (unknown)" Margin="0,4,0,0" />
 

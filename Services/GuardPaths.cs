@@ -18,8 +18,11 @@ public static class GuardPaths
     public static string LogPath => Path.Combine(BaseDir, @"Logs\backup_last.log");
     public static string ReadmePath => Path.Combine(BaseDir, "README.md");
 
-    public const string FileTaskName = "Daily GUARD Backup";
+    // Frequency-neutral name (the schedule can be daily, weekly, or custom).
+    public const string FileTaskName = "GUARD Backup";
+    // Pre-0.3 name; removed on every save so upgraders don't keep a stale task.
+    public const string LegacyFileTaskName = "Daily GUARD Backup";
     public const string AppListFileName = "app-list.json";
-    public const string AppVersion = "0.1";
+    public const string AppVersion = "0.3.0";
     public const string RepoUrl = "https://github.com/PlanetLinux98/guard";
 }
