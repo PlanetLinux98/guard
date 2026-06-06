@@ -33,6 +33,13 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   is opened at a time now.
 - The saved-status line no longer re-announces itself to screen readers on every
   checkbox or field change when its text has not actually changed.
+- Exclude lists with more than one entry were silently truncated to the first
+  line across a save/reload. A WinUI multi-line text box separates lines with a
+  bare carriage return, which the settings writer left unescaped in
+  `backup-settings.ini`; on reload the value was split on that carriage return and
+  only the first line survived (and the generated `guard-backup.cmd` likewise
+  received a single malformed exclude). All newline forms are now normalized, so
+  every excluded folder/file name is preserved and written as its own exclude.
 
 ## [0.2.0] - 2026-06-04
 
