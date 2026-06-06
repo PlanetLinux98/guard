@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text;
@@ -42,6 +44,9 @@ public static class SettingsStore
                 case "General.ExcludeFiles": cfg.ExcludeFiles = Unescape(val); break;
                 case "Schedule.Enabled": cfg.ScheduleEnabled = val == "1"; break;
                 case "Schedule.Time": cfg.ScheduleTime = val; break;
+                // Only override the all-seven default when the key is actually
+                // present; a legacy ini without it stays daily.
+                case "Schedule.Days": cfg.ScheduleDays = ParseDays(val); break;
                 case "AppList.Dest": cfg.AppListDest = val; break;
             }
         }
@@ -62,6 +67,7 @@ public static class SettingsStore
         sb.AppendLine("[Schedule]");
         sb.AppendLine("Enabled=" + (cfg.ScheduleEnabled ? "1" : "0"));
         sb.AppendLine("Time=" + cfg.ScheduleTime);
+        sb.AppendLine("Days=" + string.Join(",", cfg.ScheduleDays));
         sb.AppendLine();
         sb.AppendLine("[Folders]");
         sb.AppendLine("; index=include|source|subfolder");
@@ -78,4 +84,18 @@ public static class SettingsStore
 
     private static string Escape(string s) => (s ?? "").Replace("\r\n", "\n").Replace("\n", "\\n");
     private static string Unescape(string s) => (s ?? "").Replace("\\n", "\r\n");
+
+    // "Monday,Wednesday,Friday" -> distinct DayOfWeek list, ignoring unknown tokens.
+    private static List<DayOfWeek> ParseDays(string val)
+    {
+        var days = new List<DayOfWeek>();
+        foreach (var token in (val ?? "").Split(','))
+        {
+            var t = token.Trim();
+            if (t.Length == 0) continue;
+            if (Enum.TryParse<DayOfWeek>(t, ignoreCase: true, out var d) && !days.Contains(d))
+                days.Add(d);
+        }
+        return days;
+    }
 }

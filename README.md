@@ -26,7 +26,8 @@ theming. It targets **.NET 10 + Windows App SDK 1.8**.
   temp folders, or specific file types.
 - **Preview (dry-run)** mode that shows what a backup would do without changing
   anything, per-folder progress, and a saved log of the last run.
-- Optional **daily scheduled task** so backups run unattended at a time you set.
+- Optional **scheduled task** so backups run unattended on the days and at the
+  time you set (pick any mix of weekdays: all seven for daily, one for weekly).
 - **App Inventory**: lists your installed apps from the Windows registry, marks
   the ones winget can reinstall, and exports the list as plain JSON.
 - **Dark / light Mica theming** that follows the Windows setting automatically.
@@ -35,7 +36,8 @@ theming. It targets **.NET 10 + Windows App SDK 1.8**.
 ## Planned Features & Improvements
 
 - A menu bar and further UX polish.
-- More backup scheduling options (e.g. hourly, weekly).
+- More backup scheduling options (e.g. hourly, monthly).
+- Multi-version retention (keep previous backup versions, not just the latest).
 - More granular progress reporting and cleaner output text.
 - New capabilities such as full system images and application-data
   export / import.
@@ -100,13 +102,16 @@ Output folder: `bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\`
 GUARD has two tabs.
 
 **File Backup.** Add one or more source/destination folder pairs, choose
-Additive or Mirror, optionally list folder and file names to exclude, and set a
-daily run time if you want it scheduled. **Preview** shows what the backup would
-do without touching anything; **Save Settings** writes `backup-settings.ini` and
-a standalone `guard-backup.cmd`(which can be run independently of the main app),
-and (if scheduling is enabled) registers the Windows scheduled task `Daily GUARD
-Backup`. Because the generated script is self-contained, your backups keep running
-on schedule whether or not GUARD itself is open.
+Additive or Mirror, and optionally list folder and file names to exclude.
+Scheduling is off by default; tick **Run a scheduled backup**, choose which
+weekdays it runs on (all seven for daily, one for weekly, or any custom mix) and
+the time, if you want it to run unattended. **Preview** shows what the backup
+would do without touching anything; **Save Settings** writes
+`backup-settings.ini` and a standalone `guard-backup.cmd` (which can be run
+independently of the main app), and (if scheduling is enabled) registers the
+Windows scheduled task `GUARD Backup`. Because the generated script is
+self-contained, your backups keep running on schedule whether or not GUARD itself
+is open.
 
 **App Inventory.** Scans the Windows uninstall registry for your installed apps
 and marks the ones winget can reinstall. You can export the full list to JSON and
