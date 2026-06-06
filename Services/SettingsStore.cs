@@ -76,6 +76,12 @@ public static class SettingsStore
         File.WriteAllText(GuardPaths.IniPath, sb.ToString());
     }
 
-    private static string Escape(string s) => (s ?? "").Replace("\r\n", "\n").Replace("\n", "\\n");
+    // Multi-line values reach here with whatever newline the source used. A WinUI
+    // multi-line TextBox separates its lines with a bare CR ("\r"), so normalize
+    // CRLF and lone CR to LF before collapsing every line break to the literal
+    // "\n" token; otherwise a raw CR is written into the ini and File.ReadAllLines
+    // splits the value across lines on load, dropping everything after the first.
+    private static string Escape(string s) =>
+        (s ?? "").Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\\n");
     private static string Unescape(string s) => (s ?? "").Replace("\\n", "\r\n");
 }
