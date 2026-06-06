@@ -130,7 +130,9 @@ public static class BackupScript
     private static string ToOneLine(string multiline)
     {
         if (string.IsNullOrEmpty(multiline)) return "";
-        var parts = multiline.Replace("\r\n", "\n").Split('\n');
+        // Handle every newline form, including the bare CR a WinUI multi-line
+        // TextBox uses, so each excluded name becomes its own /XD or /XF token.
+        var parts = multiline.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
         var keep = new List<string>();
         foreach (var p in parts) { var t = p.Trim(); if (t.Length > 0) keep.Add(t); }
         return string.Join(" ", keep.ToArray());
