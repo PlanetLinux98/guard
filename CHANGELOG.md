@@ -30,6 +30,9 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   accommodate the expanded placeholder text.
 
 ### Fixed
+- Screen readers announced the backup folder list's second column as "subfolder"
+  while the visible header read "Destination subfolder"; the row's spoken name now
+  matches the header.
 - The About dialog reported version 0.1 instead of the actual release version.
 - Pressing an access key that opens a dialog (e.g. Alt+R, Remove Folder) while
   another dialog such as About was already open crashed the app; handling added

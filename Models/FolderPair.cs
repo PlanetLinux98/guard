@@ -25,7 +25,7 @@ public sealed class FolderPair : INotifyPropertyChanged
 
     // Spoken name for the row's checkbox. The checked/unchecked state is
     // announced by the checkbox role itself, so it is NOT included here.
-    public string Caption => $"Source folder, {Source}, subfolder, {SubFolder}";
+    public string Caption => $"Source folder, {Source}, destination subfolder, {SubFolder}";
 
     public override string ToString() => Caption;
 
