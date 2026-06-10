@@ -192,15 +192,22 @@
 
                         <!-- Actions -->
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
-                            <Button Content="Save Settings" AccessKey="S" Style="{ThemeResource AccentButtonStyle}"
+                            <Button x:Name="BtnSave" Content="Save Settings" AccessKey="S" Style="{ThemeResource AccentButtonStyle}"
                                     ToolTipService.ToolTip="Save settings and regenerate the backup script and scheduled task"
                                     Click="OnSave" />
-                            <Button Content="Run Now" AccessKey="N"
+                            <Button x:Name="BtnRunNow" Content="Run Now" AccessKey="N"
                                     ToolTipService.ToolTip="Run the backup now"
                                     Click="OnRunNow" />
-                            <Button Content="Preview" AccessKey="P"
+                            <Button x:Name="BtnPreview" Content="Preview" AccessKey="P"
                                     ToolTipService.ToolTip="Preview the backup without making changes"
                                     Click="OnPreview" />
+                            <!-- Always present, enabled only while a backup runs: a
+                                 button that pops into existence is not discoverable
+                                 with a screen reader, whereas a disabled button is
+                                 announced as unavailable in its stable place. -->
+                            <Button x:Name="BtnStopBackup" Content="Stop Backup" AccessKey="C" IsEnabled="False"
+                                    ToolTipService.ToolTip="Stop the running backup"
+                                    Click="OnStopBackup" />
                             <Button Content="Open Last Log" AccessKey="L"
                                     ToolTipService.ToolTip="Open the last backup log"
                                     Click="OnOpenLog" />
@@ -341,6 +348,11 @@
                             <Button x:Name="BtnAppReinstall" Content="Reinstall Selected" AccessKey="S"
                                     ToolTipService.ToolTip="Reinstall the ticked Winget apps"
                                     Click="OnReinstall" />
+                            <!-- Always present, enabled only while a reinstall runs;
+                                 same discoverability reasoning as Stop Backup. -->
+                            <Button x:Name="BtnAppStop" Content="Stop Reinstall" AccessKey="C" IsEnabled="False"
+                                    ToolTipService.ToolTip="Stop the running reinstall; apps already installed stay installed"
+                                    Click="OnStopReinstall" />
                             <Button Content="Open Folder" AccessKey="P"
                                     ToolTipService.ToolTip="Open the app list destination folder"
                                     Click="OnOpenAppDest" />

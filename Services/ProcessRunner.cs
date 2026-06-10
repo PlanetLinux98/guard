@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace GuardWui3.Services;
 
@@ -27,9 +28,13 @@ public static class ProcessRunner
     }
 
     // Runs `winget install` for one id, streaming combined output via onLine.
-    // Returns the process exit code. attach receives the live Process so the
-    // caller can hold a reference for cancellation.
-    public static int RunWingetInstall(string id, Action<string> onLine, Action<Process>? attach = null)
+    // Returns the process exit code. Cancelling the token kills the whole winget
+    // process tree, which makes WaitForExit return; killing via the token inside
+    // this method (rather than handing the Process out to the caller) keeps the
+    // kill within the process's using scope, so a cancel can never race against
+    // disposal. Kill throws if the process already exited on its own - that race
+    // is benign, so it is swallowed.
+    public static int RunWingetInstall(string id, Action<string> onLine, CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo("winget",
             "install --id \"" + id + "\" -e --silent --accept-package-agreements --accept-source-agreements")
@@ -45,7 +50,7 @@ public static class ProcessRunner
         p.OutputDataReceived += (_, e) => { if (e.Data != null) onLine(e.Data + "\r\n"); };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) onLine(e.Data + "\r\n"); };
         p.Start();
-        attach?.Invoke(p);
+        using var reg = ct.Register(() => { try { p.Kill(entireProcessTree: true); } catch { } });
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         p.WaitForExit();
