@@ -14,6 +14,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   previous daily-only schedule.
 
 ### Changed
+- README rewritten as an end-user manual: install and first-run guidance
+  (including the SmartScreen note), a guided first-backup walkthrough, full
+  documentation of every control on both tabs, portability and generated-file
+  reference, an expanded accessibility section, FAQ, and troubleshooting.
+  Developer and build content moved to a short section at the end.
 - Scheduled backups are now off by default on a fresh install; you opt in by
   ticking "Run a scheduled backup", so a new user is never given a scheduled task
   they did not ask for.
