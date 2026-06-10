@@ -38,6 +38,12 @@ public sealed partial class MainWindow : Window
     // re-notified on every checkbox toggle when the status text is unchanged.
     private string? _lastAnnouncedStatus;
 
+    // The File Backup settings status, kept here (not only in the status bar
+    // text) so switching back from App Inventory can repaint the bar without
+    // recomputing it.
+    private string _fileStatusText = "";
+    private Brush? _fileStatusBrush;
+
     // Problem reported by the last scheduled-task registration during a save, or
     // null if it succeeded; surfaced by OnSave after the save completes.
     private string? _taskError;
@@ -65,7 +71,9 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "GUARD";
-        SizeToDips(820, 900);
+        // 940 rather than the previous 900: the status bar row takes ~40 DIPs,
+        // and the extra height keeps the tab content area unchanged.
+        SizeToDips(820, 940);
 
         _cfg = SettingsStore.Load();
 
@@ -124,6 +132,9 @@ public sealed partial class MainWindow : Window
     private void OnTabChanged(object sender, SelectionChangedEventArgs e)
     {
         if (Tabs.SelectedIndex == 1 && !_appScanned) { _appScanned = true; ScanApps(); }
+        // Repaint the status bar for the new tab silently; switching tabs is
+        // not a status change worth a live-region announcement.
+        UpdateStatusBar();
     }
 
     // =====================================================================
@@ -206,31 +217,65 @@ public sealed partial class MainWindow : Window
 
     private void RefreshScriptStatus(bool announce = true)
     {
-        if (ScriptDot == null || ScriptStatusText == null) return;
+        if (StatusBarText == null) return;
         var green = Color.FromArgb(0xFF, 0x3F, 0xB9, 0x50);
         var amber = Color.FromArgb(0xFF, 0xD2, 0x99, 0x22);
         if (!File.Exists(GuardPaths.ScriptPath))
         {
-            ScriptDot.Fill = new SolidColorBrush(amber);
-            ScriptStatusText.Text = "No settings saved yet. Click Save Settings before running a backup.";
+            _fileStatusBrush = new SolidColorBrush(amber);
+            _fileStatusText = "No settings saved yet. Click Save Settings before running a backup.";
         }
         else if (_dirty)
         {
-            ScriptDot.Fill = new SolidColorBrush(amber);
-            ScriptStatusText.Text = "You have unsaved changes. Click Save Settings to apply them.";
+            _fileStatusBrush = new SolidColorBrush(amber);
+            _fileStatusText = "You have unsaved changes. Click Save Settings to apply them.";
         }
         else
         {
-            ScriptDot.Fill = new SolidColorBrush(green);
-            ScriptStatusText.Text = "Settings saved. Last updated " +
+            _fileStatusBrush = new SolidColorBrush(green);
+            _fileStatusText = "Settings saved. Last updated " +
                 File.GetLastWriteTime(GuardPaths.ScriptPath).ToString("yyyy-MM-dd HH:mm") + ".";
         }
+        UpdateStatusBar();
         // Only re-announce when the message actually changed; otherwise toggling
         // each day checkbox would re-read the status line on top of the box's own
-        // checked/unchecked state.
-        if (announce && ScriptStatusText.Text != _lastAnnouncedStatus)
-            Announce(ScriptStatusText);
-        _lastAnnouncedStatus = ScriptStatusText.Text;
+        // checked/unchecked state. Announce only while the bar is showing this
+        // text (File Backup active); the bar repaints silently on a tab switch.
+        if (announce && Tabs.SelectedIndex == 0 && _fileStatusText != _lastAnnouncedStatus)
+            Announce(StatusBarText);
+        _lastAnnouncedStatus = _fileStatusText;
+    }
+
+    // The status bar shows the active tab's status text; a running job's
+    // progress is mirrored into the bar's progress area independently (see
+    // SetProgress), so a job stays visible from either tab.
+    private void UpdateStatusBar()
+    {
+        if (StatusBarText == null || Tabs == null) return;
+        if (Tabs.SelectedIndex == 0)
+        {
+            StatusDot.Visibility = Visibility.Visible;
+            if (_fileStatusBrush != null) StatusDot.Fill = _fileStatusBrush;
+            StatusBarText.Text = _fileStatusText;
+        }
+        else
+        {
+            // The dot's saved/unsaved colour semantic does not apply to the
+            // inventory summary; hide it rather than show a meaningless colour.
+            StatusDot.Visibility = Visibility.Collapsed;
+            StatusBarText.Text = AppStatus.Text;
+        }
+    }
+
+    // Inventory status lives in two places: the in-place summary above the
+    // action row (context while working the list) and the status bar. Only the
+    // bar is a live region, so route announcements through it - and only while
+    // App Inventory is the active tab, since the bar shows the file status
+    // otherwise (the result is still visible in both places on switching back).
+    private void AnnounceAppStatus()
+    {
+        UpdateStatusBar();
+        if (Tabs.SelectedIndex == 1) Announce(StatusBarText);
     }
 
     private static void Announce(UIElement el)
@@ -361,7 +406,7 @@ public sealed partial class MainWindow : Window
         _scanning = true;
         SetAppBusy(true);
         AppStatus.Text = "Scanning installed apps (this can take a few seconds)...";
-        Announce(AppStatus);
+        AnnounceAppStatus();
 
         var th = new Thread(() =>
         {
@@ -385,7 +430,7 @@ public sealed partial class MainWindow : Window
                     ApplyFilter();
                 }
                 _scanning = false; SetAppBusy(false);
-                Announce(AppStatus);
+                AnnounceAppStatus();
             });
         }) { IsBackground = true };
         th.Start();
@@ -538,7 +583,7 @@ public sealed partial class MainWindow : Window
         string exp = f.Exported ?? "";
         AppStatus.Text = "Imported " + f.Apps.Length + " apps from " + mac +
             (exp.Length > 0 ? " (" + exp + ")" : "") + ". " + auto + " reinstallable, " + man + " manual.";
-        Announce(AppStatus);
+        AnnounceAppStatus();
     }
 
     // =====================================================================
@@ -573,6 +618,7 @@ public sealed partial class MainWindow : Window
         SetAppBusy(true);
         TxtAppOutput.Text = "";
         SetProgress(AppProgress, AppProgressLabel, targets.Count, 0, "Starting...");
+        ShowStatusBarProgress(true);
 
         var th = new Thread(() =>
         {
@@ -597,6 +643,7 @@ public sealed partial class MainWindow : Window
                 _reinstalling = false;
                 _reinstallProc = null;
                 SetAppBusy(false);
+                ShowStatusBarProgress(false);
             });
         }) { IsBackground = true };
         th.Start();
@@ -627,6 +674,7 @@ public sealed partial class MainWindow : Window
         AppendOut(TxtOutput, "> " + Path.GetFileName(script) + (arg.Length > 0 ? " " + arg : "") + "\r\n");
         _progTotal = 0;
         SetProgress(FileProgress, FileProgressLabel, 1, 0, "");
+        ShowStatusBarProgress(true);
 
         try
         {
@@ -643,7 +691,11 @@ public sealed partial class MainWindow : Window
             _runningProc = new Process { StartInfo = psi, EnableRaisingEvents = true };
             _runningProc.OutputDataReceived += (_, ev) => HandleScriptLine(ev.Data);
             _runningProc.ErrorDataReceived += (_, ev) => { if (ev.Data != null) AppendOut(TxtOutput, ev.Data + "\r\n"); };
-            _runningProc.Exited += (_, _) => AppendOut(TxtOutput, "\r\n--- finished ---\r\n");
+            _runningProc.Exited += (_, _) =>
+            {
+                AppendOut(TxtOutput, "\r\n--- finished ---\r\n");
+                ShowStatusBarProgress(false);
+            };
             _runningProc.Start();
             _runningProc.BeginOutputReadLine();
             _runningProc.BeginErrorReadLine();
@@ -652,6 +704,7 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             AppendOut(TxtOutput, "ERROR launching script: " + ex.Message + "\r\n");
+            ShowStatusBarProgress(false);
         }
     }
 
@@ -689,7 +742,22 @@ public sealed partial class MainWindow : Window
             if (max > 0) bar.Maximum = max;
             bar.Value = val;
             if (lbl != null) lbl.Text = text;
+            // Mirror into the status bar so the running job stays visible when
+            // the in-tab progress area is scrolled away or on the other tab.
+            // Deliberately not a live region: progress text is not announced
+            // today and a per-item announcement stream would be noisy.
+            if (max > 0) StatusBarProgress.Maximum = max;
+            StatusBarProgress.Value = val;
+            StatusBarProgressText.Text = text;
         });
+    }
+
+    // The bar's progress area only exists while a job runs; callers show it when
+    // they start a backup or reinstall and hide it when the job ends.
+    private void ShowStatusBarProgress(bool show)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+            StatusBarProgressArea.Visibility = show ? Visibility.Visible : Visibility.Collapsed);
     }
 
     private void AppendOut(TextBox box, string text)
