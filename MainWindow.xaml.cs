@@ -45,6 +45,7 @@ public sealed partial class MainWindow : Window
     private bool _appScanned;
     private bool _scanning;
     private bool _reinstalling;
+    private bool _settingsExporting;
     private bool _wingetAvailable;
     private bool _allowClose;
 
@@ -398,6 +399,7 @@ public sealed partial class MainWindow : Window
         BtnAppExport.IsEnabled = e;
         BtnAppImport.IsEnabled = e;
         BtnAppReinstall.IsEnabled = e;
+        BtnAppSettings.IsEnabled = e;
         BtnAppAll.IsEnabled = e;
         BtnAppNone.IsEnabled = e;
     }
@@ -488,6 +490,104 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             await ShowMessageAsync("GUARD", "Could not write the app list:\n" + path + "\n\n" + ex.Message);
+        }
+    }
+
+    // =====================================================================
+    //  EXPORT APP SETTINGS (config folders for ticked apps)
+    // =====================================================================
+    private async void OnExportAppSettings(object sender, RoutedEventArgs e)
+    {
+        if (_settingsExporting)
+        {
+            await ShowMessageAsync("GUARD", "An app settings export is already running. Wait for it to finish.");
+            return;
+        }
+        HarvestUi();
+        if (string.IsNullOrEmpty(_cfg.AppListDest))
+        {
+            await ShowMessageAsync("GUARD", "Enter an app list destination first.\n\nType a folder path next to \"List destination\", or use the Browse button to pick one.");
+            return;
+        }
+        var picked = new List<AppEntry>();
+        foreach (var a in _allApps) if (a.Include) picked.Add(a);
+        if (picked.Count == 0)
+        {
+            await ShowMessageAsync("GUARD", "Tick at least one app whose settings you want to copy.");
+            return;
+        }
+        try { if (!Directory.Exists(_cfg.AppListDest)) Directory.CreateDirectory(_cfg.AppListDest); }
+        catch (Exception ex)
+        {
+            await ShowMessageAsync("GUARD", "Destination is not reachable:\n" + _cfg.AppListDest + "\n\n" + ex.Message);
+            return;
+        }
+
+        _settingsExporting = true;
+        SetAppBusy(true);
+        try
+        {
+            AppStatus.Text = "Looking for settings folders for " + picked.Count + " ticked app(s)...";
+            Announce(AppStatus);
+
+            // Candidate matching and the capped size pre-scan both walk the
+            // disk, so they run off the UI thread.
+            var candidates = await System.Threading.Tasks.Task.Run(() =>
+            {
+                var found = AppSettingsExport.FindCandidates(picked);
+                foreach (var c in found) AppSettingsExport.MeasureCandidate(c);
+                return found;
+            });
+            if (candidates.Count == 0)
+            {
+                AppStatus.Text = "No settings folders matched the ticked apps. Apps that keep settings in the registry, in ProgramData, or under a folder name unlike the app name are not found by this search.";
+                Announce(AppStatus);
+                return;
+            }
+
+            // The matching is heuristic; nothing is copied until the user has
+            // confirmed (and could untick) every matched folder.
+            var dlg = new Views.AppSettingsDialog(candidates) { XamlRoot = Content.XamlRoot };
+            if (await ShowDialogAsync(dlg) != ContentDialogResult.Primary)
+            {
+                AppStatus.Text = "App settings export cancelled. Nothing was copied.";
+                Announce(AppStatus);
+                return;
+            }
+            var chosen = new List<AppSettingsCandidate>();
+            foreach (var c in candidates) if (c.Include) chosen.Add(c);
+            if (chosen.Count == 0)
+            {
+                AppStatus.Text = "No folders were ticked. Nothing was copied.";
+                Announce(AppStatus);
+                return;
+            }
+
+            string dest = _cfg.AppListDest;
+            var stats = await System.Threading.Tasks.Task.Run(() =>
+                AppSettingsExport.CopyCandidates(chosen, dest, msg =>
+                    DispatcherQueue.TryEnqueue(() => { AppStatus.Text = msg; Announce(AppStatus); })));
+            SettingsStore.Save(_cfg);
+
+            string summary = "Copied " + stats.Folders + " settings folder(s): " + stats.Files + " file(s)."
+                + (stats.SkippedFiles > 0
+                    ? " " + stats.SkippedFiles + " file(s) were locked or unreadable and were skipped."
+                    : "");
+            AppStatus.Text = summary;
+            Announce(AppStatus);
+            await ShowMessageAsync("GUARD", summary + "\n\nSaved to:\n"
+                + Path.Combine(dest, AppSettingsExport.OutputFolderName)
+                + "\n\nA manifest and restore instructions (README.txt) were written there too.");
+        }
+        catch (Exception ex)
+        {
+            AppStatus.Text = "App settings export failed: " + ex.Message;
+            Announce(AppStatus);
+        }
+        finally
+        {
+            _settingsExporting = false;
+            SetAppBusy(false);
         }
     }
 

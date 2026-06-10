@@ -341,6 +341,9 @@
                             <Button x:Name="BtnAppReinstall" Content="Reinstall Selected" AccessKey="S"
                                     ToolTipService.ToolTip="Reinstall the ticked Winget apps"
                                     Click="OnReinstall" />
+                            <Button x:Name="BtnAppSettings" Content="Export App Settings..." AccessKey="A"
+                                    ToolTipService.ToolTip="Find the ticked apps' settings folders and copy them alongside the app list, after you confirm the matches"
+                                    Click="OnExportAppSettings" />
                             <Button Content="Open Folder" AccessKey="P"
                                     ToolTipService.ToolTip="Open the app list destination folder"
                                     Click="OnOpenAppDest" />

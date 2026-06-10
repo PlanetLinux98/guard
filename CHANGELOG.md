@@ -12,6 +12,15 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
   previous daily-only schedule.
+- Export App Settings on the App Inventory tab: GUARD matches the ticked apps'
+  names and publishers against folder names under `%APPDATA%`, `%LOCALAPPDATA%`
+  and `%USERPROFILE%\.config`, shows the matched folders (with sizes) in a
+  confirmation dialog of tickable rows, and copies the confirmed ones to an
+  `AppSettings` folder under the list destination, sorted by which root they
+  came from. A JSON manifest and a plain-text README with restore instructions
+  are written alongside. Cache subfolders, junctions, registry-stored settings,
+  ProgramData and Store packaged app state are not copied; locked files are
+  skipped and counted instead of failing the export.
 
 ### Changed
 - Scheduled backups are now off by default on a fresh install; you opt in by
