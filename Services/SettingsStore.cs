@@ -42,6 +42,13 @@ public static class SettingsStore
                 case "General.Mode": cfg.Mode = val; break;
                 case "General.ExcludeDirs": cfg.ExcludeDirs = Unescape(val); break;
                 case "General.ExcludeFiles": cfg.ExcludeFiles = Unescape(val); break;
+                case "General.Versioned": cfg.Versioned = val == "1"; break;
+                // Clamp so a hand-edited ini cannot produce a keep count the
+                // prune logic would mishandle (0 would delete today's backup).
+                case "General.VersionsToKeep":
+                    if (int.TryParse(val.Trim(), out var keep))
+                        cfg.VersionsToKeep = Math.Clamp(keep, 1, 365);
+                    break;
                 case "Schedule.Enabled": cfg.ScheduleEnabled = val == "1"; break;
                 case "Schedule.Time": cfg.ScheduleTime = val; break;
                 // Only override the all-seven default when the key is actually
@@ -63,6 +70,8 @@ public static class SettingsStore
         sb.AppendLine("Mode=" + cfg.Mode);
         sb.AppendLine("ExcludeDirs=" + Escape(cfg.ExcludeDirs));
         sb.AppendLine("ExcludeFiles=" + Escape(cfg.ExcludeFiles));
+        sb.AppendLine("Versioned=" + (cfg.Versioned ? "1" : "0"));
+        sb.AppendLine("VersionsToKeep=" + cfg.VersionsToKeep);
         sb.AppendLine();
         sb.AppendLine("[Schedule]");
         sb.AppendLine("Enabled=" + (cfg.ScheduleEnabled ? "1" : "0"));

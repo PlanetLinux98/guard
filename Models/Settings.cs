@@ -8,6 +8,12 @@ public sealed class Settings
 {
     public string Dest = "";                       // any folder: local drive, external disk, or network share
     public string Mode = "Additive";               // Additive | Mirror
+    // Versioned mode: each run copies into Dest\YYYY-MM-DD\ and the generated
+    // script prunes the oldest dated folders beyond VersionsToKeep. Off by
+    // default so the script stays identical to the classic single-copy layout
+    // unless the user opts in (see NOTES.md for the design assessment).
+    public bool Versioned = false;
+    public int VersionsToKeep = 5;
     public string ExcludeDirs = "node_modules\r\n$RECYCLE.BIN\r\n.git";
     public string ExcludeFiles = "Thumbs.db\r\ndesktop.ini\r\n.DS_Store";
     // Off by default: a fresh install should not register a scheduled task until
