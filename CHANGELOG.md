@@ -12,8 +12,18 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
   previous daily-only schedule.
+- "Edit Folder..." button on the File Backup tab: change the source path or
+  destination subfolder of an existing folder pair in place, instead of removing
+  and re-adding it. The edit applies to the folder row that last held focus,
+  matching how Remove Folder picks its target.
+- A results count next to the App Inventory filter box (e.g. "42 of 187 apps"),
+  so you can tell how many apps match as you type. It is announced to screen
+  readers only while typing in the filter box, and only when the count actually
+  changes.
 
 ### Changed
+- The output consoles on both tabs now scroll automatically to the newest line
+  while a backup or reinstall is running, without moving keyboard focus.
 - Scheduled backups are now off by default on a fresh install; you opt in by
   ticking "Run a scheduled backup", so a new user is never given a scheduled task
   they did not ask for.

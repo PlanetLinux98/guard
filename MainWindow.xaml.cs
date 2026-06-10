@@ -335,6 +335,27 @@ public sealed partial class MainWindow : Window
             _cfg.Folders.Add(new FolderPair(true, dlg.SourcePath, dlg.SubFolder));
     }
 
+    private async void OnEditFolder(object sender, RoutedEventArgs e)
+    {
+        var f = _currentFolder;
+        if (f == null)
+        {
+            await ShowMessageAsync("GUARD", "Tab into the folder list and arrow to the folder you want to edit, then press Edit Folder.");
+            return;
+        }
+        var dlg = new Views.FolderDialog { XamlRoot = Content.XamlRoot, WindowHandle = WindowHandle };
+        dlg.LoadFolder(f);
+        if (await ShowDialogAsync(dlg) == ContentDialogResult.Primary)
+        {
+            // Update the existing item rather than replacing it: its property
+            // change notifications refresh the bound row in place and flow into
+            // dirty tracking via OnFolderItemChanged, and the row keeps its
+            // position and focus memory.
+            f.Source = dlg.SourcePath;
+            f.SubFolder = dlg.SubFolder;
+        }
+    }
+
     private async void OnRemoveFolder(object sender, RoutedEventArgs e)
     {
         var f = _currentFolder;
@@ -417,7 +438,27 @@ public sealed partial class MainWindow : Window
             if (f.Length == 0 || MatchesFilter(a, f))
                 AppRows.Add(a);
         }
+        UpdateAppCount();
     }
+
+    private void UpdateAppCount()
+    {
+        if (LblAppCount == null) return;
+        string text = _appFilter.Length == 0
+            ? Plural(_allApps.Count)
+            : AppRows.Count + " of " + Plural(_allApps.Count);
+        if (text == LblAppCount.Text) return;
+        LblAppCount.Text = text;
+        // Announce the new count only while the user is typing in the filter box
+        // (where it is the immediate feedback they need); a scan or import already
+        // announces its own summary through AppStatus, so speaking the count there
+        // too would double up. Identical counts across keystrokes stay silent
+        // because the text has not changed.
+        if (TxtAppFilter.FocusState != FocusState.Unfocused)
+            Announce(LblAppCount);
+    }
+
+    private static string Plural(int n) => n == 1 ? "1 app" : n + " apps";
 
     private static bool MatchesFilter(AppEntry a, string f)
     {
@@ -697,8 +738,33 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             box.Text += text;
-            box.Select(box.Text.Length, 0);
+            ScrollToEnd(box);
         });
+    }
+
+    // Keep the output console scrolled to the newest line. Select(end, 0) only
+    // scrolls a WinUI 3 TextBox while it has focus, so drive the ScrollViewer
+    // inside the TextBox template directly. ChangeView (animation disabled) moves
+    // the viewport without taking keyboard focus and without raising any focus or
+    // live-region automation event, so a screen reader's reading position is not
+    // disturbed beyond the text change itself. UpdateLayout first so
+    // ScrollableHeight reflects the line just appended.
+    private static void ScrollToEnd(TextBox box)
+    {
+        box.UpdateLayout();
+        if (FindScrollViewer(box) is ScrollViewer sv)
+            sv.ChangeView(null, sv.ScrollableHeight, null, disableAnimation: true);
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject root)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is ScrollViewer sv) return sv;
+            if (FindScrollViewer(child) is ScrollViewer nested) return nested;
+        }
+        return null;
     }
 
     // =====================================================================

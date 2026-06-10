@@ -80,17 +80,20 @@
                                               XYFocusKeyboardNavigation="Enabled">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:FolderPair">
+                                            <!-- OneWay (x:Bind defaults to OneTime) so an Edit Folder
+                                                 change to an existing pair refreshes the visible row
+                                                 and its spoken name in place. -->
                                             <CheckBox Margin="3,2" HorizontalAlignment="Stretch"
                                                       IsChecked="{x:Bind Include, Mode=TwoWay}"
-                                                      AutomationProperties.Name="{x:Bind Caption}">
+                                                      AutomationProperties.Name="{x:Bind Caption, Mode=OneWay}">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="360" />
                                                         <ColumnDefinition Width="200" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="0" Text="{x:Bind Source}"
+                                                    <TextBlock Grid.Column="0" Text="{x:Bind Source, Mode=OneWay}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
-                                                    <TextBlock Grid.Column="1" Text="{x:Bind SubFolder}"
+                                                    <TextBlock Grid.Column="1" Text="{x:Bind SubFolder, Mode=OneWay}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
                                                 </Grid>
                                             </CheckBox>
@@ -102,6 +105,9 @@
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
                             <Button Content="Add Folder..." AccessKey="A"
                                     Click="OnAddFolder" />
+                            <Button Content="Edit Folder..." AccessKey="E"
+                                    ToolTipService.ToolTip="Edit the folder row that last held focus"
+                                    Click="OnEditFolder" />
                             <Button Content="Remove Folder" AccessKey="R"
                                     Click="OnRemoveFolder" />
                         </StackPanel>
@@ -277,6 +283,12 @@
                                          ToolTipService.ToolTip="Filter by name, publisher, app type (winget / store / manual) or package ID"
                                          TextChanged="OnFilterChanged" />
                             </StackPanel>
+                            <!-- Results count. Its visible text is its accessible name; it
+                                 only announces while the filter box has focus (see
+                                 UpdateAppCount) so scans and imports are not double-spoken. -->
+                            <TextBlock x:Name="LblAppCount" VerticalAlignment="Center" Margin="6,0,0,0"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       AutomationProperties.LiveSetting="Polite" />
                         </StackPanel>
 
                         <!-- App list -->
