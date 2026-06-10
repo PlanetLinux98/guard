@@ -13,6 +13,7 @@ obj/
 # Generated at runtime by the app
 backup-settings.ini
 guard-backup.cmd
+onconnect-stamp.txt
 Logs/
 
 # Personal Claude Code project context

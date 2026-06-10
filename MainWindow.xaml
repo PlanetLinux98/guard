@@ -188,6 +188,14 @@
                                             SelectedTimeChanged="OnScheduleTimeChanged" />
                             </StackPanel>
                         </StackPanel>
+                        <!-- Deliberately outside ScheduleConfig: this is its own
+                             trigger (a second scheduled task), usable with or
+                             without the day/time schedule, so it must not grey
+                             out when "Run a scheduled backup" is off. -->
+                        <CheckBox x:Name="ChkOnConnect" AccessKey="W" Margin="0,4,0,0"
+                                  Content="Also run when the backup destination becomes available (checks every 15 minutes)"
+                                  ToolTipService.ToolTip="Adds a second scheduled task that quietly checks for the destination every 15 minutes and at sign-in, and runs the backup at most once per day when it is reachable. Works for external drives and network shares, with or without the day/time schedule."
+                                  Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
                         <TextBlock x:Name="LblNextRun" Text="Next run: (unknown)" Margin="0,4,0,0" />
 
                         <!-- Actions -->

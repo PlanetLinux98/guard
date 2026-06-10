@@ -18,6 +18,11 @@ public sealed class Settings
     // weekly, any mix == custom. Defaults to all seven so that enabling the
     // schedule (and any legacy ini without a Days key) behaves like a daily run.
     public List<DayOfWeek> ScheduleDays = AllDays();
+    // Independent of the day/time schedule: when on, a second scheduled task
+    // periodically checks for the destination and backs up once per day when it
+    // appears (external drive plugged in, network share reachable). Off by
+    // default for the same opt-in reason as ScheduleEnabled.
+    public bool TriggerOnConnect = false;
     public ObservableCollection<FolderPair> Folders = new();
 
     // App Inventory tab: where the exported app-list.json is written.

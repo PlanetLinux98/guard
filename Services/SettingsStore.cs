@@ -47,6 +47,7 @@ public static class SettingsStore
                 // Only override the all-seven default when the key is actually
                 // present; a legacy ini without it stays daily.
                 case "Schedule.Days": cfg.ScheduleDays = ParseDays(val); break;
+                case "Schedule.OnConnect": cfg.TriggerOnConnect = val == "1"; break;
                 case "AppList.Dest": cfg.AppListDest = val; break;
             }
         }
@@ -68,6 +69,7 @@ public static class SettingsStore
         sb.AppendLine("Enabled=" + (cfg.ScheduleEnabled ? "1" : "0"));
         sb.AppendLine("Time=" + cfg.ScheduleTime);
         sb.AppendLine("Days=" + string.Join(",", cfg.ScheduleDays));
+        sb.AppendLine("OnConnect=" + (cfg.TriggerOnConnect ? "1" : "0"));
         sb.AppendLine();
         sb.AppendLine("[Folders]");
         sb.AppendLine("; index=include|source|subfolder");
