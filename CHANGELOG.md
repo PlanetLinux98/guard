@@ -12,6 +12,14 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
   previous daily-only schedule.
+- Save Settings now reports, without ever blocking the save: which included
+  source folders are not currently reachable (they are skipped at run time, so
+  an offline network source is fine), how much space is free at the destination
+  (local, mapped, or UNC), and a rough size for a first full backup with a
+  warning when space looks tight. The size estimate runs in the background with
+  a hard time cap; if it cannot finish in time the message says so instead of
+  guessing. Run Now and Preview print the unreachable-source warning in the
+  output box rather than interrupting the run with a dialog.
 
 ### Changed
 - Scheduled backups are now off by default on a fresh install; you opt in by

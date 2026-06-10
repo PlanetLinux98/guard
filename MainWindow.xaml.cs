@@ -42,6 +42,12 @@ public sealed partial class MainWindow : Window
     // null if it succeeded; surfaced by OnSave after the save completes.
     private string? _taskError;
 
+    // Included sources that were unreachable at the last save. Advisory only:
+    // the generated script SKIPs them at run time, so a save never blocks on
+    // them. OnSave folds these into its dialog; RunScript prints them in the
+    // output box instead so the run is not interrupted by a modal.
+    private List<string> _missingSources = new();
+
     private bool _appScanned;
     private bool _scanning;
     private bool _reinstalling;
@@ -284,18 +290,60 @@ public sealed partial class MainWindow : Window
         RefreshNextRun();
         _dirty = false;
         RefreshScriptStatus();
+        // Off the UI thread: a dead UNC source can make Directory.Exists block
+        // for seconds. The save itself is already complete at this point.
+        _missingSources = await System.Threading.Tasks.Task.Run(
+            () => SaveValidation.UnreachableSources(_cfg.Folders));
         return true;
     }
 
     private async void OnSave(object sender, RoutedEventArgs e)
     {
         if (!await SaveAllAsync()) return;
+
+        // Kick off the space checks before composing text so the capped size
+        // estimate and the free-space query overlap with each other.
+        var estimateTask = SaveValidation.EstimateBackupSizeAsync(_cfg.Folders, SaveValidation.EstimateCap);
+        var freeTask = System.Threading.Tasks.Task.Run(() => SaveValidation.TryGetFreeSpace(_cfg.Dest));
+
+        string msg;
         if (_taskError != null)
-            await ShowMessageAsync("GUARD", "Settings saved, but registering the scheduled task reported a problem:\n\n" + _taskError);
+            msg = "Settings saved, but registering the scheduled task reported a problem:\n\n" + _taskError;
         else
-            await ShowMessageAsync("GUARD", _cfg.ScheduleEnabled
+            msg = _cfg.ScheduleEnabled
                 ? "Settings saved. The backup script and scheduled task have been updated."
-                : "Settings saved. The backup script has been updated; no scheduled task is set.");
+                : "Settings saved. The backup script has been updated; no scheduled task is set.";
+
+        if (_missingSources.Count > 0)
+            msg += "\n\nNote: " + DescribeMissingSources(_missingSources)
+                + "\nThey will be skipped if still unreachable when the backup runs.";
+
+        long? free = await freeTask;
+        if (free is long freeBytes)
+        {
+            msg += "\n\n" + SaveValidation.FormatBytes(freeBytes) + " free at the destination.";
+            var est = await estimateTask;
+            if (est.Bytes > 0)
+            {
+                string size = SaveValidation.FormatBytes(est.Bytes);
+                if (!est.Complete)
+                    msg += " The source folders hold at least " + size + " (the size check stopped early, so the real total may be larger).";
+                else if (est.Bytes > freeBytes * 0.9)
+                    msg += " Space looks tight: a first full backup needs roughly " + size + ". Later runs copy only what changed, so they need less.";
+                else
+                    msg += " A first full backup needs roughly " + size + ".";
+            }
+        }
+
+        await ShowMessageAsync("GUARD", msg);
+    }
+
+    private static string DescribeMissingSources(List<string> missing)
+    {
+        string list = "\n" + string.Join("\n", missing);
+        return missing.Count == 1
+            ? "this source folder is not currently reachable:" + list
+            : "these source folders are not currently reachable:" + list;
     }
 
     private void RefreshNextRun()
@@ -625,6 +673,12 @@ public sealed partial class MainWindow : Window
 
         TxtOutput.Text = "";
         AppendOut(TxtOutput, "> " + Path.GetFileName(script) + (arg.Length > 0 ? " " + arg : "") + "\r\n");
+        // A modal here would interrupt the run the user just asked for; the
+        // script SKIPs unreachable sources itself, so a line in the output is
+        // the right weight.
+        if (_missingSources.Count > 0)
+            AppendOut(TxtOutput, "WARNING: " + DescribeMissingSources(_missingSources).Replace("\n", "\r\n  ")
+                + "\r\nThey will be skipped if still unreachable.\r\n");
         _progTotal = 0;
         SetProgress(FileProgress, FileProgressLabel, 1, 0, "");
 
