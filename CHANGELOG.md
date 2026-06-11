@@ -8,8 +8,6 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-06-11
-
 ### Added
 - Stop buttons for both long-running jobs: "Stop Backup" on the File Backup tab
   cancels a running backup (the whole cmd/robocopy process tree is stopped), and
@@ -25,9 +23,12 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   active. The status bar is the screen-reader live region for status changes;
   the File Backup mid-page status line moved into it, and the App Inventory
   summary stays in place next to the list but is announced once via the bar.
-- Choose which days of the week the scheduled backup runs on: tick any mix of
-  weekdays (all seven for daily, one for weekly, or a custom set), replacing the
-  previous daily-only schedule.
+- A plain-language summary at the end of every backup and preview run, built
+  from Robocopy's own totals: files copied (with size), files skipped because
+  they were already up to date, failures (called out first, with a pointer to
+  the log), and extra destination files (noting whether Mirror mode removed
+  them). The summary appears in the output box and on the progress line, so
+  you no longer need to read the raw log to know how a run went.
 - "Edit Folder..." button on the File Backup tab: change the source path or
   destination subfolder of an existing folder pair in place, instead of removing
   and re-adding it. The edit applies to the folder row that last held focus,
@@ -40,6 +41,15 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ### Changed
 - The output consoles on both tabs now scroll automatically to the newest line
   while a backup or reinstall is running, without moving keyboard focus.
+
+## [0.3.0] - 2026-06-11
+
+### Added
+- Choose which days of the week the scheduled backup runs on: tick any mix of
+  weekdays (all seven for daily, one for weekly, or a custom set), replacing the
+  previous daily-only schedule.
+
+### Changed
 - Scheduled backups are now off by default on a fresh install; you opt in by
   ticking "Run a scheduled backup", so a new user is never given a scheduled task
   they did not ask for.
