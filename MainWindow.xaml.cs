@@ -343,7 +343,11 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "Tab into the folder list and arrow to the folder you want to remove, then press Remove Folder.");
             return;
         }
-        if (await ShowConfirmAsync("GUARD", "Remove this folder from the backup?\n\n" + f.Source))
+        // Spell out the untick alternative: Remove forgets the pair entirely,
+        // while unticking keeps it listed but out of the generated script.
+        if (await ShowConfirmAsync("GUARD",
+            "Remove this folder from the list entirely?\n\n" + f.Source +
+            "\n\nIf you only want to skip it for now, choose No and untick it instead."))
         {
             _cfg.Folders.Remove(f);
             _currentFolder = null;

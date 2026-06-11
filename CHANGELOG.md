@@ -28,6 +28,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - App Inventory filter now searches publisher, app type (winget / store / manual),
   and package ID in addition to name. The filter box is also slightly wider to
   accommodate the expanded placeholder text.
+- Clarified the difference between unticking a backup folder (skip it for now,
+  keep it in the list) and Remove Folder (forget it entirely): the Remove Folder
+  button gained a tooltip explaining the untick alternative, and its confirm
+  dialog now says the removal is permanent and points to unticking for a
+  temporary skip.
 - The version shown in the About dialog is now derived from the release git tag
   at build time (via MinVer) instead of a hand-edited constant, so it can never
   lag behind a release again. Dev builds between releases show a pre-release
