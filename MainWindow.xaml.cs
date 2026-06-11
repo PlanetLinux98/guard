@@ -23,8 +23,15 @@ namespace GuardWui3;
 public sealed partial class MainWindow : Window
 {
     private Settings _cfg = new();
-    private Process? _runningProc;
-    private Process? _reinstallProc;
+
+    // Cancellation for the two long-running jobs. The Stop buttons only ever
+    // call Cancel(); the kill of the underlying process tree hangs off the
+    // token (a Register callback), so cancel-vs-natural-exit races collapse to
+    // a harmless Kill-after-exit that the registration swallows. Both fields
+    // are created, cancelled and disposed on the UI thread only.
+    private CancellationTokenSource? _runCts;
+    private CancellationTokenSource? _reinstallCts;
+    private bool _backupRunning;
 
     private bool _dirty;
     private int _progTotal;
@@ -593,7 +600,7 @@ public sealed partial class MainWindow : Window
     {
         if (_reinstalling)
         {
-            await ShowMessageAsync("GUARD", "A reinstall is already running. Wait for it to finish.");
+            await ShowMessageAsync("GUARD", "A reinstall is already running. Wait for it to finish, or press Stop Reinstall to cancel it.");
             return;
         }
         var targets = new List<AppEntry>();
@@ -615,37 +622,57 @@ public sealed partial class MainWindow : Window
         if (!await ShowConfirmAsync("GUARD", msg, "OK", "Cancel")) return;
 
         _reinstalling = true;
+        _reinstallCts = new CancellationTokenSource();
+        var ct = _reinstallCts.Token;
         SetAppBusy(true);
+        BtnAppStop.IsEnabled = true;
         TxtAppOutput.Text = "";
         SetProgress(AppProgress, AppProgressLabel, targets.Count, 0, "Starting...");
 
-        var th = new Thread(() =>
+        int ok = 0, fail = 0, attempted = 0;
+        await System.Threading.Tasks.Task.Run(() =>
         {
-            int ok = 0, fail = 0;
             for (int i = 0; i < targets.Count; i++)
             {
+                if (ct.IsCancellationRequested) break;
                 var app = targets[i];
-                int idx = i;
-                SetProgress(AppProgress, AppProgressLabel, targets.Count, idx,
-                    "Installing: " + app.Name + " (" + (idx + 1) + " of " + targets.Count + ")");
+                SetProgress(AppProgress, AppProgressLabel, targets.Count, i,
+                    "Installing: " + app.Name + " (" + (i + 1) + " of " + targets.Count + ")");
                 AppendOut(TxtAppOutput, "\r\n=== Installing " + app.Name + "  [" + app.Id + "] ===\r\n");
                 int code;
-                try { code = ProcessRunner.RunWingetInstall(app.Id, s => AppendOut(TxtAppOutput, s), p => _reinstallProc = p); }
+                try { code = ProcessRunner.RunWingetInstall(app.Id, s => AppendOut(TxtAppOutput, s), ct); }
                 catch (Exception ex) { AppendOut(TxtAppOutput, "ERROR: " + ex.Message + "\r\n"); code = -1; }
+                // A cancel mid-install kills winget, which surfaces as a nonzero
+                // exit code; do not count a killed item as a failure.
+                if (ct.IsCancellationRequested) break;
+                attempted++;
                 if (code == 0) ok++; else fail++;
-                SetProgress(AppProgress, AppProgressLabel, targets.Count, idx + 1, "");
+                SetProgress(AppProgress, AppProgressLabel, targets.Count, attempted, "");
             }
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                AppProgressLabel.Text = "Done. " + ok + " installed, " + fail + " failed.";
-                AppendOut(TxtAppOutput, "\r\n--- Reinstall complete: " + ok + " installed, " + fail + " failed ---\r\n");
-                _reinstalling = false;
-                _reinstallProc = null;
-                SetAppBusy(false);
-            });
-        }) { IsBackground = true };
-        th.Start();
+        });
+
+        // Back on the UI thread; the DispatcherQueue is FIFO, so everything the
+        // worker enqueued (output, progress) has already landed by now and the
+        // summary below always prints last.
+        if (ct.IsCancellationRequested)
+        {
+            AppProgressLabel.Text = "Cancelled after " + attempted + " of " + targets.Count + " app(s).";
+            AppendOut(TxtAppOutput, "\r\n--- Cancelled by user after " + attempted + " of " + targets.Count +
+                " app(s): " + ok + " installed, " + fail + " failed. Apps already installed stay installed. ---\r\n");
+        }
+        else
+        {
+            AppProgressLabel.Text = "Done. " + ok + " installed, " + fail + " failed.";
+            AppendOut(TxtAppOutput, "\r\n--- Reinstall complete: " + ok + " installed, " + fail + " failed ---\r\n");
+        }
+        _reinstalling = false;
+        _reinstallCts.Dispose();
+        _reinstallCts = null;
+        BtnAppStop.IsEnabled = false;
+        SetAppBusy(false);
     }
+
+    private void OnStopReinstall(object sender, RoutedEventArgs e) => _reinstallCts?.Cancel();
 
     // =====================================================================
     //  RUN SCRIPT
@@ -655,9 +682,9 @@ public sealed partial class MainWindow : Window
 
     private async System.Threading.Tasks.Task RunScript(string arg)
     {
-        if (_runningProc != null && !_runningProc.HasExited)
+        if (_backupRunning)
         {
-            await ShowMessageAsync("GUARD", "A backup is already running. Wait for it to finish.");
+            await ShowMessageAsync("GUARD", "A backup is already running. Wait for it to finish, or press Stop Backup to cancel it.");
             return;
         }
         if (!await SaveAllAsync()) return;
@@ -673,6 +700,10 @@ public sealed partial class MainWindow : Window
         _progTotal = 0;
         SetProgress(FileProgress, FileProgressLabel, 1, 0, "");
 
+        _backupRunning = true;
+        _runCts = new CancellationTokenSource();
+        var ct = _runCts.Token;
+        SetFileBusy(true);
         try
         {
             var psi = new ProcessStartInfo("cmd.exe", "/c \"\"" + script + "\" " + arg + "\"")
@@ -685,19 +716,62 @@ public sealed partial class MainWindow : Window
                 WorkingDirectory = GuardPaths.BaseDir
             };
             psi.EnvironmentVariables["GUARD_UI"] = "1";
-            _runningProc = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            _runningProc.OutputDataReceived += (_, ev) => HandleScriptLine(ev.Data);
-            _runningProc.ErrorDataReceived += (_, ev) => { if (ev.Data != null) AppendOut(TxtOutput, ev.Data + "\r\n"); };
-            _runningProc.Exited += (_, _) => AppendOut(TxtOutput, "\r\n--- finished ---\r\n");
-            _runningProc.Start();
-            _runningProc.BeginOutputReadLine();
-            _runningProc.BeginErrorReadLine();
-            _runningProc.StandardInput.Close();
+            using var proc = new Process { StartInfo = psi };
+            proc.OutputDataReceived += (_, ev) => HandleScriptLine(ev.Data);
+            proc.ErrorDataReceived += (_, ev) => { if (ev.Data != null) AppendOut(TxtOutput, ev.Data + "\r\n"); };
+            proc.Start();
+            // Cancel kills the whole tree: cmd.exe alone would die while its
+            // robocopy child kept copying. Kill throws if the process already
+            // exited naturally in the same instant; that race is harmless.
+            using var reg = ct.Register(() => { try { proc.Kill(entireProcessTree: true); } catch { } });
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+            proc.StandardInput.Close();
+            await proc.WaitForExitAsync();
+            // Parameterless WaitForExit additionally drains the async output
+            // handlers, so the completion line below always lands after the
+            // script's own last output.
+            proc.WaitForExit();
+            if (ct.IsCancellationRequested)
+            {
+                AppendOut(TxtOutput, "\r\n--- cancelled by user ---\r\n");
+                // Enqueued (not set directly) so it lands after any progress
+                // update the output handlers enqueued during the drain above;
+                // a direct set could be overwritten by a stale "Backing up"
+                // line still sitting in the queue.
+                DispatcherQueue.TryEnqueue(() => FileProgressLabel.Text = "Backup cancelled.");
+            }
+            else
+            {
+                AppendOut(TxtOutput, "\r\n--- finished ---\r\n");
+            }
         }
         catch (Exception ex)
         {
             AppendOut(TxtOutput, "ERROR launching script: " + ex.Message + "\r\n");
         }
+        finally
+        {
+            _backupRunning = false;
+            _runCts.Dispose();
+            _runCts = null;
+            SetFileBusy(false);
+        }
+    }
+
+    private void OnStopBackup(object sender, RoutedEventArgs e) => _runCts?.Cancel();
+
+    // Lock out the actions that conflict with a running backup. Save Settings is
+    // included because it rewrites guard-backup.cmd, and cmd.exe reads batch
+    // files incrementally, so rewriting one mid-run corrupts the run. The Stop
+    // button is the inverse: only operable while something is running.
+    private void SetFileBusy(bool busy)
+    {
+        bool e = !busy;
+        BtnSave.IsEnabled = e;
+        BtnRunNow.IsEnabled = e;
+        BtnPreview.IsEnabled = e;
+        BtnStopBackup.IsEnabled = busy;
     }
 
     private void HandleScriptLine(string? data)
@@ -920,13 +994,17 @@ public sealed partial class MainWindow : Window
     private async void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
         if (_allowClose) return;
-        bool busy = (_runningProc != null && !_runningProc.HasExited) || _reinstalling;
+        bool busy = _backupRunning || _reinstalling;
         if (!busy) return;
 
         args.Cancel = true;
         string what = _reinstalling ? "An app reinstall is still running." : "A backup is still running.";
         if (await ShowConfirmAsync("GUARD", what + " Close anyway?"))
         {
+            // Cancel both jobs so no cmd/robocopy/winget tree outlives the
+            // window; the kill registrations run synchronously inside Cancel.
+            _runCts?.Cancel();
+            _reinstallCts?.Cancel();
             _allowClose = true;
             Close();
         }

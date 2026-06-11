@@ -11,6 +11,12 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [0.3.0] - 2026-06-11
 
 ### Added
+- Stop buttons for both long-running jobs: "Stop Backup" on the File Backup tab
+  cancels a running backup (the whole cmd/robocopy process tree is stopped), and
+  "Stop Reinstall" on the App Inventory tab stops the winget reinstall loop after
+  the current app (apps already installed stay installed). Each button sits with
+  its tab's other actions and is enabled only while its job is running, and the
+  output box and progress line report the cancellation instead of going silent.
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
   previous daily-only schedule.
