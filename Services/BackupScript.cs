@@ -58,10 +58,10 @@ public static class BackupScript
         // way it was written, so locale date formats are irrelevant. A failed run
         // does not update the stamp (see the HADERR branch), so the next check
         // retries instead of skipping the rest of the day.
-        sb.AppendLine("set \"STAMP=%~dp0onconnect-stamp.txt\"");
+        sb.AppendLine("set \"OCSTAMP=%~dp0onconnect-stamp.txt\"");
         sb.AppendLine("if not defined ONCONNECT goto :checked");
         sb.AppendLine("if not exist \"%DEST%\\\" exit /b 0");
-        sb.AppendLine("findstr /l /x /c:\"%DATE%\" \"%STAMP%\" >nul 2>&1");
+        sb.AppendLine("findstr /l /x /c:\"%DATE%\" \"%OCSTAMP%\" >nul 2>&1");
         sb.AppendLine("if not errorlevel 1 exit /b 0");
         sb.AppendLine(":checked");
         sb.AppendLine();
@@ -114,7 +114,7 @@ public static class BackupScript
         // check, and the DRY guard is belt-and-braces; the task never passes
         // "test"). %DATE% expands when this block executes, i.e. at the finish,
         // so a run crossing midnight stamps the new day as already covered.
-        sb.AppendLine("   if defined ONCONNECT if not defined DRY >\"%STAMP%\" echo %DATE%");
+        sb.AppendLine("   if defined ONCONNECT if not defined DRY >\"%OCSTAMP%\" echo %DATE%");
         sb.AppendLine(")");
         sb.AppendLine("goto :end");
         sb.AppendLine();
