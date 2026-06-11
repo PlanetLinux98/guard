@@ -17,6 +17,14 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   the current app (apps already installed stay installed). Each button sits with
   its tab's other actions and is enabled only while its job is running, and the
   output box and progress line report the cancellation instead of going silent.
+- A persistent status bar at the bottom of the window. It shows the active
+  tab's status (the settings saved/unsaved line on File Backup, the scan or
+  import summary on App Inventory) and, while a backup or reinstall is running,
+  a compact progress bar with the current action, so progress stays visible
+  even when the in-tab progress area is scrolled away or the other tab is
+  active. The status bar is the screen-reader live region for status changes;
+  the File Backup mid-page status line moved into it, and the App Inventory
+  summary stays in place next to the list but is announced once via the bar.
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
   previous daily-only schedule.

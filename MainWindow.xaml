@@ -10,7 +10,15 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Pivot x:Name="Tabs" Margin="4,4,4,8"
+    <!-- Two rows: the tabs fill the window; a persistent status bar sits below
+         them, outside both tabs' ScrollViewers so it is always visible. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+    <Pivot x:Name="Tabs" Grid.Row="0" Margin="4,4,4,8"
            AutomationProperties.Name="Backup sections"
            SelectionChanged="OnTabChanged">
 
@@ -223,14 +231,8 @@
                                     Click="OnOpenDest" />
                         </StackPanel>
 
-                        <!-- Status line (live region) -->
-                        <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,8,0,0" VerticalAlignment="Center"
-                                    AutomationProperties.Name="Settings status">
-                            <Ellipse x:Name="ScriptDot" Width="10" Height="10" VerticalAlignment="Center" />
-                            <TextBlock x:Name="ScriptStatusText" VerticalAlignment="Center"
-                                       AutomationProperties.LiveSetting="Polite"
-                                       AutomationProperties.Name="Settings status" />
-                        </StackPanel>
+                        <!-- The settings status (saved / unsaved / none yet) lives
+                             in the window status bar below the tabs. -->
 
                         <!-- Progress + output -->
                         <TextBlock x:Name="FileProgressLabel" Margin="0,8,0,2"
@@ -346,8 +348,11 @@
                             </ScrollViewer>
                         </Border>
 
+                        <!-- In-place copy of the scan/import summary, kept next to
+                             the list it describes; the status bar mirrors it and is
+                             the live region that announces changes, so this one is
+                             deliberately not live (no double announcement). -->
                         <TextBlock x:Name="AppStatus" Text="Open this tab to scan installed apps." Margin="0,4,0,0"
-                                   AutomationProperties.LiveSetting="Polite"
                                    AutomationProperties.Name="Inventory status" />
 
                         <!-- Actions -->
@@ -390,4 +395,41 @@
                 </ScrollViewer>
             </PivotItem>
     </Pivot>
+
+        <!-- Status bar. Shows the active tab's status (settings state on File
+             Backup, scan/import summary on App Inventory); the right-hand
+             progress area mirrors a running job so it stays visible even when
+             the in-tab progress area is scrolled away or on the other tab.
+             StatusBarText is the single live region for status announcements -
+             the in-tab inventory summary mirrors it but is deliberately not
+             live, so each change is announced exactly once. -->
+        <Border Grid.Row="1" BorderThickness="0,1,0,0" Padding="14,6"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <!-- Colour reinforces the saved/unsaved state but never carries
+                     it alone; the text always says it in words. Hidden on the
+                     App Inventory tab, where that semantic does not apply. -->
+                <Ellipse x:Name="StatusDot" Grid.Column="0" Width="10" Height="10"
+                         VerticalAlignment="Center" />
+                <TextBlock x:Name="StatusBarText" Grid.Column="1" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.Name="Status" />
+                <StackPanel x:Name="StatusBarProgressArea" Grid.Column="2" Orientation="Horizontal"
+                            Spacing="8" VerticalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock x:Name="StatusBarProgressText" VerticalAlignment="Center"
+                               MaxWidth="320" TextTrimming="CharacterEllipsis" />
+                    <ProgressBar x:Name="StatusBarProgress" Width="140" Minimum="0" Maximum="1" Value="0"
+                                 VerticalAlignment="Center"
+                                 AutomationProperties.Name="Running job progress bar" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
 </Window>
