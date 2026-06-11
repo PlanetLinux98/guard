@@ -14,6 +14,12 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
   previous daily-only schedule.
+- Optional "Keep dated backup versions" mode: each run copies into a dated
+  folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
+  dated folders beyond a configurable keep count (default 5) are pruned. Off by
+  default; the generated script is unchanged unless you opt in. Pruning only
+  ever touches folders directly under the destination whose names exactly match
+  the date pattern.
 
 ### Changed
 - Scheduled backups are now off by default on a fresh install; you opt in by

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -12,6 +13,9 @@ public static class BackupScript
     public static void Write(Settings cfg)
     {
         string mirror = cfg.Mode == "Mirror" ? "/MIR" : "/E";
+        // Mirror the SettingsStore load clamp: keep must never reach the script
+        // as 0 or negative, or pruning could delete the folder just written.
+        int keep = Math.Clamp(cfg.VersionsToKeep, 1, 365);
         string exDirs = ToOneLine(cfg.ExcludeDirs);
         string exFiles = ToOneLine(cfg.ExcludeFiles);
         var opts = new StringBuilder();
@@ -36,6 +40,8 @@ public static class BackupScript
         sb.AppendLine("REM ===========================================================================");
         sb.AppendLine();
         sb.AppendLine("set \"DEST=" + cfg.Dest + "\"");
+        if (cfg.Versioned)
+            sb.AppendLine("set \"KEEP=" + keep + "\"");
         sb.AppendLine("set \"LOGDIR=%~dp0Logs\"");
         sb.AppendLine("set \"LOG=%LOGDIR%\\backup_last.log\"");
         sb.AppendLine();
@@ -48,14 +54,35 @@ public static class BackupScript
         sb.AppendLine();
         sb.AppendLine("if not exist \"%LOGDIR%\" md \"%LOGDIR%\"");
         sb.AppendLine();
+        if (cfg.Versioned)
+        {
+            // %date% is locale-formatted and wmic is removed from current
+            // Windows 11, so PowerShell (present on every supported Windows)
+            // is the only portable way to get a YYYY-MM-DD stamp in batch.
+            sb.AppendLine("REM Versioned mode: each run copies into a dated subfolder of DEST and");
+            sb.AppendLine("REM the oldest dated folders beyond KEEP are pruned after a clean run.");
+            sb.AppendLine("set \"STAMP=\"");
+            sb.AppendLine("for /f %%I in ('powershell -NoProfile -Command \"Get-Date -Format yyyy-MM-dd\"') do set \"STAMP=%%I\"");
+            sb.AppendLine("if not defined STAMP (");
+            sb.AppendLine("   echo ERROR: could not compute the date stamp for the versioned backup - aborting.");
+            sb.AppendLine("   >\"%LOG%\" echo ERROR: could not compute the date stamp for the versioned backup - aborting.");
+            sb.AppendLine("   goto :end");
+            sb.AppendLine(")");
+            sb.AppendLine("set \"RUNDEST=%DEST%\\%STAMP%\"");
+            sb.AppendLine();
+        }
         sb.AppendLine(">\"%LOG%\"  echo ===========================================================");
         sb.AppendLine(">>\"%LOG%\" echo  Backup     %date% %time%");
         sb.AppendLine(">>\"%LOG%\" echo  Destination: %DEST%");
+        if (cfg.Versioned)
+            sb.AppendLine(">>\"%LOG%\" echo  Version folder: %STAMP%  (keeping the newest %KEEP%)");
         sb.AppendLine("if defined DRY >>\"%LOG%\" echo  *** PREVIEW MODE - no changes made ***");
         sb.AppendLine(">>\"%LOG%\" echo ===========================================================");
         sb.AppendLine();
         sb.AppendLine("echo.");
         sb.AppendLine("echo Backup    destination: %DEST%");
+        if (cfg.Versioned)
+            sb.AppendLine("echo Version folder: %STAMP%  (keeping the newest %KEEP%)");
         sb.AppendLine("if defined DRY echo *** PREVIEW MODE - nothing will be copied or deleted ***");
         sb.AppendLine("echo Log file: %LOG%");
         sb.AppendLine("echo.");
@@ -72,11 +99,12 @@ public static class BackupScript
         // GUARD_UI, sent to stdout only (never the log).
         var inc = new List<FolderPair>();
         foreach (var f in cfg.Folders) if (f.Include) inc.Add(f);
+        string runDest = cfg.Versioned ? "%RUNDEST%" : "%DEST%";
         for (int i = 0; i < inc.Count; i++)
         {
             var f = inc[i];
             sb.AppendLine("if defined GUARD_UI echo @@PROGRESS@@ " + (i + 1) + " " + inc.Count + " " + MarkerSafe(f.SubFolder));
-            sb.AppendLine("call :backup \"" + f.Source + "\" \"%DEST%\\" + f.SubFolder + "\"");
+            sb.AppendLine("call :backup \"" + f.Source + "\" \"" + runDest + "\\" + f.SubFolder + "\"");
         }
         sb.AppendLine("if defined GUARD_UI echo @@PROGRESS@@ DONE");
         sb.AppendLine();
@@ -90,6 +118,12 @@ public static class BackupScript
         sb.AppendLine("   echo.");
         sb.AppendLine("   echo Backup finished successfully.");
         sb.AppendLine(")");
+        if (cfg.Versioned)
+        {
+            sb.AppendLine("REM Prune only after a clean real run: if this run had errors the new");
+            sb.AppendLine("REM version may be incomplete, so keeping extra old versions is safer.");
+            sb.AppendLine("if not defined DRY if not defined HADERR call :prune");
+        }
         sb.AppendLine("goto :end");
         sb.AppendLine();
         sb.AppendLine(":backup");
@@ -109,6 +143,36 @@ public static class BackupScript
         sb.AppendLine(")");
         sb.AppendLine("goto :eof");
         sb.AppendLine();
+        if (cfg.Versioned)
+        {
+            // Deletion is deliberately narrow: only directories DIRECTLY under
+            // DEST whose names are exactly YYYY-MM-DD (findstr whole-line digit
+            // match) qualify, so any other content the user keeps at the
+            // destination can never be touched. The dated names sort
+            // lexicographically in date order, so dir /o:n lists oldest first
+            // and the first EXCESS matches are the oldest versions.
+            sb.AppendLine(":prune");
+            sb.AppendLine("set \"EXCESS=\"");
+            sb.AppendLine("set /a COUNT=0");
+            sb.AppendLine("for /f \"delims=\" %%D in ('dir /b /ad /o:n \"%DEST%\" 2^>nul ^| findstr /r \"^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$\"') do set /a COUNT+=1");
+            sb.AppendLine("set /a EXCESS=COUNT-KEEP");
+            sb.AppendLine("if %EXCESS% leq 0 goto :eof");
+            sb.AppendLine(">>\"%LOG%\" echo.");
+            sb.AppendLine(">>\"%LOG%\" echo Pruning %EXCESS% old version folder(s), keeping the newest %KEEP%.");
+            sb.AppendLine("for /f \"delims=\" %%D in ('dir /b /ad /o:n \"%DEST%\" 2^>nul ^| findstr /r \"^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$\"') do call :prunedel \"%%D\"");
+            sb.AppendLine("goto :eof");
+            sb.AppendLine();
+            sb.AppendLine(":prunedel");
+            sb.AppendLine("if %EXCESS% leq 0 goto :eof");
+            sb.AppendLine("REM Never delete the folder this run just wrote, whatever the count says.");
+            sb.AppendLine("if /I \"%~1\"==\"%STAMP%\" goto :eof");
+            sb.AppendLine("echo Removing old version: %~1");
+            sb.AppendLine(">>\"%LOG%\" echo Removed old version: %~1");
+            sb.AppendLine("rd /s /q \"%DEST%\\%~1\"");
+            sb.AppendLine("set /a EXCESS-=1");
+            sb.AppendLine("goto :eof");
+            sb.AppendLine();
+        }
         sb.AppendLine(":end");
         sb.AppendLine("endlocal");
         sb.AppendLine("echo.");

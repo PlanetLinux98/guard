@@ -130,6 +130,17 @@
                                          Content="Mirror  (make the destination match the source exactly; files deleted from the source are also deleted at the destination)" />
                         </RadioButtons>
 
+                        <!-- Versioning. The keep-count NumberBox greys out while the
+                             box is off, mirroring the schedule section's pattern. -->
+                        <TextBlock Text="Versioning" FontWeight="SemiBold" />
+                        <CheckBox x:Name="ChkVersioned" Content="Keep dated backup versions" IsChecked="False" AccessKey="V"
+                                  ToolTipService.ToolTip="Each run copies into a dated folder (like 2026-06-10) inside the destination, and the oldest dated folders beyond the keep count are removed after a successful run."
+                                  Checked="OnVersionedChanged" Unchecked="OnVersionedChanged" />
+                        <NumberBox x:Name="NumVersionsKeep" Header="Versions to keep:" AccessKey="K"
+                                   Minimum="1" Maximum="365" Value="5" SmallChange="1"
+                                   SpinButtonPlacementMode="Compact" HorizontalAlignment="Left" MinWidth="160"
+                                   ValueChanged="OnVersionsKeepChanged" />
+
                         <!-- Excludes -->
                         <Grid Margin="0,8,0,0" ColumnSpacing="16">
                             <Grid.ColumnDefinitions>

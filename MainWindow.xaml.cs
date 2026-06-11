@@ -75,6 +75,9 @@ public sealed partial class MainWindow : Window
         RbAdditive.IsChecked = _cfg.Mode != "Mirror";
         TxtExDirs.Text = _cfg.ExcludeDirs;
         TxtExFiles.Text = _cfg.ExcludeFiles;
+        ChkVersioned.IsChecked = _cfg.Versioned;
+        NumVersionsKeep.Value = _cfg.VersionsToKeep;
+        UpdateVersionedEnabledState();
         ChkSchedule.IsChecked = _cfg.ScheduleEnabled;
         _dayBoxes = new[]
         {
@@ -150,6 +153,22 @@ public sealed partial class MainWindow : Window
         if (TimeSchedule != null) TimeSchedule.IsEnabled = on;
     }
     private void OnScheduleTimeChanged(TimePicker sender, TimePickerSelectedValueChangedEventArgs args) { _dirty = true; RefreshScriptStatus(); }
+
+    // Like the schedule section, the versioning on/off box greys out its keep
+    // count so it is clear the count only applies when versioning is enabled.
+    private void OnVersionedChanged(object sender, RoutedEventArgs e)
+    {
+        _dirty = true;
+        UpdateVersionedEnabledState();
+        RefreshScriptStatus();
+    }
+
+    private void UpdateVersionedEnabledState()
+    {
+        if (NumVersionsKeep != null) NumVersionsKeep.IsEnabled = ChkVersioned.IsChecked == true;
+    }
+
+    private void OnVersionsKeepChanged(NumberBox sender, NumberBoxValueChangedEventArgs args) { _dirty = true; RefreshScriptStatus(); }
 
     private void WireFolderDirty()
     {
@@ -253,6 +272,11 @@ public sealed partial class MainWindow : Window
         _cfg.Mode = RbMirror.IsChecked == true ? "Mirror" : "Additive";
         _cfg.ExcludeDirs = TxtExDirs.Text;
         _cfg.ExcludeFiles = TxtExFiles.Text;
+        _cfg.Versioned = ChkVersioned.IsChecked == true;
+        // NumberBox.Value is NaN while the field is cleared; fall back to the
+        // last saved count rather than writing NaN into the keep count.
+        if (!double.IsNaN(NumVersionsKeep.Value))
+            _cfg.VersionsToKeep = Math.Clamp((int)NumVersionsKeep.Value, 1, 365);
         _cfg.ScheduleEnabled = ChkSchedule.IsChecked == true;
         _cfg.ScheduleDays = new List<DayOfWeek>();
         foreach (var (box, day) in _dayBoxes)
