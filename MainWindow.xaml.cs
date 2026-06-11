@@ -79,6 +79,7 @@ public sealed partial class MainWindow : Window
         NumVersionsKeep.Value = _cfg.VersionsToKeep;
         UpdateVersionedEnabledState();
         ChkSchedule.IsChecked = _cfg.ScheduleEnabled;
+        ChkOnConnect.IsChecked = _cfg.TriggerOnConnect;
         _dayBoxes = new[]
         {
             (ChkMon, DayOfWeek.Monday), (ChkTue, DayOfWeek.Tuesday),
@@ -278,6 +279,7 @@ public sealed partial class MainWindow : Window
         if (!double.IsNaN(NumVersionsKeep.Value))
             _cfg.VersionsToKeep = Math.Clamp((int)NumVersionsKeep.Value, 1, 365);
         _cfg.ScheduleEnabled = ChkSchedule.IsChecked == true;
+        _cfg.TriggerOnConnect = ChkOnConnect.IsChecked == true;
         _cfg.ScheduleDays = new List<DayOfWeek>();
         foreach (var (box, day) in _dayBoxes)
             if (box.IsChecked == true) _cfg.ScheduleDays.Add(day);
@@ -301,10 +303,14 @@ public sealed partial class MainWindow : Window
         }
         SettingsStore.Save(_cfg);
         BackupScript.Write(_cfg);
-        // Save Settings is the single source of truth for the scheduled task:
-        // register it when enabled, remove it (current + legacy name) when not.
-        _taskError = _cfg.ScheduleEnabled ? ScheduledTasks.UpdateFileTask(_cfg) : null;
-        if (!_cfg.ScheduleEnabled) ScheduledTasks.RemoveAllTasks();
+        // Save Settings is the single source of truth for both scheduled tasks:
+        // each is registered when its own option is on and removed when not, so
+        // the timed schedule and the on-connect trigger toggle independently.
+        string? fileErr = _cfg.ScheduleEnabled ? ScheduledTasks.UpdateFileTask(_cfg) : null;
+        if (!_cfg.ScheduleEnabled) ScheduledTasks.RemoveScheduleTasks();
+        string? connErr = _cfg.TriggerOnConnect ? ScheduledTasks.UpdateOnConnectTask() : null;
+        if (!_cfg.TriggerOnConnect) ScheduledTasks.RemoveTask(GuardPaths.OnConnectTaskName);
+        _taskError = fileErr != null && connErr != null ? fileErr + "\n\n" + connErr : fileErr ?? connErr;
         RefreshNextRun();
         _dirty = false;
         RefreshScriptStatus();
@@ -315,11 +321,19 @@ public sealed partial class MainWindow : Window
     {
         if (!await SaveAllAsync()) return;
         if (_taskError != null)
-            await ShowMessageAsync("GUARD", "Settings saved, but registering the scheduled task reported a problem:\n\n" + _taskError);
-        else
-            await ShowMessageAsync("GUARD", _cfg.ScheduleEnabled
-                ? "Settings saved. The backup script and scheduled task have been updated."
-                : "Settings saved. The backup script has been updated; no scheduled task is set.");
+        {
+            await ShowMessageAsync("GUARD", "Settings saved, but registering a scheduled task reported a problem:\n\n" + _taskError);
+            return;
+        }
+        string tasks =
+            _cfg.ScheduleEnabled && _cfg.TriggerOnConnect
+                ? "The backup script, the scheduled backup task, and the on-connect check task have been updated."
+            : _cfg.ScheduleEnabled
+                ? "The backup script and scheduled task have been updated."
+            : _cfg.TriggerOnConnect
+                ? "The backup script and the on-connect check task have been updated; no day/time schedule is set."
+            : "The backup script has been updated; no scheduled task is set.";
+        await ShowMessageAsync("GUARD", "Settings saved. " + tasks);
     }
 
     private void RefreshNextRun()

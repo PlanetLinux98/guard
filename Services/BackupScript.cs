@@ -37,6 +37,10 @@ public static class BackupScript
         sb.AppendLine("REM    guard-backup.cmd          run the backup for real (keeps window open)");
         sb.AppendLine("REM    guard-backup.cmd test     PREVIEW only - shows what WOULD change");
         sb.AppendLine("REM    guard-backup.cmd auto     silent (used by the scheduled task)");
+        sb.AppendLine("REM    guard-backup.cmd onconnect");
+        sb.AppendLine("REM                              silent; backs up only if the destination is");
+        sb.AppendLine("REM                              reachable and no backup succeeded yet today");
+        sb.AppendLine("REM                              (used by the on-connect scheduled task)");
         sb.AppendLine("REM ===========================================================================");
         sb.AppendLine();
         sb.AppendLine("set \"DEST=" + cfg.Dest + "\"");
@@ -49,6 +53,23 @@ public static class BackupScript
         sb.AppendLine("set \"PAUSEATEND=1\"");
         sb.AppendLine("if /I \"%~1\"==\"test\" set \"DRY=/L\"");
         sb.AppendLine("if /I \"%~1\"==\"auto\" set \"PAUSEATEND=\"");
+        sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"PAUSEATEND=\"");
+        sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"ONCONNECT=1\"");
+        sb.AppendLine();
+        // On-connect gate: the periodic task fires this every few minutes, so it
+        // must cost nothing when there is nothing to do. Exit silently (and before
+        // the log header, so the last real backup log is never overwritten) when
+        // the destination is absent or the stamp already records a successful run
+        // today. The stamp holds %DATE% verbatim; findstr /x compares it the same
+        // way it was written, so locale date formats are irrelevant. A failed run
+        // does not update the stamp (see the HADERR branch), so the next check
+        // retries instead of skipping the rest of the day.
+        sb.AppendLine("set \"OCSTAMP=%~dp0onconnect-stamp.txt\"");
+        sb.AppendLine("if not defined ONCONNECT goto :checked");
+        sb.AppendLine("if not exist \"%DEST%\\\" exit /b 0");
+        sb.AppendLine("findstr /l /x /c:\"%DATE%\" \"%OCSTAMP%\" >nul 2>&1");
+        sb.AppendLine("if not errorlevel 1 exit /b 0");
+        sb.AppendLine(":checked");
         sb.AppendLine();
         sb.AppendLine("set \"OPTS=" + opts + "\"");
         sb.AppendLine();
@@ -117,6 +138,11 @@ public static class BackupScript
         sb.AppendLine("   >>\"%LOG%\" echo FINISHED OK   %date% %time%");
         sb.AppendLine("   echo.");
         sb.AppendLine("   echo Backup finished successfully.");
+        // Stamp only clean on-connect runs (an error should retry on the next
+        // check, and the DRY guard is belt-and-braces; the task never passes
+        // "test"). %DATE% expands when this block executes, i.e. at the finish,
+        // so a run crossing midnight stamps the new day as already covered.
+        sb.AppendLine("   if defined ONCONNECT if not defined DRY >\"%OCSTAMP%\" echo %DATE%");
         sb.AppendLine(")");
         if (cfg.Versioned)
         {

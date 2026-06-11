@@ -11,6 +11,12 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [0.3.0] - 2026-06-11
 
 ### Added
+- New "Also run when the backup destination becomes available" option: a second
+  scheduled task ("GUARD On-Connect Backup") quietly checks for the destination
+  every 15 minutes and at sign-in, and runs the backup at most once per day when
+  it is reachable - so plugging in the external drive (or the network share
+  coming back) is enough to get that day's backup. Works with or without the
+  day/time schedule, and like all GUARD backups it does not need the app open.
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
   previous daily-only schedule.
