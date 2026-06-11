@@ -37,6 +37,9 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   at build time (via MinVer) instead of a hand-edited constant, so it can never
   lag behind a release again. Dev builds between releases show a pre-release
   label (e.g. 0.3.0-alpha.0.6) so they are distinguishable from tagged releases.
+- Pressing Remove Folder with no folder highlighted now shows input-neutral
+  guidance ("Highlight the folder you want to remove from the folder list")
+  instead of keyboard-only Tab/arrow instructions.
 
 ### Fixed
 - Screen readers announced the backup folder list's second column as "subfolder"

@@ -340,7 +340,7 @@ public sealed partial class MainWindow : Window
         var f = _currentFolder;
         if (f == null)
         {
-            await ShowMessageAsync("GUARD", "Tab into the folder list and arrow to the folder you want to remove, then press Remove Folder.");
+            await ShowMessageAsync("GUARD", "Highlight the folder you want to remove from the folder list, then press Remove Folder.");
             return;
         }
         // Spell out the untick alternative: Remove forgets the pair entirely,
