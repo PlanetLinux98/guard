@@ -40,11 +40,20 @@
          Their redundant loose copy is instead stripped from the publish/bundle
          output in TrimGuardPublishPayload below. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe;GUARD.zip;GUARD\**;*.cmd;*.md;LICENSE;.gitignore</DefaultItemExcludes>
+    <!-- Versioning is driven by MinVer from git tags (releases are tagged vX.Y.Z),
+         so the version is never hand-edited; do not add a <Version> property here,
+         it would override MinVer's computed value. Untagged commits get the next
+         minor (not patch) pre-release: between releases main carries new features,
+         and 0.x minors are where behavior changes land per the repo's SemVer use. -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerAutoIncrement>minor</MinVerAutoIncrement>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260508005" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
+    <!-- Build-time only: computes the version during build, ships nothing. -->
+    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- Trim the publish output. GUARD never touches the Windows Copilot Runtime
