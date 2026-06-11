@@ -340,7 +340,7 @@ public sealed partial class MainWindow : Window
         var f = _currentFolder;
         if (f == null)
         {
-            await ShowMessageAsync("GUARD", "Tab into the folder list and arrow to the folder you want to edit, then press Edit Folder.");
+            await ShowMessageAsync("GUARD", "Highlight the folder you want to edit from the folder list, then press Edit Folder.");
             return;
         }
         var dlg = new Views.FolderDialog { XamlRoot = Content.XamlRoot, WindowHandle = WindowHandle };
