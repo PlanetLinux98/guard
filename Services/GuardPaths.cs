@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 
 namespace GuardWui3.Services;
 
@@ -23,6 +24,22 @@ public static class GuardPaths
     // Pre-0.3 name; removed on every save so upgraders don't keep a stale task.
     public const string LegacyFileTaskName = "Daily GUARD Backup";
     public const string AppListFileName = "app-list.json";
-    public const string AppVersion = "0.3.0";
+    // MinVer derives the version from the latest vX.Y.Z git tag at build time, so
+    // releases never need a hand-edited constant. The informational version is the
+    // full semver (a dev build between tags carries a pre-release label like
+    // 0.3.0-alpha.0.5); the "+<sha>" build metadata is stripped because the About
+    // dialog is aimed at end users, who match builds by release tag, not commit.
+    public static string AppVersion { get; } = ComputeAppVersion();
+
+    private static string ComputeAppVersion()
+    {
+        string? info = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (string.IsNullOrEmpty(info))
+            return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "unknown";
+        int plus = info.IndexOf('+');
+        return plus >= 0 ? info[..plus] : info;
+    }
+
     public const string RepoUrl = "https://github.com/PlanetLinux98/guard";
 }
