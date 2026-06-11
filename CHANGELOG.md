@@ -8,8 +8,6 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-06-11
-
 ### Added
 - New "Also run when the backup destination becomes available" option: a second
   scheduled task ("GUARD On-Connect Backup") quietly checks for the destination
@@ -17,15 +15,27 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   it is reachable - so plugging in the external drive (or the network share
   coming back) is enough to get that day's backup. Works with or without the
   day/time schedule, and like all GUARD backups it does not need the app open.
-- Choose which days of the week the scheduled backup runs on: tick any mix of
-  weekdays (all seven for daily, one for weekly, or a custom set), replacing the
-  previous daily-only schedule.
 - Optional "Keep dated backup versions" mode: each run copies into a dated
   folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
   dated folders beyond a configurable keep count (default 5) are pruned. Off by
   default; the generated script is unchanged unless you opt in. Pruning only
   ever touches folders directly under the destination whose names exactly match
   the date pattern.
+- Save Settings now reports, without ever blocking the save: which included
+  source folders are not currently reachable (they are skipped at run time, so
+  an offline network source is fine), how much space is free at the destination
+  (local, mapped, or UNC), and a rough size for a first full backup with a
+  warning when space looks tight. The size estimate runs in the background with
+  a hard time cap; if it cannot finish in time the message says so instead of
+  guessing. Run Now and Preview print the unreachable-source warning in the
+  output box rather than interrupting the run with a dialog.
+
+## [0.3.0] - 2026-06-11
+
+### Added
+- Choose which days of the week the scheduled backup runs on: tick any mix of
+  weekdays (all seven for daily, one for weekly, or a custom set), replacing the
+  previous daily-only schedule.
 
 ### Changed
 - Scheduled backups are now off by default on a fresh install; you opt in by
