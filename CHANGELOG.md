@@ -8,6 +8,8 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-11
+
 ### Added
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
@@ -37,6 +39,18 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - App Inventory filter now searches publisher, app type (winget / store / manual),
   and package ID in addition to name. The filter box is also slightly wider to
   accommodate the expanded placeholder text.
+- Clarified the difference between unticking a backup folder (skip it for now,
+  keep it in the list) and Remove Folder (forget it entirely): the Remove Folder
+  button gained a tooltip explaining the untick alternative, and its confirm
+  dialog now says the removal is permanent and points to unticking for a
+  temporary skip.
+- The version shown in the About dialog is now derived from the release git tag
+  at build time (via MinVer) instead of a hand-edited constant, so it can never
+  lag behind a release again. Dev builds between releases show a pre-release
+  label (e.g. 0.3.0-alpha.0.6) so they are distinguishable from tagged releases.
+- Pressing Remove Folder with no folder highlighted now shows input-neutral
+  guidance ("Highlight the folder you want to remove from the folder list")
+  instead of keyboard-only Tab/arrow instructions.
 
 ### Fixed
 - Screen readers announced the backup folder list's second column as "subfolder"
@@ -125,6 +139,7 @@ shipping as a single self-contained `GUARD.exe`.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/PlanetLinux98/guard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/PlanetLinux98/guard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/PlanetLinux98/guard/releases/tag/v0.1.0

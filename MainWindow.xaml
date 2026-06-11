@@ -103,6 +103,7 @@
                             <Button Content="Add Folder..." AccessKey="A"
                                     Click="OnAddFolder" />
                             <Button Content="Remove Folder" AccessKey="R"
+                                    ToolTipService.ToolTip="Remove this folder from the list entirely. To skip it temporarily, untick it instead."
                                     Click="OnRemoveFolder" />
                         </StackPanel>
 
