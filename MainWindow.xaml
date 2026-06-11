@@ -220,6 +220,7 @@
 
                         <!-- Progress + output -->
                         <TextBlock x:Name="FileProgressLabel" Margin="0,8,0,2"
+                                   AutomationProperties.LiveSetting="Polite"
                                    AutomationProperties.Name="Backup progress" />
                         <ProgressBar x:Name="FileProgress" Minimum="0" Maximum="1" Value="0"
                                      AutomationProperties.Name="Backup progress bar" />

@@ -9,6 +9,12 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- A plain-language summary at the end of every backup and preview run, built
+  from Robocopy's own totals: files copied (with size), files skipped because
+  they were already up to date, failures (called out first, with a pointer to
+  the log), and extra destination files (noting whether Mirror mode removed
+  them). The summary appears in the output box and on the progress line, so
+  you no longer need to read the raw log to know how a run went.
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
   previous daily-only schedule.

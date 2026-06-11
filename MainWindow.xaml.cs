@@ -29,6 +29,11 @@ public sealed partial class MainWindow : Window
     private bool _dirty;
     private int _progTotal;
 
+    // Per-run robocopy summary accumulation; recreated by RunScript so a stale
+    // parser from a previous run can never leak counts into the next one.
+    private RobocopySummaryParser? _summaryParser;
+    private bool _runIsPreview;
+
     // Only one ContentDialog may be open at a time; WinUI throws otherwise. An
     // access key on the main window (e.g. Alt+R for Remove Folder) still fires
     // while a dialog is up, so guard every show through this flag.
@@ -626,6 +631,8 @@ public sealed partial class MainWindow : Window
         TxtOutput.Text = "";
         AppendOut(TxtOutput, "> " + Path.GetFileName(script) + (arg.Length > 0 ? " " + arg : "") + "\r\n");
         _progTotal = 0;
+        _summaryParser = new RobocopySummaryParser();
+        _runIsPreview = arg == "test";
         SetProgress(FileProgress, FileProgressLabel, 1, 0, "");
 
         try
@@ -663,8 +670,22 @@ public sealed partial class MainWindow : Window
             string rest = data.Substring("@@PROGRESS@@".Length).Trim();
             if (rest == "DONE")
             {
-                SetProgress(FileProgress, FileProgressLabel, _progTotal > 0 ? _progTotal : 1, _progTotal,
-                    "Backup complete (" + _progTotal + " of " + _progTotal + ").");
+                // The DONE marker is emitted after every robocopy call, so all
+                // summary blocks have been fed by now. A null summary (nothing
+                // parsed) keeps the original completion message untouched.
+                string done = (_runIsPreview ? "Preview" : "Backup") +
+                    " complete (" + _progTotal + " of " + _progTotal + ").";
+                string? summary = null;
+                try { summary = BuildRunSummary(); } catch { }
+                if (summary != null)
+                {
+                    done = summary;
+                    AppendOut(TxtOutput, "\r\n" + summary + "\r\n");
+                }
+                SetProgress(FileProgress, FileProgressLabel, _progTotal > 0 ? _progTotal : 1, _progTotal, done);
+                // One announcement per run, after the label text lands (both go
+                // through the same dispatcher queue, so ordering is guaranteed).
+                DispatcherQueue.TryEnqueue(() => Announce(FileProgressLabel));
                 return;
             }
             var m = Regex.Match(rest, "^(\\d+)\\s+(\\d+)\\s*(.*)$");
@@ -678,7 +699,63 @@ public sealed partial class MainWindow : Window
             }
             return;
         }
+        // Summary parsing must never break run handling; on any parser fault the
+        // run degrades to the plain completion message.
+        try { _summaryParser?.Feed(data); } catch { _summaryParser = null; }
         AppendOut(TxtOutput, data + "\r\n");
+    }
+
+    // Builds the human-readable end-of-run summary from the accumulated robocopy
+    // tables, or null when nothing parsed (parse failure, zero folders, or a
+    // localized table the parser did not recognise).
+    private string? BuildRunSummary()
+    {
+        var p = _summaryParser;
+        if (p == null || p.Blocks == 0) return null;
+        bool mirror = _cfg.Mode == "Mirror";
+        string copied = CountPhrase(p.FilesCopied, "file");
+        string bytes = FormatBytes(p.BytesCopied);
+        if (bytes.Length > 0 && p.FilesCopied > 0) copied += " (" + bytes + ")";
+        string skipped = p.FilesSkipped.ToString("N0", CultureInfo.CurrentCulture);
+
+        if (p.FilesFailed > 0)
+        {
+            // Failures lead so a screen reader hears the problem first.
+            string failed = CountPhrase(p.FilesFailed, "file");
+            return _runIsPreview
+                ? "Preview finished with problems: " + failed + " could not be read - open the last log for details. " +
+                  copied + " would be copied, " + skipped + " already up to date."
+                : "Backup finished with problems: " + failed + " failed to copy - open the last log for details. " +
+                  copied + " copied, " + skipped + " skipped.";
+        }
+
+        string extras = "";
+        if (p.FilesExtras > 0)
+        {
+            string ex = CountPhrase(p.FilesExtras, "extra file");
+            // Extras are only deleted in Mirror mode; in Additive they just sit
+            // in the destination, so the wording must not claim a removal.
+            extras = _runIsPreview
+                ? (mirror ? " " + ex + " would be removed from the backup." : " " + ex + " found in the backup.")
+                : (mirror ? " " + ex + " removed from the backup." : " " + ex + " found in the backup.");
+        }
+
+        return _runIsPreview
+            ? "Preview complete: " + copied + " would be copied, " + skipped + " already up to date." + extras
+            : "Backup complete: " + copied + " copied, " + skipped + " skipped (already up to date)." + extras;
+    }
+
+    private static string CountPhrase(long n, string noun)
+        => n.ToString("N0", CultureInfo.CurrentCulture) + " " + noun + (n == 1 ? "" : "s");
+
+    private static string FormatBytes(double b)
+    {
+        if (b <= 0) return "";
+        string[] units = { "bytes", "KB", "MB", "GB", "TB" };
+        int u = 0;
+        while (b >= 1024 && u < units.Length - 1) { b /= 1024; u++; }
+        return (u == 0 ? b.ToString("N0", CultureInfo.CurrentCulture)
+                       : b.ToString("0.#", CultureInfo.CurrentCulture)) + " " + units[u];
     }
 
     private void SetProgress(ProgressBar bar, TextBlock lbl, double max, double val, string text)
