@@ -8,6 +8,8 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-11
+
 ### Added
 - Choose which days of the week the scheduled backup runs on: tick any mix of
   weekdays (all seven for daily, one for weekly, or a custom set), replacing the
@@ -128,6 +130,7 @@ shipping as a single self-contained `GUARD.exe`.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/PlanetLinux98/guard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/PlanetLinux98/guard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/PlanetLinux98/guard/releases/tag/v0.1.0
