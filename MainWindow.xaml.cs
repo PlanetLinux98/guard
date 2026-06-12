@@ -29,6 +29,12 @@ public sealed partial class MainWindow : Window
     private bool _dirty;
     private int _progTotal;
 
+    // Save reentrancy guard (the save is now async and non-blocking, so the
+    // button can be pressed again mid-save) and the staleness counter for the
+    // background space/size status check.
+    private bool _saving;
+    private int _spaceCheckSeq;
+
     // Only one ContentDialog may be open at a time; WinUI throws otherwise. An
     // access key on the main window (e.g. Alt+R for Remove Folder) still fires
     // while a dialog is up, so guard every show through this flag.
@@ -246,24 +252,27 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
+    // Status-dot colors: green = saved and healthy, amber = needs attention
+    // (unsaved changes, nothing saved yet, or low destination space).
+    private static readonly Color StatusGreen = Color.FromArgb(0xFF, 0x3F, 0xB9, 0x50);
+    private static readonly Color StatusAmber = Color.FromArgb(0xFF, 0xD2, 0x99, 0x22);
+
     private void RefreshScriptStatus(bool announce = true)
     {
         if (ScriptDot == null || ScriptStatusText == null) return;
-        var green = Color.FromArgb(0xFF, 0x3F, 0xB9, 0x50);
-        var amber = Color.FromArgb(0xFF, 0xD2, 0x99, 0x22);
         if (!File.Exists(GuardPaths.ScriptPath))
         {
-            ScriptDot.Fill = new SolidColorBrush(amber);
+            ScriptDot.Fill = new SolidColorBrush(StatusAmber);
             ScriptStatusText.Text = "No settings saved yet. Click Save Settings before running a backup.";
         }
         else if (_dirty)
         {
-            ScriptDot.Fill = new SolidColorBrush(amber);
+            ScriptDot.Fill = new SolidColorBrush(StatusAmber);
             ScriptStatusText.Text = "You have unsaved changes. Click Save Settings to apply them.";
         }
         else
         {
-            ScriptDot.Fill = new SolidColorBrush(green);
+            ScriptDot.Fill = new SolidColorBrush(StatusGreen);
             ScriptStatusText.Text = "Settings saved. Last updated " +
                 File.GetLastWriteTime(GuardPaths.ScriptPath).ToString("yyyy-MM-dd HH:mm") + ".";
         }
@@ -326,75 +335,105 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "Pick at least one day for the scheduled backup, or turn the schedule off.");
             return false;
         }
-        SettingsStore.Save(_cfg);
-        BackupScript.Write(_cfg);
-        // Save Settings is the single source of truth for both scheduled tasks:
-        // each is registered when its own option is on and removed when not, so
-        // the timed schedule and the on-connect trigger toggle independently.
-        string? fileErr = _cfg.ScheduleEnabled ? ScheduledTasks.UpdateFileTask(_cfg) : null;
-        if (!_cfg.ScheduleEnabled) ScheduledTasks.RemoveScheduleTasks();
-        string? connErr = _cfg.TriggerOnConnect ? ScheduledTasks.UpdateOnConnectTask() : null;
-        if (!_cfg.TriggerOnConnect) ScheduledTasks.RemoveTask(GuardPaths.OnConnectTaskName);
-        _taskError = fileErr != null && connErr != null ? fileErr + "\n\n" + connErr : fileErr ?? connErr;
-        RefreshNextRun();
-        _dirty = false;
-        RefreshScriptStatus();
-        // Off the UI thread: a dead UNC source can make Directory.Exists block
-        // for seconds. The save itself is already complete at this point.
-        _missingSources = await System.Threading.Tasks.Task.Run(
-            () => SaveValidation.UnreachableSources(_cfg.Folders));
-        return true;
+        // The settings and script are written synchronously (fast, and the
+        // ground truth the rest of the app reads), then everything slow runs
+        // off the UI thread so the window never freezes: the scheduled-task
+        // state is applied in one batched PowerShell invocation (each extra
+        // powershell.exe start pays a multi-second module import - this used
+        // to be 3-4 sequential ones and froze the UI for tens of seconds),
+        // and a dead UNC source can make Directory.Exists block for seconds.
+        if (_saving) return false;
+        _saving = true;
+        try
+        {
+            SettingsStore.Save(_cfg);
+            BackupScript.Write(_cfg);
+            _dirty = false;
+            RefreshScriptStatus();
+            // Save Settings is the single source of truth for both scheduled
+            // tasks: each is registered when its own option is on and removed
+            // when not, so the schedule and the on-connect trigger toggle
+            // independently (ApplyAll handles both plus the legacy-name cleanup).
+            var applied = await System.Threading.Tasks.Task.Run(
+                () => ScheduledTasks.ApplyAll(_cfg));
+            _taskError = applied.Error;
+            LblNextRun.Text = applied.NextRun == null
+                ? "Next run: (no scheduled task)" : "Next run: " + applied.NextRun;
+            _missingSources = await System.Threading.Tasks.Task.Run(
+                () => SaveValidation.UnreachableSources(_cfg.Folders));
+            return true;
+        }
+        finally { _saving = false; }
     }
 
+    // A successful save shows no dialog: the status line (a live region, so it
+    // is announced) already reads "Settings saved..." and later gains the
+    // space/size figures from the background check. Dialogs are reserved for
+    // actual problems - a task-registration failure or unreachable sources.
     private async void OnSave(object sender, RoutedEventArgs e)
     {
         if (!await SaveAllAsync()) return;
 
-        // A task-registration failure is the headline; show it alone rather
-        // than burying it under space and size details.
         if (_taskError != null)
         {
             await ShowMessageAsync("GUARD", "Settings saved, but registering a scheduled task reported a problem:\n\n" + _taskError);
             return;
         }
+        if (_missingSources.Count > 0)
+            await ShowMessageAsync("GUARD", "Settings saved. Note: " + DescribeMissingSources(_missingSources)
+                + "\n\nThey will be skipped if still unreachable when the backup runs.");
 
-        // Kick off the space checks before composing text so the capped size
-        // estimate and the free-space query overlap with each other.
+        StartSpaceStatusCheck();
+    }
+
+    // Background space/size check; appends its findings to the saved-status
+    // line when done. Out of the modal path entirely, the size estimate can
+    // afford a cap long enough to usually finish, so the figure is normally
+    // the full total rather than a lower bound. The sequence counter plus the
+    // dirty re-check drop a stale result if the user edited or saved again
+    // while the walk was still running.
+    private async void StartSpaceStatusCheck()
+    {
+        int seq = ++_spaceCheckSeq;
+
+        // Interim placeholder so the line never sits silently mid-check; the
+        // result replaces it (rebuilt from baseText, not appended) when done.
+        string baseText = ScriptStatusText.Text;
+        ScriptStatusText.Text = baseText + " Calculating backup size and destination space...";
+        _lastAnnouncedStatus = ScriptStatusText.Text;
+        Announce(ScriptStatusText);
+
         var estimateTask = SaveValidation.EstimateBackupSizeAsync(_cfg.Folders, SaveValidation.EstimateCap);
         var freeTask = System.Threading.Tasks.Task.Run(() => SaveValidation.TryGetFreeSpace(_cfg.Dest));
-
-        string tasks =
-            _cfg.ScheduleEnabled && _cfg.TriggerOnConnect
-                ? "The backup script, the scheduled backup task, and the on-connect check task have been updated."
-            : _cfg.ScheduleEnabled
-                ? "The backup script and scheduled task have been updated."
-            : _cfg.TriggerOnConnect
-                ? "The backup script and the on-connect check task have been updated; no day/time schedule is set."
-            : "The backup script has been updated; no scheduled task is set.";
-        string msg = "Settings saved. " + tasks;
-
-        if (_missingSources.Count > 0)
-            msg += "\n\nNote: " + DescribeMissingSources(_missingSources)
-                + "\nThey will be skipped if still unreachable when the backup runs.";
-
         long? free = await freeTask;
-        if (free is long freeBytes)
-        {
-            msg += "\n\n" + SaveValidation.FormatBytes(freeBytes) + " free at the destination.";
-            var est = await estimateTask;
-            if (est.Bytes > 0)
-            {
-                string size = SaveValidation.FormatBytes(est.Bytes);
-                if (!est.Complete)
-                    msg += " The source folders hold at least " + size + " (the size check stopped early, so the real total may be larger).";
-                else if (est.Bytes > freeBytes * 0.9)
-                    msg += " Space looks tight: a first full backup needs roughly " + size + ". Later runs copy only what changed, so they need less.";
-                else
-                    msg += " A first full backup needs roughly " + size + ".";
-            }
-        }
+        var est = await estimateTask;
 
-        await ShowMessageAsync("GUARD", msg);
+        // A stale result (the user edited or saved again) leaves the line to
+        // whoever rewrote it; RefreshScriptStatus has already replaced the text.
+        if (seq != _spaceCheckSeq || _dirty) return;
+
+        // Deliberately terse: this rides on the end of the status line, so a
+        // sentence per fact would scroll the line off the window and pad the
+        // screen-reader announcement. Tight space gets a Warning: prefix and
+        // keeps the dot amber; the full explanation lives in the user manual.
+        string extra;
+        if (free is not long freeBytes)
+        {
+            extra = " Destination space could not be checked.";
+        }
+        else
+        {
+            bool tight = est.Bytes > 0 && est.Bytes > freeBytes * 0.9;
+            extra = tight ? " Warning: space may be too low." : "";
+            if (est.Bytes > 0)
+                extra += " Backup size: " + (est.Complete ? "" : "at least ")
+                    + SaveValidation.FormatBytes(est.Bytes) + ";";
+            extra += " destination available space: " + SaveValidation.FormatBytes(freeBytes) + ".";
+            if (tight) ScriptDot.Fill = new SolidColorBrush(StatusAmber);
+        }
+        ScriptStatusText.Text = baseText + extra;
+        _lastAnnouncedStatus = ScriptStatusText.Text;
+        Announce(ScriptStatusText);
     }
 
     private static string DescribeMissingSources(List<string> missing)
@@ -405,10 +444,15 @@ public sealed partial class MainWindow : Window
             : "these source folders are not currently reachable:" + list;
     }
 
-    private void RefreshNextRun()
+    // Off the UI thread: the query launches powershell.exe, whose cold start
+    // pays a multi-second module import. The label keeps its "(unknown)"
+    // placeholder until the answer arrives. Saves do not call this; ApplyAll
+    // returns the next run from its own batched invocation.
+    private async void RefreshNextRun()
     {
         if (LblNextRun == null) return;
-        var next = ScheduledTasks.QueryNextRun(GuardPaths.FileTaskName);
+        var next = await System.Threading.Tasks.Task.Run(
+            () => ScheduledTasks.QueryNextRun(GuardPaths.FileTaskName));
         LblNextRun.Text = next == null ? "Next run: (no scheduled task)" : "Next run: " + next;
     }
 

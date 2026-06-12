@@ -8,6 +8,26 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+### Changed
+- Save Settings no longer freezes the app for tens of seconds. The scheduled
+  tasks are now applied in one batched PowerShell run on a background thread
+  (previously up to four sequential PowerShell launches on the UI thread), and
+  a successful save shows no dialog at all: the status line confirms the save
+  immediately and is announced by screen readers. Dialogs only appear for
+  actual problems (a task registration failure, or source folders that are not
+  currently reachable).
+- The destination free space and first-backup size estimate moved from the
+  save dialog to the status line, appended in the background once the check
+  finishes. Freed from holding up a dialog, the size check now runs long
+  enough to normally report the complete total instead of a lower bound.
+- The "Next run" label loads in the background at startup instead of delaying
+  the window.
+
+### Fixed
+- Screen readers announced the static label ("Inventory status" / "Settings
+  status") instead of the actual message whenever a status line updated, e.g.
+  after the app scan finished. The status text itself is now announced.
+
 ### Added
 - Reworked the exclude UI so no wildcard typing is needed for the common cases:
   four one-tick preset checkboxes (temporary files, system clutter, developer

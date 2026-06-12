@@ -276,14 +276,26 @@
                                     Click="OnOpenDest" />
                         </StackPanel>
 
-                        <!-- Status line (live region) -->
-                        <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,8,0,0" VerticalAlignment="Center"
-                                    AutomationProperties.Name="Settings status">
-                            <Ellipse x:Name="ScriptDot" Width="10" Height="10" VerticalAlignment="Center" />
-                            <TextBlock x:Name="ScriptStatusText" VerticalAlignment="Center"
-                                       AutomationProperties.LiveSetting="Polite"
-                                       AutomationProperties.Name="Settings status" />
-                        </StackPanel>
+                        <!-- Status line (live region). No AutomationProperties.Name on
+                             the TextBlock: an explicit name overrides the text as the
+                             UIA Name, and a live-region change announces the Name - so
+                             a static name makes every announcement read the label
+                             instead of the message. -->
+                        <!-- A Grid, not a horizontal StackPanel: the StackPanel gave
+                             the TextBlock unbounded width, so a long status ran off
+                             the window edge instead of wrapping. -->
+                        <Grid ColumnSpacing="7" Margin="0,8,0,0"
+                              AutomationProperties.Name="Settings status">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="ScriptDot" Grid.Column="0" Width="10" Height="10"
+                                     VerticalAlignment="Center" />
+                            <TextBlock x:Name="ScriptStatusText" Grid.Column="1" TextWrapping="Wrap"
+                                       VerticalAlignment="Center"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </Grid>
 
                         <!-- Progress + output -->
                         <TextBlock x:Name="FileProgressLabel" Margin="0,8,0,2"
@@ -393,9 +405,10 @@
                             </ScrollViewer>
                         </Border>
 
+                        <!-- Live region; like ScriptStatusText, no explicit name so
+                             announcements speak the status text itself. -->
                         <TextBlock x:Name="AppStatus" Text="Open this tab to scan installed apps." Margin="0,4,0,0"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   AutomationProperties.Name="Inventory status" />
+                                   AutomationProperties.LiveSetting="Polite" />
 
                         <!-- Actions -->
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">

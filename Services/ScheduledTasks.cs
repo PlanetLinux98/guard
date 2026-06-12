@@ -1,12 +1,75 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using GuardWui3.Models;
 
 namespace GuardWui3.Services;
 
 public static class ScheduledTasks
 {
+    public sealed record ApplyResult(string? Error, string? NextRun);
+
+    // Applies the complete scheduled-task state for a save in ONE PowerShell
+    // invocation: register-or-remove the timed task, drop the legacy pre-0.3
+    // name, register-or-remove the on-connect task, and query the next run.
+    // Batching matters: each powershell.exe start pays a multi-second
+    // ScheduledTasks-module import, and the per-operation methods below cost
+    // that 3-4 times per save. Errors are routed to stdout behind ERRFILE/
+    // ERRCONN markers (stderr would mix PowerShell's own noise in), the next
+    // run behind NEXT.
+    public static ApplyResult ApplyAll(Settings cfg)
+    {
+        var sb = new StringBuilder();
+        if (cfg.ScheduleEnabled)
+        {
+            string arg = "/c \"" + GuardPaths.ScriptPath + "\" auto";
+            sb.Append("try {")
+              .Append("$A = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '" + PsQuote(arg) + "';")
+              .Append("$T = New-ScheduledTaskTrigger " + TriggerArgs(cfg) + ";")
+              .Append("$S = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;")
+              .Append("Register-ScheduledTask -TaskName '" + GuardPaths.FileTaskName + "' -Action $A -Trigger $T -Settings $S -Force -ErrorAction Stop | Out-Null")
+              .Append("} catch { Write-Output ('ERRFILE ' + $_.Exception.Message) };");
+        }
+        else
+        {
+            sb.Append("Unregister-ScheduledTask -TaskName '" + GuardPaths.FileTaskName + "' -Confirm:$false -ErrorAction SilentlyContinue;");
+        }
+        sb.Append("Unregister-ScheduledTask -TaskName '" + GuardPaths.LegacyFileTaskName + "' -Confirm:$false -ErrorAction SilentlyContinue;");
+        if (cfg.TriggerOnConnect)
+        {
+            string arg = "/c \"" + GuardPaths.ScriptPath + "\" onconnect";
+            sb.Append("try {")
+              .Append("$A2 = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '" + PsQuote(arg) + "';")
+              .Append("$T2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650);")
+              .Append("$L2 = New-ScheduledTaskTrigger -AtLogOn;")
+              .Append("$S2 = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;")
+              .Append("Register-ScheduledTask -TaskName '" + GuardPaths.OnConnectTaskName + "' -Action $A2 -Trigger $T2,$L2 -Settings $S2 -Force -ErrorAction Stop | Out-Null")
+              .Append("} catch { Write-Output ('ERRCONN ' + $_.Exception.Message) };");
+        }
+        else
+        {
+            sb.Append("Unregister-ScheduledTask -TaskName '" + GuardPaths.OnConnectTaskName + "' -Confirm:$false -ErrorAction SilentlyContinue;");
+        }
+        sb.Append("try { Write-Output ('NEXT ' + (Get-ScheduledTaskInfo -TaskName '" + GuardPaths.FileTaskName +
+                  "' -ErrorAction Stop).NextRunTime.ToString('yyyy-MM-dd HH:mm')) } catch { }");
+
+        string output;
+        try { output = ProcessRunner.RunPowerShellCapture(sb.ToString()); }
+        catch (Exception ex) { return new ApplyResult(ex.Message, null); }
+
+        string? fileErr = null, connErr = null, next = null;
+        foreach (var raw in output.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("ERRFILE ")) fileErr = "Scheduled backup task: " + line.Substring(8);
+            else if (line.StartsWith("ERRCONN ")) connErr = "On-connect task: " + line.Substring(8);
+            else if (line.StartsWith("NEXT ")) next = line.Substring(5);
+        }
+        string? err = fileErr != null && connErr != null ? fileErr + "\n\n" + connErr : fileErr ?? connErr;
+        return new ApplyResult(err, next);
+    }
+
     // Returns a problem message, or null on success.
     public static string? UpdateFileTask(Settings cfg)
     {

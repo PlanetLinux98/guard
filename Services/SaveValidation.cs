@@ -15,7 +15,11 @@ namespace GuardWui3.Services;
 public static class SaveValidation
 {
     // How long the size estimate may run before degrading to a partial figure.
-    public static readonly TimeSpan EstimateCap = TimeSpan.FromSeconds(2.5);
+    // The estimate feeds a background status-line update rather than a modal
+    // dialog, so the cap only needs to bound runaway walks of enormous trees,
+    // not protect perceived save latency; two minutes lets it normally finish
+    // and report the complete total.
+    public static readonly TimeSpan EstimateCap = TimeSpan.FromMinutes(2);
 
     public sealed record EstimateResult(long Bytes, bool Complete);
 
