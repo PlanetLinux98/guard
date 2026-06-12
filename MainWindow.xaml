@@ -281,12 +281,21 @@
                              UIA Name, and a live-region change announces the Name - so
                              a static name makes every announcement read the label
                              instead of the message. -->
-                        <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,8,0,0" VerticalAlignment="Center"
-                                    AutomationProperties.Name="Settings status">
-                            <Ellipse x:Name="ScriptDot" Width="10" Height="10" VerticalAlignment="Center" />
-                            <TextBlock x:Name="ScriptStatusText" VerticalAlignment="Center"
+                        <!-- A Grid, not a horizontal StackPanel: the StackPanel gave
+                             the TextBlock unbounded width, so a long status ran off
+                             the window edge instead of wrapping. -->
+                        <Grid ColumnSpacing="7" Margin="0,8,0,0"
+                              AutomationProperties.Name="Settings status">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="ScriptDot" Grid.Column="0" Width="10" Height="10"
+                                     VerticalAlignment="Center" />
+                            <TextBlock x:Name="ScriptStatusText" Grid.Column="1" TextWrapping="Wrap"
+                                       VerticalAlignment="Center"
                                        AutomationProperties.LiveSetting="Polite" />
-                        </StackPanel>
+                        </Grid>
 
                         <!-- Progress + output -->
                         <TextBlock x:Name="FileProgressLabel" Margin="0,8,0,2"
