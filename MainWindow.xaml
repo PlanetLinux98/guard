@@ -301,9 +301,11 @@
                              in the window status bar below the tabs. -->
 
                         <!-- Progress + output -->
+                        <!-- Live region (the end-of-run summary is announced through
+                             it); no explicit Name, or announcements would read the
+                             label instead of the summary. -->
                         <TextBlock x:Name="FileProgressLabel" Margin="0,8,0,2"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   AutomationProperties.Name="Backup progress" />
+                                   AutomationProperties.LiveSetting="Polite" />
                         <ProgressBar x:Name="FileProgress" Minimum="0" Maximum="1" Value="0"
                                      AutomationProperties.Name="Backup progress bar" />
                         <TextBlock Text="Output:" Margin="0,8,0,2" />
@@ -484,10 +486,14 @@
                      App Inventory tab, where that semantic does not apply. -->
                 <Ellipse x:Name="StatusDot" Grid.Column="0" Width="10" Height="10"
                          VerticalAlignment="Center" />
+                <!-- No AutomationProperties.Name: an explicit name overrides the
+                     text as the UIA Name, and a live-region change announces the
+                     Name, so a static name would make every announcement read
+                     "Status" instead of the message (same bug fixed on the old
+                     in-tab status lines). -->
                 <TextBlock x:Name="StatusBarText" Grid.Column="1" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"
-                           AutomationProperties.LiveSetting="Polite"
-                           AutomationProperties.Name="Status" />
+                           AutomationProperties.LiveSetting="Polite" />
                 <StackPanel x:Name="StatusBarProgressArea" Grid.Column="2" Orientation="Horizontal"
                             Spacing="8" VerticalAlignment="Center" Visibility="Collapsed">
                     <TextBlock x:Name="StatusBarProgressText" VerticalAlignment="Center"
