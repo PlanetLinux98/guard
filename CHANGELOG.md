@@ -8,6 +8,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+### Fixed
+- Screen readers announced the static label ("Inventory status" / "Settings
+  status") instead of the actual message whenever a status line updated, e.g.
+  after the app scan finished. The status text itself is now announced.
+
 ### Added
 - Reworked the exclude UI so no wildcard typing is needed for the common cases:
   four one-tick preset checkboxes (temporary files, system clutter, developer
