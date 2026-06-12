@@ -8,65 +8,57 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
-### Changed
-- Save Settings no longer freezes the app for tens of seconds. The scheduled
-  tasks are now applied in one batched PowerShell run on a background thread
-  (previously up to four sequential PowerShell launches on the UI thread), and
-  a successful save shows no dialog at all: the status line confirms the save
-  immediately and is announced by screen readers. Dialogs only appear for
-  actual problems (a task registration failure, or source folders that are not
-  currently reachable).
-- The destination free space and first-backup size estimate moved from the
-  save dialog to the status line, appended in the background once the check
-  finishes. Freed from holding up a dialog, the size check now runs long
-  enough to normally report the complete total instead of a lower bound.
-- The "Next run" label loads in the background at startup instead of delaying
-  the window.
-
-### Fixed
-- Screen readers announced the static label ("Inventory status" / "Settings
-  status") instead of the actual message whenever a status line updated, e.g.
-  after the app scan finished. The status text itself is now announced.
-
 ### Added
-- Reworked the exclude UI so no wildcard typing is needed for the common cases:
-  four one-tick preset checkboxes (temporary files, system clutter, developer
-  folders, caches and disc images) replace the free-text boxes, and anything
-  else is added through a new "Add Exclusion" dialog that asks what to exclude
-  (a folder name, a file extension, or a name/pattern) and builds the pattern
-  for you. Custom exclusions appear in a list with Add/Remove buttons.
-  Existing saved excludes migrate automatically: lines a
-  preset covers tick that preset (which can also enable the preset's sibling
-  patterns - review the checkboxes after upgrading), and the rest become custom
-  entries.
-- New "Automatically run when the backup destination becomes available" option: a second
-  scheduled task ("GUARD On-Connect Backup") quietly checks for the destination
-  every 15 minutes and at sign-in, and runs the backup at most once per day when
-  it is reachable - so plugging in the external drive (or the network share
-  coming back) is enough to get that day's backup. Works with or without the
-  day/time schedule, and like all GUARD backups it does not need the app open.
 - Optional "Keep dated backup versions" mode: each run copies into a dated
   folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
   dated folders beyond a configurable keep count (default 5) are pruned. Off by
   default; the generated script is unchanged unless you opt in. Pruning only
   ever touches folders directly under the destination whose names exactly match
   the date pattern.
-- Save Settings now reports, without ever blocking the save: which included
-  source folders are not currently reachable (they are skipped at run time, so
-  an offline network source is fine), how much space is free at the destination
-  (local, mapped, or UNC), and a rough size for a first full backup with a
-  warning when space looks tight. The size estimate runs in the background with
-  a hard time cap; if it cannot finish in time the message says so instead of
-  guessing. Run Now and Preview print the unreachable-source warning in the
-  output box rather than interrupting the run with a dialog.
+- New "Automatically run when the backup destination becomes available" option:
+  a second scheduled task ("GUARD On-Connect Backup") quietly checks for the
+  destination every 15 minutes and at sign-in, and runs the backup at most once
+  per day when it is reachable - so plugging in the external drive (or the
+  network share coming back) is enough to get that day's backup. Works with or
+  without the day/time schedule, and like all GUARD backups it does not need the
+  app open.
+- Save Settings now reports the destination's free space, a rough size for a
+  first full backup, and any included source folders that are not currently
+  reachable (these are skipped at run time, so an offline network source is
+  fine). The figures appear in the status line and are announced to screen
+  readers, calculated in the background so they never hold up the save, with a
+  warning (and an amber status indicator) when space looks tight. Run Now and
+  Preview note any unreachable sources in the output box rather than
+  interrupting the run with a dialog.
 
 ### Changed
+- Reworked the exclude UI so no wildcard typing is needed for the common cases:
+  four one-tick preset checkboxes (temporary files, system clutter, developer
+  folders, caches and disc images) replace the free-text boxes, and anything
+  else is added through a new "Add Exclusion" dialog that asks what to exclude
+  (a folder name, a file extension, or a name/pattern) and builds the pattern
+  for you. Custom exclusions appear in a list with Add/Remove buttons. Existing
+  saved excludes migrate automatically: lines a preset covers tick that preset
+  (which can also enable the preset's sibling patterns - review the checkboxes
+  after upgrading), and the rest become custom entries.
 - Tidied the File Backup tab layout: the exclude controls now sit directly
   below the Add/Remove Folder buttons (above the Mode choice), and the
   "Versions to keep" count sits on the same line as the "Keep dated backup
   versions" checkbox.
-- Exclude patterns containing spaces (such as "System Volume Information") are
-  now quoted in the generated script so robocopy reads them as one name.
+- Save Settings is now fast and no longer freezes the app: the scheduled tasks
+  are registered in a single background step instead of several foreground ones,
+  and a successful save is confirmed inline rather than with a pop-up dialog
+  (dialogs now appear only for problems, such as a failed task registration).
+  The "Next run" label also loads in the background instead of delaying the
+  window at startup.
+
+### Fixed
+- Screen readers announced the static label ("Inventory status" / "Settings
+  status") instead of the actual message whenever a status line updated, e.g.
+  after the app scan finished. The status text itself is now announced.
+- Exclude names containing spaces (such as "System Volume Information") are now
+  quoted in the generated script, so robocopy reads each as a single name
+  instead of several.
 
 ## [0.3.0] - 2026-06-11
 
