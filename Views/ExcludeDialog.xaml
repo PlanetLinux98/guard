@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="GuardWui3.Views.ExcludeDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Add Exclusion"
+    PrimaryButtonText="OK"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimary">
+
+    <StackPanel Width="440" Spacing="8">
+        <!-- RadioButtons (the container) for arrow-key selection-follows-focus
+             and a single tab stop, matching the main window's Mode group. -->
+        <RadioButtons Header="What do you want to exclude?">
+            <RadioButton x:Name="RbFolder" Content="Folders with a certain name" IsChecked="True"
+                         Checked="OnKindChanged" />
+            <RadioButton x:Name="RbType" Content="Files of a certain type (extension)"
+                         Checked="OnKindChanged" />
+            <RadioButton x:Name="RbPattern" Content="Files matching a name or pattern"
+                         Checked="OnKindChanged" />
+        </RadioButtons>
+        <TextBox x:Name="TxtValue" Header="Folder name:" AccessKey="N" />
+        <TextBlock x:Name="LblHint" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap" />
+    </StackPanel>
+</ContentDialog>

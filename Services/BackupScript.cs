@@ -16,8 +16,8 @@ public static class BackupScript
         // Mirror the SettingsStore load clamp: keep must never reach the script
         // as 0 or negative, or pruning could delete the folder just written.
         int keep = Math.Clamp(cfg.VersionsToKeep, 1, 365);
-        string exDirs = ToOneLine(cfg.ExcludeDirs);
-        string exFiles = ToOneLine(cfg.ExcludeFiles);
+        string exDirs = JoinTokens(cfg.EffectiveExcludeDirs());
+        string exFiles = JoinTokens(cfg.EffectiveExcludeFiles());
         var opts = new StringBuilder();
         // /XJ is MANDATORY: skips junction points. Without it the hidden
         // My Music / My Pictures / My Videos junctions in Documents cause
@@ -217,14 +217,17 @@ public static class BackupScript
         return sb.ToString().Trim();
     }
 
-    private static string ToOneLine(string multiline)
+    // Quote any token holding a space ("System Volume Information") so robocopy
+    // reads it as a single /XD or /XF argument; the quotes survive the
+    // set "OPTS=..." wrapper, which only strips its own outer pair.
+    private static string JoinTokens(List<string> tokens)
     {
-        if (string.IsNullOrEmpty(multiline)) return "";
-        // Handle every newline form, including the bare CR a WinUI multi-line
-        // TextBox uses, so each excluded name becomes its own /XD or /XF token.
-        var parts = multiline.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-        var keep = new List<string>();
-        foreach (var p in parts) { var t = p.Trim(); if (t.Length > 0) keep.Add(t); }
-        return string.Join(" ", keep.ToArray());
+        var sb = new StringBuilder();
+        foreach (var t in tokens)
+        {
+            if (sb.Length > 0) sb.Append(' ');
+            sb.Append(t.Contains(' ') ? "\"" + t + "\"" : t);
+        }
+        return sb.ToString();
     }
 }

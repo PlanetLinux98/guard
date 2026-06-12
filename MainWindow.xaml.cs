@@ -60,11 +60,16 @@ public sealed partial class MainWindow : Window
     private FolderPair? _currentFolder;
     private FrameworkElement? _lastFolderFocus;
     private FrameworkElement? _lastAppFocus;
+
+    // The four exclusion-preset checkboxes paired with the preset id each
+    // represents (see ExcludePreset.All).
+    private (CheckBox box, string id)[] _presetBoxes = Array.Empty<(CheckBox, string)>();
     private readonly List<AppEntry> _allApps = new();
     private string _appFilter = "";
 
     // Bound by x:Bind in the XAML.
     public ObservableCollection<FolderPair> Folders => _cfg.Folders;
+    public ObservableCollection<ExcludeItem> Excludes => _cfg.Excludes;
     public ObservableCollection<AppEntry> AppRows { get; } = new();
 
     public MainWindow()
@@ -79,8 +84,13 @@ public sealed partial class MainWindow : Window
         TxtDest.Text = _cfg.Dest;
         RbMirror.IsChecked = _cfg.Mode == "Mirror";
         RbAdditive.IsChecked = _cfg.Mode != "Mirror";
-        TxtExDirs.Text = _cfg.ExcludeDirs;
-        TxtExFiles.Text = _cfg.ExcludeFiles;
+        _presetBoxes = new[]
+        {
+            (ChkExTemp, "temp"), (ChkExSystem, "system"),
+            (ChkExDev, "dev"), (ChkExCache, "cache"),
+        };
+        foreach (var (box, id) in _presetBoxes)
+            box.IsChecked = _cfg.ExcludePresets.Contains(id);
         ChkVersioned.IsChecked = _cfg.Versioned;
         NumVersionsKeep.Value = _cfg.VersionsToKeep;
         UpdateVersionedEnabledState();
@@ -117,6 +127,7 @@ public sealed partial class MainWindow : Window
         AppListControl.GettingFocus += OnAppListGettingFocus;
 
         WireFolderDirty();
+        WireExcludeDirty();
         RefreshNextRun();
 
         // Initial population fired the dirty handlers; reset so the status
@@ -189,6 +200,11 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnFolderItemChanged(object? s, PropertyChangedEventArgs e) { _dirty = true; RefreshScriptStatus(); }
+
+    private void WireExcludeDirty()
+    {
+        _cfg.Excludes.CollectionChanged += (_, _) => { _dirty = true; RefreshScriptStatus(); };
+    }
 
     private void OnFolderListGotFocus(object sender, RoutedEventArgs e)
     {
@@ -277,8 +293,11 @@ public sealed partial class MainWindow : Window
     {
         _cfg.Dest = (TxtDest.Text ?? "").Trim();
         _cfg.Mode = RbMirror.IsChecked == true ? "Mirror" : "Additive";
-        _cfg.ExcludeDirs = TxtExDirs.Text;
-        _cfg.ExcludeFiles = TxtExFiles.Text;
+        // Custom exclusions already live in _cfg.Excludes via two-way binding;
+        // only the preset checkboxes need harvesting.
+        _cfg.ExcludePresets = new List<string>();
+        foreach (var (box, id) in _presetBoxes)
+            if (box.IsChecked == true) _cfg.ExcludePresets.Add(id);
         _cfg.Versioned = ChkVersioned.IsChecked == true;
         // NumberBox.Value is NaN while the field is cleared; fall back to the
         // last saved count rather than writing NaN into the keep count.
@@ -440,6 +459,28 @@ public sealed partial class MainWindow : Window
             _cfg.Folders.Remove(f);
             _currentFolder = null;
         }
+    }
+
+    // =====================================================================
+    //  EXCLUSION ADD / REMOVE
+    // =====================================================================
+    private async void OnAddExclude(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Views.ExcludeDialog { XamlRoot = Content.XamlRoot };
+        var result = await ShowDialogAsync(dlg);
+        if (result == ContentDialogResult.Primary)
+            _cfg.Excludes.Add(new ExcludeItem(dlg.IsFolder, dlg.Pattern));
+    }
+
+    private async void OnRemoveExclude(object sender, RoutedEventArgs e)
+    {
+        if (ExcludeList.SelectedItem is not ExcludeItem x)
+        {
+            await ShowMessageAsync("GUARD", "Select the exclusion you want to remove in the custom exclusions list, then press Remove Exclusion.");
+            return;
+        }
+        if (await ShowConfirmAsync("GUARD", "Remove this exclusion?\n\n" + x.Caption))
+            _cfg.Excludes.Remove(x);
     }
 
     // =====================================================================
