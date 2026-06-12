@@ -107,6 +107,64 @@
                                     Click="OnRemoveFolder" />
                         </StackPanel>
 
+                        <!-- Exclusions. Curated preset checkboxes cover the common
+                             cases with no wildcard typing; anything else goes through
+                             the Add Exclusion builder dialog into the custom list
+                             (checkbox rows, same screen-reader idiom as the folder
+                             list, so unticking pauses an exclusion without deleting
+                             it). Tooltips carry each preset's full pattern list. -->
+                        <TextBlock Text="Exclude from backup" FontWeight="SemiBold" Margin="0,12,0,0" />
+                        <!-- The automation name promotes this panel to a named UIA
+                             group (like DayGroup), so a screen reader announces
+                             "Exclude from backup" once when focus enters the
+                             checkboxes and stays quiet while moving inside. One
+                             full-width column so each label can enumerate every
+                             pattern it covers; tooltips carry the semantics. -->
+                        <StackPanel AutomationProperties.Name="Exclude from backup">
+                            <CheckBox x:Name="ChkExTemp"
+                                      Content="Temporary files (*.tmp, *.bak, ~$* lock files)"
+                                      ToolTipService.ToolTip="Skips *.tmp and *.bak files and Office lock files (~$*) everywhere."
+                                      Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                            <CheckBox x:Name="ChkExSystem"
+                                      Content="System clutter (Thumbs.db, desktop.ini, .DS_Store, $RECYCLE.BIN, System Volume Information)"
+                                      ToolTipService.ToolTip="Skips Thumbs.db, desktop.ini and .DS_Store files, and the $RECYCLE.BIN and System Volume Information folders."
+                                      Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                            <CheckBox x:Name="ChkExDev"
+                                      Content="Developer folders (node_modules, .git, bin, obj, .vs)"
+                                      ToolTipService.ToolTip="Skips folders with these names wherever they appear."
+                                      Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                            <CheckBox x:Name="ChkExCache"
+                                      Content="Caches and disc images (cache and .cache folders, *.iso, *.img)"
+                                      ToolTipService.ToolTip="Skips folders named cache or .cache wherever they appear, and *.iso and *.img files."
+                                      Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                        </StackPanel>
+                        <TextBlock Text="Custom exclusions:" Margin="0,4,0,0" />
+                        <!-- A plain single-select ListView, unlike the checkbox-row
+                             lists elsewhere: these entries carry no per-row state to
+                             announce (Add/Remove is the whole interaction), so the
+                             native list idiom - one tab stop, arrows move selection,
+                             "x of y" position reporting - is the clearer fit. -->
+                        <Border BorderThickness="1" Height="92" CornerRadius="4"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                            <ListView x:Name="ExcludeList" ItemsSource="{x:Bind Excludes}"
+                                      AutomationProperties.Name="Custom exclusions"
+                                      SelectionMode="Single">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ExcludeItem">
+                                        <TextBlock Text="{x:Bind Caption}" />
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                            <Button Content="Add Exclusion..." AccessKey="E"
+                                    Click="OnAddExclude" />
+                            <Button Content="Remove Exclusion" AccessKey="X"
+                                    ToolTipService.ToolTip="Remove the selected exclusion from the list"
+                                    Click="OnRemoveExclude" />
+                        </StackPanel>
+
                         <!-- Mode. RadioButtons (the container) gives arrow-key
                              selection-follows-focus and a single tab stop, unlike
                              individual GroupName-tied RadioButtons. -->
@@ -130,23 +188,23 @@
                                          Content="Mirror  (make the destination match the source exactly; files deleted from the source are also deleted at the destination)" />
                         </RadioButtons>
 
-                        <!-- Excludes -->
-                        <Grid Margin="0,8,0,0" ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtExDirs" Grid.Column="0" Header="Exclude folder names (one per line):"
-                                     AcceptsReturn="True" Height="80" TextWrapping="NoWrap"
-                                     ToolTipService.ToolTip="One name or pattern per line. Wildcards work: * matches any text, ? matches one character (e.g. node_modules, temp*)."
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     TextChanged="OnDirtyChanged" />
-                            <TextBox x:Name="TxtExFiles" Grid.Column="1" Header="Exclude file names (one per line):"
-                                     AcceptsReturn="True" Height="80" TextWrapping="NoWrap"
-                                     ToolTipService.ToolTip="One name or pattern per line. Wildcards work: * matches any text, ? matches one character (e.g. *.iso, *.tmp, ~$*)."
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     TextChanged="OnDirtyChanged" />
-                        </Grid>
+                        <!-- Versioning. The keep-count NumberBox sits on the same row
+                             as the checkbox (labelled by the adjacent TextBlock, whose
+                             text the AutomationProperties.Name matches) and greys out
+                             while the box is off, mirroring the schedule pattern. -->
+                        <TextBlock Text="Versioning" FontWeight="SemiBold" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <CheckBox x:Name="ChkVersioned" Content="Keep dated backup versions" IsChecked="False" AccessKey="V"
+                                      VerticalAlignment="Center"
+                                      ToolTipService.ToolTip="Each run copies into a dated folder (like 2026-06-10) inside the destination, and the oldest dated folders beyond the keep count are removed after a successful run."
+                                      Checked="OnVersionedChanged" Unchecked="OnVersionedChanged" />
+                            <TextBlock Text="Versions to keep:" VerticalAlignment="Center" Margin="16,0,0,0" />
+                            <NumberBox x:Name="NumVersionsKeep" AccessKey="K" VerticalAlignment="Center"
+                                       AutomationProperties.Name="Versions to keep"
+                                       Minimum="1" Maximum="365" Value="5" SmallChange="1"
+                                       SpinButtonPlacementMode="Compact" HorizontalAlignment="Left" MinWidth="100"
+                                       ValueChanged="OnVersionsKeepChanged" />
+                        </StackPanel>
 
                         <!-- Schedule. Save Settings is the single source of truth:
                              ticking this box and saving registers the task; unticking
@@ -189,6 +247,14 @@
                                             SelectedTimeChanged="OnScheduleTimeChanged" />
                             </StackPanel>
                         </StackPanel>
+                        <!-- Deliberately outside ScheduleConfig: this is its own
+                             trigger (a second scheduled task), usable with or
+                             without the day/time schedule, so it must not grey
+                             out when "Run a scheduled backup" is off. -->
+                        <CheckBox x:Name="ChkOnConnect" AccessKey="W" Margin="0,4,0,0"
+                                  Content="Automatically run when the backup destination becomes available (checks every 15 min)"
+                                  ToolTipService.ToolTip="Adds a second scheduled task that quietly checks for the destination every 15 minutes and at sign-in, and runs the backup at most once per day when it is reachable. Works for external drives and network shares, with or without the day/time schedule."
+                                  Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
                         <TextBlock x:Name="LblNextRun" Text="Next run: (unknown)" Margin="0,4,0,0" />
 
                         <!-- Actions -->

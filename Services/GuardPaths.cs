@@ -23,6 +23,8 @@ public static class GuardPaths
     public const string FileTaskName = "GUARD Backup";
     // Pre-0.3 name; removed on every save so upgraders don't keep a stale task.
     public const string LegacyFileTaskName = "Daily GUARD Backup";
+    // Second task: periodic check that backs up when the destination appears.
+    public const string OnConnectTaskName = "GUARD On-Connect Backup";
     public const string AppListFileName = "app-list.json";
     // MinVer derives the version from the latest vX.Y.Z git tag at build time, so
     // releases never need a hand-edited constant. The informational version is the
