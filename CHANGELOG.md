@@ -16,8 +16,9 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   its tab's other actions and is enabled only while its job is running, and the
   output box and progress line report the cancellation instead of going silent.
   Keyboard focus follows the job: starting one moves focus to its Stop button,
-  and when it ends focus returns to the button that started it, with the
-  end-of-job summary or cancellation message spoken by screen readers.
+  and when it ends focus returns to the button that started it. Screen readers
+  hear the job begin (the first progress update) and end (the summary or
+  cancellation message).
 - A persistent status bar at the bottom of the window. It shows the active
   tab's status (the settings saved/unsaved line on File Backup, the scan or
   import summary on App Inventory) and, while a backup or reinstall is running,
@@ -67,6 +68,9 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ### Changed
 - The output consoles on both tabs now scroll automatically to the newest line
   while a backup or reinstall is running, without moving keyboard focus.
+- Exporting an app list no longer overwrites an existing app-list.json at the
+  destination: when one is already there, the new export is written to the
+  first free numbered name (app-list-1.json, app-list-2.json, and so on).
 - Reworked the exclude UI so no wildcard typing is needed for the common cases:
   four one-tick preset checkboxes (temporary files, system clutter, developer
   folders, caches and disc images) replace the free-text boxes, and anything

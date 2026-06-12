@@ -367,6 +367,19 @@ public sealed partial class MainWindow : Window
         catch { }
     }
 
+    // AnnounceNotification after a short settle delay. A job's start and end
+    // move keyboard focus (to and from the Stop button), and a screen reader
+    // cancels whatever it is speaking when a focus event arrives - so a
+    // notification raised in the same instant as the focus change gets cut
+    // off (short messages survived, long summaries read as silence). The
+    // delay lets the focus announcement begin first; ImportantMostRecent then
+    // interrupts that short button name with the message that matters.
+    private async void AnnounceSettled(UIElement el, string text)
+    {
+        await System.Threading.Tasks.Task.Delay(800);
+        DispatcherQueue.TryEnqueue(() => AnnounceNotification(el, text));
+    }
+
     private static void Announce(UIElement el)
     {
         try
@@ -788,7 +801,15 @@ public sealed partial class MainWindow : Window
             });
         file.Apps = items.ToArray();
 
+        // Never overwrite an existing list: an export next to one picks the
+        // first free numbered name (app-list-1.json, app-list-2.json, ...),
+        // so repeated exports accumulate instead of silently replacing the
+        // previous snapshot.
         string path = Path.Combine(_cfg.AppListDest, GuardPaths.AppListFileName);
+        string stem = Path.GetFileNameWithoutExtension(GuardPaths.AppListFileName);
+        string ext = Path.GetExtension(GuardPaths.AppListFileName);
+        for (int n = 1; File.Exists(path); n++)
+            path = Path.Combine(_cfg.AppListDest, stem + "-" + n + ext);
         try
         {
             AppListIo.Write(path, file);
@@ -901,8 +922,10 @@ public sealed partial class MainWindow : Window
             {
                 if (ct.IsCancellationRequested) break;
                 var app = targets[i];
-                SetProgress(AppProgress, AppProgressLabel, targets.Count, i,
-                    "Installing: " + app.Name + " (" + (i + 1) + " of " + targets.Count + ")");
+                string installing = "Installing: " + app.Name + " (" + (i + 1) + " of " + targets.Count + ")";
+                SetProgress(AppProgress, AppProgressLabel, targets.Count, i, installing);
+                // First item only, like the backup run's start announcement.
+                if (i == 0) AnnounceSettled(AppProgressLabel, installing);
                 AppendOut(TxtAppOutput, "\r\n=== Installing " + app.Name + "  [" + app.Id + "] ===\r\n");
                 int code;
                 try { code = ProcessRunner.RunWingetInstall(app.Id, s => AppendOut(TxtAppOutput, s), ct); }
@@ -941,9 +964,7 @@ public sealed partial class MainWindow : Window
             launcher.Focus(FocusState.Programmatic);
         BtnAppStop.IsEnabled = false;
         ShowStatusBarProgress(false);
-        string appSpoken = AppProgressLabel.Text;
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => AnnounceNotification(AppProgressLabel, appSpoken));
+        AnnounceSettled(AppProgressLabel, AppProgressLabel.Text);
     }
 
     private void OnStopReinstall(object sender, RoutedEventArgs e) => _reinstallCts?.Cancel();
@@ -1044,14 +1065,8 @@ public sealed partial class MainWindow : Window
             _runCts = null;
             SetFileBusy(false);
         }
-        // Spoken last, at Low priority so it runs after the focus restore in
-        // SetFileBusy and the focus announcement that triggers; the
-        // notification's ImportantMostRecent processing then interrupts that
-        // short button announcement rather than the other way round.
         string? spoken = ct.IsCancellationRequested ? "Backup cancelled." : _runDoneAnnounce;
-        if (spoken != null)
-            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () => AnnounceNotification(FileProgressLabel, spoken));
+        if (spoken != null) AnnounceSettled(FileProgressLabel, spoken);
     }
 
     private void OnStopBackup(object sender, RoutedEventArgs e) => _runCts?.Cancel();
@@ -1133,7 +1148,12 @@ public sealed partial class MainWindow : Window
                 int tot = int.Parse(m.Groups[2].Value);
                 string nm = m.Groups[3].Value.Trim();
                 _progTotal = tot;
-                SetProgress(FileProgress, FileProgressLabel, tot, n - 1, "Backing up: " + nm + " (" + n + " of " + tot + ")");
+                string prog = "Backing up: " + nm + " (" + n + " of " + tot + ")";
+                SetProgress(FileProgress, FileProgressLabel, tot, n - 1, prog);
+                // Speak the first progress line so a screen-reader user hears
+                // the run actually begin; the rest of the stream stays silent
+                // (a per-folder announcement stream would be noisy).
+                if (n == 1) AnnounceSettled(FileProgressLabel, prog);
             }
             return;
         }
