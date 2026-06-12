@@ -128,10 +128,12 @@ public static class AppSettingsExport
         return ordered;
     }
 
-    // Size pre-scan for the confirmation list. Capped so a huge tree cannot
-    // stall the UI flow for minutes; when the cap is hit the result is marked
-    // partial and shown as a floor ("at least ...").
-    public static void MeasureCandidate(AppSettingsCandidate c, int maxFiles = 5000, int maxMs = 2500)
+    // Size pre-scan for the confirmation list. Runs in the background after
+    // the dialog opens (rows show "Calculating..." meanwhile), so the caps can
+    // be generous; they remain only so one pathological tree cannot spin the
+    // scan forever. When a cap is hit the result is marked partial and shown
+    // as a floor ("at least ...").
+    public static void MeasureCandidate(AppSettingsCandidate c, int maxFiles = 200_000, int maxMs = 15_000)
     {
         long bytes = 0; int files = 0; bool partial = false;
         var sw = Stopwatch.StartNew();

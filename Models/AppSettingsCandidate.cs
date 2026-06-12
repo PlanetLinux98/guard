@@ -29,9 +29,23 @@ public sealed class AppSettingsCandidate : INotifyPropertyChanged
     // not a total; surfaced as "at least" so the user is never misled.
     public bool SizePartial { get; set; }
 
+    // Sizes are measured in the background after the dialog opens, so the row
+    // shows "Calculating..." until its measurement lands. Measured flips (and
+    // the bound labels refresh) via NotifyMeasured, which the dialog calls on
+    // the UI thread.
+    public bool Measured { get; private set; }
+    public void NotifyMeasured()
+    {
+        Measured = true;
+        OnChanged(nameof(SizeLabel));
+        OnChanged(nameof(Caption));
+    }
+
     public string DisplayPath => RootName + "\\" + FolderName;
     public string MatchedAppsLabel => string.Join(", ", MatchedApps);
-    public string SizeLabel => (SizePartial ? "at least " : "") + FormatBytes(Bytes);
+    public string SizeLabel => Measured
+        ? (SizePartial ? "at least " : "") + FormatBytes(Bytes)
+        : "Calculating...";
 
     // Spoken name for the row's checkbox (checked state announced by the role).
     public string Caption =>

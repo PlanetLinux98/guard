@@ -34,8 +34,11 @@ public sealed class Settings
     public bool TriggerOnConnect = false;
     public ObservableCollection<FolderPair> Folders = new();
 
-    // App Inventory tab: where the exported app-list.json is written.
+    // App Management tab: where the exported app-list.json is written, and
+    // whether Export also copies the ticked apps' settings folders alongside
+    // the list (off by default; the settings copy adds a confirmation step).
     public string AppListDest = "";
+    public bool ExportAppSettings = false;
 
     // The robocopy /XD and /XF token lists: ticked presets first, then active
     // custom entries, de-duplicated case-insensitively.

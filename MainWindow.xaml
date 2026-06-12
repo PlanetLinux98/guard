@@ -320,13 +320,13 @@
                 </ScrollViewer>
             </PivotItem>
 
-            <!-- ============================ APP INVENTORY ============================ -->
-            <PivotItem Header="App Inventory">
+            <!-- ============================ APP MANAGEMENT ============================ -->
+            <PivotItem Header="App Management">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Width="720" HorizontalAlignment="Left" Margin="14" Spacing="6">
 
                         <TextBlock TextWrapping="Wrap" Margin="0,0,0,8"
-                                   Text="Installed apps are read from the Windows uninstall registry, and cross-checked against winget when it is available. Apps winget can reinstall are marked &quot;Winget&quot;; the rest are marked &quot;Manual&quot;. Tick the apps you want to keep, then Export the list to your chosen destination. After an OS reinstall, Import the list and Reinstall Selected to put the Winget ones back automatically. The exported file is plain JSON, so you can also open it to read your app list by hand." />
+                                   Text="Installed apps are read from the Windows uninstall registry, and cross-checked against winget when it is available. Apps winget can reinstall are marked &quot;Winget&quot;; the rest are marked &quot;Manual&quot;. Tick the apps you want to keep, then press Export to save the list to your chosen destination - tick &quot;Also export app settings&quot; first to copy the apps' settings folders alongside it. After an OS reinstall, Import the list and Reinstall Selected to put the Winget ones back automatically. The exported file is plain JSON, so you can also open it to read your app list by hand." />
 
                         <!-- Export destination -->
                         <Grid>
@@ -419,10 +419,17 @@
                             </ScrollViewer>
                         </Border>
 
+                        <!-- One Export action covers the list and (optionally) the apps'
+                             settings folders; the checkbox sits above the buttons so the
+                             option is read before the action that uses it. -->
+                        <CheckBox x:Name="ChkExportSettings" Margin="0,6,0,0" AccessKey="A"
+                                  Content="Also export app settings"
+                                  ToolTipService.ToolTip="When ticked, Export also finds the ticked apps' settings folders and copies them alongside the app list, after you confirm the matches" />
+
                         <!-- Actions -->
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-                            <Button x:Name="BtnAppExport" Content="Export List" AccessKey="E"
-                                    ToolTipService.ToolTip="Export the ticked apps to the destination"
+                            <Button x:Name="BtnAppExport" Content="Export" AccessKey="E"
+                                    ToolTipService.ToolTip="Export the ticked apps to the destination as a JSON list, plus their settings folders when the option above is ticked"
                                     Click="OnExportApps" />
                             <Button x:Name="BtnAppImport" Content="Import List" AccessKey="I"
                                     ToolTipService.ToolTip="Import an app list from a file"
@@ -430,9 +437,6 @@
                             <Button x:Name="BtnAppReinstall" Content="Reinstall Selected" AccessKey="S"
                                     ToolTipService.ToolTip="Reinstall the ticked Winget apps"
                                     Click="OnReinstall" />
-                            <Button x:Name="BtnAppSettings" Content="Export App Settings..." AccessKey="A"
-                                    ToolTipService.ToolTip="Find the ticked apps' settings folders and copy them alongside the app list, after you confirm the matches"
-                                    Click="OnExportAppSettings" />
                             <!-- Always present, enabled only while a reinstall runs;
                                  same discoverability reasoning as Stop Backup. -->
                             <Button x:Name="BtnAppStop" Content="Stop Reinstall" AccessKey="C" IsEnabled="False"
@@ -464,7 +468,7 @@
     </Pivot>
 
         <!-- Status bar. Shows the active tab's status (settings state on File
-             Backup, scan/import summary on App Inventory); the right-hand
+             Backup, scan/import summary on App Management); the right-hand
              progress area mirrors a running job so it stays visible even when
              the in-tab progress area is scrolled away or on the other tab.
              StatusBarText is the single live region for status announcements,
@@ -489,7 +493,7 @@
                 </Grid.ColumnDefinitions>
                 <!-- Colour reinforces the saved/unsaved state but never carries
                      it alone; the text always says it in words. Hidden on the
-                     App Inventory tab, where that semantic does not apply. -->
+                     App Management tab, where that semantic does not apply. -->
                 <Ellipse x:Name="StatusDot" Grid.Column="0" Width="10" Height="10"
                          VerticalAlignment="Center" />
                 <!-- No AutomationProperties.Name: an explicit name overrides the
