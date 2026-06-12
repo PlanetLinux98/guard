@@ -367,16 +367,17 @@ public sealed partial class MainWindow : Window
         catch { }
     }
 
-    // AnnounceNotification after a short settle delay. A job's start and end
-    // move keyboard focus (to and from the Stop button), and a screen reader
-    // cancels whatever it is speaking when a focus event arrives - so a
-    // notification raised in the same instant as the focus change gets cut
-    // off (short messages survived, long summaries read as silence). The
-    // delay lets the focus announcement begin first; ImportantMostRecent then
-    // interrupts that short button name with the message that matters.
-    private async void AnnounceSettled(UIElement el, string text)
+    // AnnounceNotification after a settle delay. A job's start and end move
+    // keyboard focus (to and from the Stop button), and a screen reader
+    // cancels whatever it is speaking when it processes a focus event - so a
+    // notification raised too close to the focus change gets cut off (short
+    // messages survived, long summaries read as silence). The delay lets the
+    // focus announcement clear first. The start announcement works at 800ms
+    // because script startup already adds ~1s; the end announcement fires
+    // straight after the focus restore and needs the full two seconds.
+    private async void AnnounceSettled(UIElement el, string text, int delayMs = 800)
     {
-        await System.Threading.Tasks.Task.Delay(800);
+        await System.Threading.Tasks.Task.Delay(delayMs);
         DispatcherQueue.TryEnqueue(() => AnnounceNotification(el, text));
     }
 
@@ -964,7 +965,7 @@ public sealed partial class MainWindow : Window
             launcher.Focus(FocusState.Programmatic);
         BtnAppStop.IsEnabled = false;
         ShowStatusBarProgress(false);
-        AnnounceSettled(AppProgressLabel, AppProgressLabel.Text);
+        AnnounceSettled(AppProgressLabel, AppProgressLabel.Text, 2000);
     }
 
     private void OnStopReinstall(object sender, RoutedEventArgs e) => _reinstallCts?.Cancel();
@@ -1066,7 +1067,7 @@ public sealed partial class MainWindow : Window
             SetFileBusy(false);
         }
         string? spoken = ct.IsCancellationRequested ? "Backup cancelled." : _runDoneAnnounce;
-        if (spoken != null) AnnounceSettled(FileProgressLabel, spoken);
+        if (spoken != null) AnnounceSettled(FileProgressLabel, spoken, 2000);
     }
 
     private void OnStopBackup(object sender, RoutedEventArgs e) => _runCts?.Cancel();
