@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:GuardWui3.Models"
+    xmlns:views="using:GuardWui3.Views"
     Title="GUARD">
 
     <Window.SystemBackdrop>
@@ -301,11 +302,12 @@
                              in the window status bar below the tabs. -->
 
                         <!-- Progress + output -->
-                        <!-- Live region (the end-of-run summary is announced through
-                             it); no explicit Name, or announcements would read the
-                             label instead of the summary. -->
+                        <!-- Not a live region: the end-of-run summary and the
+                             cancellation message are spoken via a UIA notification
+                             (AnnounceNotification), which carries its text in the
+                             event and is more reliable for one-shot messages. -->
                         <TextBlock x:Name="FileProgressLabel" Margin="0,8,0,2"
-                                   AutomationProperties.LiveSetting="Polite" />
+                                   AutomationProperties.Name="Backup progress" />
                         <ProgressBar x:Name="FileProgress" Minimum="0" Maximum="1" Value="0"
                                      AutomationProperties.Name="Backup progress bar" />
                         <TextBlock Text="Output:" Margin="0,8,0,2" />
@@ -475,6 +477,9 @@
         <Border Grid.Row="1" BorderThickness="0,1,0,0" Padding="14,6"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <!-- StatusBarHost exposes the bar to UIA as control type StatusBar,
+                 so NVDA's read-status-bar command (NVDA+End) can find it. -->
+            <views:StatusBarHost HorizontalContentAlignment="Stretch">
             <Grid ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -503,6 +508,7 @@
                                  AutomationProperties.Name="Running job progress bar" />
                 </StackPanel>
             </Grid>
+            </views:StatusBarHost>
         </Border>
     </Grid>
 </Window>

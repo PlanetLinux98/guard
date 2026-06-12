@@ -341,6 +341,25 @@ public sealed partial class MainWindow : Window
         if (Tabs.SelectedIndex == 1) Announce(StatusBarText);
     }
 
+    // One-shot spoken messages (end-of-run summary, cancellations) use a UIA
+    // notification instead of a live region: the notification carries its text
+    // inside the event, so the screen reader speaks exactly that string with no
+    // dependency on when the element's UIA Name catches up - live-region events
+    // on a just-updated TextBlock can be dropped or read stale.
+    private static void AnnounceNotification(UIElement el, string text)
+    {
+        try
+        {
+            var peer = FrameworkElementAutomationPeer.FromElement(el)
+                       ?? FrameworkElementAutomationPeer.CreatePeerForElement(el);
+            peer?.RaiseNotificationEvent(
+                AutomationNotificationKind.ActionCompleted,
+                AutomationNotificationProcessing.ImportantMostRecent,
+                text, "GuardJobDone");
+        }
+        catch { }
+    }
+
     private static void Announce(UIElement el)
     {
         try
@@ -890,12 +909,14 @@ public sealed partial class MainWindow : Window
         if (ct.IsCancellationRequested)
         {
             AppProgressLabel.Text = "Cancelled after " + attempted + " of " + targets.Count + " app(s).";
+            AnnounceNotification(AppProgressLabel, AppProgressLabel.Text);
             AppendOut(TxtAppOutput, "\r\n--- Cancelled by user after " + attempted + " of " + targets.Count +
                 " app(s): " + ok + " installed, " + fail + " failed. Apps already installed stay installed. ---\r\n");
         }
         else
         {
             AppProgressLabel.Text = "Done. " + ok + " installed, " + fail + " failed.";
+            AnnounceNotification(AppProgressLabel, AppProgressLabel.Text);
             AppendOut(TxtAppOutput, "\r\n--- Reinstall complete: " + ok + " installed, " + fail + " failed ---\r\n");
         }
         _reinstalling = false;
@@ -982,7 +1003,11 @@ public sealed partial class MainWindow : Window
                 // update the output handlers enqueued during the drain above;
                 // a direct set could be overwritten by a stale "Backing up"
                 // line still sitting in the queue.
-                DispatcherQueue.TryEnqueue(() => FileProgressLabel.Text = "Backup cancelled.");
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    FileProgressLabel.Text = "Backup cancelled.";
+                    AnnounceNotification(FileProgressLabel, "Backup cancelled.");
+                });
             }
             else
             {
@@ -1043,7 +1068,7 @@ public sealed partial class MainWindow : Window
                 SetProgress(FileProgress, FileProgressLabel, _progTotal > 0 ? _progTotal : 1, _progTotal, done);
                 // One announcement per run, after the label text lands (both go
                 // through the same dispatcher queue, so ordering is guaranteed).
-                DispatcherQueue.TryEnqueue(() => Announce(FileProgressLabel));
+                DispatcherQueue.TryEnqueue(() => AnnounceNotification(FileProgressLabel, done));
                 return;
             }
             var m = Regex.Match(rest, "^(\\d+)\\s+(\\d+)\\s*(.*)$");
