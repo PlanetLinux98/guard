@@ -419,13 +419,6 @@
                             </ScrollViewer>
                         </Border>
 
-                        <!-- In-place copy of the scan/import summary, kept next to
-                             the list it describes; the status bar mirrors it and is
-                             the live region that announces changes, so this one is
-                             deliberately not live (no double announcement). -->
-                        <TextBlock x:Name="AppStatus" Text="Open this tab to scan installed apps." Margin="0,4,0,0"
-                                   AutomationProperties.Name="Inventory status" />
-
                         <!-- Actions -->
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
                             <Button x:Name="BtnAppExport" Content="Export List" AccessKey="E"
@@ -471,9 +464,9 @@
              Backup, scan/import summary on App Inventory); the right-hand
              progress area mirrors a running job so it stays visible even when
              the in-tab progress area is scrolled away or on the other tab.
-             StatusBarText is the single live region for status announcements -
-             the in-tab inventory summary mirrors it but is deliberately not
-             live, so each change is announced exactly once. -->
+             StatusBarText is the single live region for status announcements,
+             and the bar is the only home of the inventory scan/import summary,
+             so each change is announced exactly once. -->
         <Border Grid.Row="1" BorderThickness="0,1,0,0" Padding="14,6"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">

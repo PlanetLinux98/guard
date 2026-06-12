@@ -41,6 +41,10 @@ public sealed partial class MainWindow : Window
     private RobocopySummaryParser? _summaryParser;
     private bool _runIsPreview;
 
+    // End-of-run summary held back until the run's focus churn settles; see
+    // SetFileBusy for why announcing earlier loses the speech.
+    private string? _runDoneAnnounce;
+
     // Save reentrancy guard (the save is now async and non-blocking, so the
     // button can be pressed again mid-save) and the staleness counter for the
     // background space/size status check.
@@ -71,6 +75,11 @@ public sealed partial class MainWindow : Window
     // them. OnSave folds these into its dialog; RunScript prints them in the
     // output box instead so the run is not interrupted by a modal.
     private List<string> _missingSources = new();
+
+    // The App Inventory scan/import summary; the status bar is its only home
+    // (an in-place copy under the list was removed as redundant), so it lives
+    // here for repainting the bar on tab switches.
+    private string _appStatusText = "Open this tab to scan installed apps.";
 
     private bool _appScanned;
     private bool _scanning;
@@ -326,15 +335,13 @@ public sealed partial class MainWindow : Window
             // The dot's saved/unsaved colour semantic does not apply to the
             // inventory summary; hide it rather than show a meaningless colour.
             StatusDot.Visibility = Visibility.Collapsed;
-            StatusBarText.Text = AppStatus.Text;
+            StatusBarText.Text = _appStatusText;
         }
     }
 
-    // Inventory status lives in two places: the in-place summary above the
-    // action row (context while working the list) and the status bar. Only the
-    // bar is a live region, so route announcements through it - and only while
-    // App Inventory is the active tab, since the bar shows the file status
-    // otherwise (the result is still visible in both places on switching back).
+    // Inventory status lives in the status bar (its single home); announce
+    // only while App Inventory is the active tab, since the bar shows the
+    // file status otherwise (the text repaints on switching back regardless).
     private void AnnounceAppStatus()
     {
         UpdateStatusBar();
@@ -643,7 +650,7 @@ public sealed partial class MainWindow : Window
         if (_scanning) return;
         _scanning = true;
         SetAppBusy(true);
-        AppStatus.Text = "Scanning installed apps (this can take a few seconds)...";
+        _appStatusText = "Scanning installed apps (this can take a few seconds)...";
         AnnounceAppStatus();
 
         var th = new Thread(() =>
@@ -653,7 +660,7 @@ public sealed partial class MainWindow : Window
             catch (Exception ex) { err = ex.Message; }
             DispatcherQueue.TryEnqueue(() =>
             {
-                if (err != null) { AppStatus.Text = "Scan failed: " + err; }
+                if (err != null) { _appStatusText = "Scan failed: " + err; }
                 else if (res != null)
                 {
                     _wingetAvailable = res.WingetAvailable;
@@ -662,9 +669,9 @@ public sealed partial class MainWindow : Window
                     int auto = 0, man = 0;
                     foreach (var a in res.Apps) { if (a.CanAuto) auto++; else man++; }
                     if (_wingetAvailable)
-                        AppStatus.Text = res.Apps.Count + " apps found. " + auto + " reinstallable via winget, " + man + " manual.";
+                        _appStatusText = res.Apps.Count + " apps found. " + auto + " reinstallable via winget, " + man + " manual.";
                     else
-                        AppStatus.Text = res.Apps.Count + " apps found. winget is not installed, so apps cannot be reinstalled automatically. You can still export the list for reference.";
+                        _appStatusText = res.Apps.Count + " apps found. winget is not installed, so apps cannot be reinstalled automatically. You can still export the list for reference.";
                     ApplyFilter();
                 }
                 _scanning = false; SetAppBusy(false);
@@ -713,8 +720,8 @@ public sealed partial class MainWindow : Window
         LblAppCount.Text = text;
         // Announce the new count only while the user is typing in the filter box
         // (where it is the immediate feedback they need); a scan or import already
-        // announces its own summary through AppStatus, so speaking the count there
-        // too would double up. Identical counts across keystrokes stay silent
+        // announces its own summary through the status bar, so speaking the count
+        // there too would double up. Identical counts across keystrokes stay silent
         // because the text has not changed.
         if (TxtAppFilter.FocusState != FocusState.Unfocused)
             Announce(LblAppCount);
@@ -839,7 +846,7 @@ public sealed partial class MainWindow : Window
         ApplyFilter();
         string mac = f.Machine ?? "?";
         string exp = f.Exported ?? "";
-        AppStatus.Text = "Imported " + f.Apps.Length + " apps from " + mac +
+        _appStatusText = "Imported " + f.Apps.Length + " apps from " + mac +
             (exp.Length > 0 ? " (" + exp + ")" : "") + ". " + auto + " reinstallable, " + man + " manual.";
         AnnounceAppStatus();
     }
@@ -875,8 +882,14 @@ public sealed partial class MainWindow : Window
         _reinstalling = true;
         _reinstallCts = new CancellationTokenSource();
         var ct = _reinstallCts.Token;
-        SetAppBusy(true);
+        // Same focus discipline as SetFileBusy: enable Stop and hand it focus
+        // before SetAppBusy greys out the button that launched the job, so
+        // focus never gets thrown at an arbitrary neighbour.
         BtnAppStop.IsEnabled = true;
+        var launcher = FocusManager.GetFocusedElement(Content.XamlRoot) as Control;
+        if (launcher == BtnAppReinstall) BtnAppStop.Focus(FocusState.Programmatic);
+        else launcher = null;
+        SetAppBusy(true);
         TxtAppOutput.Text = "";
         SetProgress(AppProgress, AppProgressLabel, targets.Count, 0, "Starting...");
         ShowStatusBarProgress(true);
@@ -909,22 +922,28 @@ public sealed partial class MainWindow : Window
         if (ct.IsCancellationRequested)
         {
             AppProgressLabel.Text = "Cancelled after " + attempted + " of " + targets.Count + " app(s).";
-            AnnounceNotification(AppProgressLabel, AppProgressLabel.Text);
             AppendOut(TxtAppOutput, "\r\n--- Cancelled by user after " + attempted + " of " + targets.Count +
                 " app(s): " + ok + " installed, " + fail + " failed. Apps already installed stay installed. ---\r\n");
         }
         else
         {
             AppProgressLabel.Text = "Done. " + ok + " installed, " + fail + " failed.";
-            AnnounceNotification(AppProgressLabel, AppProgressLabel.Text);
             AppendOut(TxtAppOutput, "\r\n--- Reinstall complete: " + ok + " installed, " + fail + " failed ---\r\n");
         }
         _reinstalling = false;
         _reinstallCts.Dispose();
         _reinstallCts = null;
-        BtnAppStop.IsEnabled = false;
+        // Re-enable the launchers and put focus back on Reinstall before Stop
+        // greys out, then announce last (Low priority, after the focus events)
+        // so the focus announcement cannot cancel the summary speech.
         SetAppBusy(false);
+        if (launcher != null && ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnAppStop))
+            launcher.Focus(FocusState.Programmatic);
+        BtnAppStop.IsEnabled = false;
         ShowStatusBarProgress(false);
+        string appSpoken = AppProgressLabel.Text;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => AnnounceNotification(AppProgressLabel, appSpoken));
     }
 
     private void OnStopReinstall(object sender, RoutedEventArgs e) => _reinstallCts?.Cancel();
@@ -961,6 +980,7 @@ public sealed partial class MainWindow : Window
         _progTotal = 0;
         _summaryParser = new RobocopySummaryParser();
         _runIsPreview = arg == "test";
+        _runDoneAnnounce = null;
         SetProgress(FileProgress, FileProgressLabel, 1, 0, "");
         ShowStatusBarProgress(true);
 
@@ -1003,11 +1023,7 @@ public sealed partial class MainWindow : Window
                 // update the output handlers enqueued during the drain above;
                 // a direct set could be overwritten by a stale "Backing up"
                 // line still sitting in the queue.
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    FileProgressLabel.Text = "Backup cancelled.";
-                    AnnounceNotification(FileProgressLabel, "Backup cancelled.");
-                });
+                DispatcherQueue.TryEnqueue(() => FileProgressLabel.Text = "Backup cancelled.");
             }
             else
             {
@@ -1028,6 +1044,14 @@ public sealed partial class MainWindow : Window
             _runCts = null;
             SetFileBusy(false);
         }
+        // Spoken last, at Low priority so it runs after the focus restore in
+        // SetFileBusy and the focus announcement that triggers; the
+        // notification's ImportantMostRecent processing then interrupts that
+        // short button announcement rather than the other way round.
+        string? spoken = ct.IsCancellationRequested ? "Backup cancelled." : _runDoneAnnounce;
+        if (spoken != null)
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () => AnnounceNotification(FileProgressLabel, spoken));
     }
 
     private void OnStopBackup(object sender, RoutedEventArgs e) => _runCts?.Cancel();
@@ -1036,13 +1060,43 @@ public sealed partial class MainWindow : Window
     // included because it rewrites guard-backup.cmd, and cmd.exe reads batch
     // files incrementally, so rewriting one mid-run corrupts the run. The Stop
     // button is the inverse: only operable while something is running.
+    // The button that launched the current backup run, so focus can return to
+    // it when the run ends. Focus is managed explicitly around the enable /
+    // disable flips: disabling a focused button lets WinUI throw focus at an
+    // arbitrary neighbour (it landed on Open Last Log), and the screen
+    // reader's announcement of that surprise focus cancels whatever was being
+    // spoken - which ate the end-of-run summary.
+    private Control? _fileRunLauncher;
+
     private void SetFileBusy(bool busy)
     {
-        bool e = !busy;
-        BtnSave.IsEnabled = e;
-        BtnRunNow.IsEnabled = e;
-        BtnPreview.IsEnabled = e;
-        BtnStopBackup.IsEnabled = busy;
+        if (busy)
+        {
+            // Enable Stop and hand it focus before the launchers grey out;
+            // Stop is the one action available during the run.
+            BtnStopBackup.IsEnabled = true;
+            _fileRunLauncher = FocusManager.GetFocusedElement(Content.XamlRoot) as Control;
+            if (_fileRunLauncher == BtnSave || _fileRunLauncher == BtnRunNow || _fileRunLauncher == BtnPreview)
+                BtnStopBackup.Focus(FocusState.Programmatic);
+            else
+                _fileRunLauncher = null;
+            BtnSave.IsEnabled = false;
+            BtnRunNow.IsEnabled = false;
+            BtnPreview.IsEnabled = false;
+        }
+        else
+        {
+            BtnSave.IsEnabled = true;
+            BtnRunNow.IsEnabled = true;
+            BtnPreview.IsEnabled = true;
+            // Return focus to the launcher before Stop greys out, so rerunning
+            // is one keypress away and focus never lands somewhere arbitrary.
+            if (_fileRunLauncher != null &&
+                ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnStopBackup))
+                _fileRunLauncher.Focus(FocusState.Programmatic);
+            _fileRunLauncher = null;
+            BtnStopBackup.IsEnabled = false;
+        }
     }
 
     private void HandleScriptLine(string? data)
@@ -1066,9 +1120,10 @@ public sealed partial class MainWindow : Window
                     AppendOut(TxtOutput, "\r\n" + summary + "\r\n");
                 }
                 SetProgress(FileProgress, FileProgressLabel, _progTotal > 0 ? _progTotal : 1, _progTotal, done);
-                // One announcement per run, after the label text lands (both go
-                // through the same dispatcher queue, so ordering is guaranteed).
-                DispatcherQueue.TryEnqueue(() => AnnounceNotification(FileProgressLabel, done));
+                // Stashed, not announced here: the announcement waits until
+                // RunScript has finished its end-of-run focus handling, or the
+                // focus change would cancel the speech mid-summary.
+                _runDoneAnnounce = done;
                 return;
             }
             var m = Regex.Match(rest, "^(\\d+)\\s+(\\d+)\\s*(.*)$");
