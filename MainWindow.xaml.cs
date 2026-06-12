@@ -41,6 +41,12 @@ public sealed partial class MainWindow : Window
     private RobocopySummaryParser? _summaryParser;
     private bool _runIsPreview;
 
+    // Save reentrancy guard (the save is now async and non-blocking, so the
+    // button can be pressed again mid-save) and the staleness counter for the
+    // background space/size status check.
+    private bool _saving;
+    private int _spaceCheckSeq;
+
     // Only one ContentDialog may be open at a time; WinUI throws otherwise. An
     // access key on the main window (e.g. Alt+R for Remove Folder) still fires
     // while a dialog is up, so guard every show through this flag.
@@ -60,6 +66,12 @@ public sealed partial class MainWindow : Window
     // null if it succeeded; surfaced by OnSave after the save completes.
     private string? _taskError;
 
+    // Included sources that were unreachable at the last save. Advisory only:
+    // the generated script SKIPs them at run time, so a save never blocks on
+    // them. OnSave folds these into its dialog; RunScript prints them in the
+    // output box instead so the run is not interrupted by a modal.
+    private List<string> _missingSources = new();
+
     private bool _appScanned;
     private bool _scanning;
     private bool _reinstalling;
@@ -72,11 +84,16 @@ public sealed partial class MainWindow : Window
     private FolderPair? _currentFolder;
     private FrameworkElement? _lastFolderFocus;
     private FrameworkElement? _lastAppFocus;
+
+    // The four exclusion-preset checkboxes paired with the preset id each
+    // represents (see ExcludePreset.All).
+    private (CheckBox box, string id)[] _presetBoxes = Array.Empty<(CheckBox, string)>();
     private readonly List<AppEntry> _allApps = new();
     private string _appFilter = "";
 
     // Bound by x:Bind in the XAML.
     public ObservableCollection<FolderPair> Folders => _cfg.Folders;
+    public ObservableCollection<ExcludeItem> Excludes => _cfg.Excludes;
     public ObservableCollection<AppEntry> AppRows { get; } = new();
 
     public MainWindow()
@@ -93,9 +110,18 @@ public sealed partial class MainWindow : Window
         TxtDest.Text = _cfg.Dest;
         RbMirror.IsChecked = _cfg.Mode == "Mirror";
         RbAdditive.IsChecked = _cfg.Mode != "Mirror";
-        TxtExDirs.Text = _cfg.ExcludeDirs;
-        TxtExFiles.Text = _cfg.ExcludeFiles;
+        _presetBoxes = new[]
+        {
+            (ChkExTemp, "temp"), (ChkExSystem, "system"),
+            (ChkExDev, "dev"), (ChkExCache, "cache"),
+        };
+        foreach (var (box, id) in _presetBoxes)
+            box.IsChecked = _cfg.ExcludePresets.Contains(id);
+        ChkVersioned.IsChecked = _cfg.Versioned;
+        NumVersionsKeep.Value = _cfg.VersionsToKeep;
+        UpdateVersionedEnabledState();
         ChkSchedule.IsChecked = _cfg.ScheduleEnabled;
+        ChkOnConnect.IsChecked = _cfg.TriggerOnConnect;
         _dayBoxes = new[]
         {
             (ChkMon, DayOfWeek.Monday), (ChkTue, DayOfWeek.Tuesday),
@@ -127,6 +153,7 @@ public sealed partial class MainWindow : Window
         AppListControl.GettingFocus += OnAppListGettingFocus;
 
         WireFolderDirty();
+        WireExcludeDirty();
         RefreshNextRun();
 
         // Initial population fired the dirty handlers; reset so the status
@@ -174,6 +201,22 @@ public sealed partial class MainWindow : Window
     }
     private void OnScheduleTimeChanged(TimePicker sender, TimePickerSelectedValueChangedEventArgs args) { _dirty = true; RefreshScriptStatus(); }
 
+    // Like the schedule section, the versioning on/off box greys out its keep
+    // count so it is clear the count only applies when versioning is enabled.
+    private void OnVersionedChanged(object sender, RoutedEventArgs e)
+    {
+        _dirty = true;
+        UpdateVersionedEnabledState();
+        RefreshScriptStatus();
+    }
+
+    private void UpdateVersionedEnabledState()
+    {
+        if (NumVersionsKeep != null) NumVersionsKeep.IsEnabled = ChkVersioned.IsChecked == true;
+    }
+
+    private void OnVersionsKeepChanged(NumberBox sender, NumberBoxValueChangedEventArgs args) { _dirty = true; RefreshScriptStatus(); }
+
     private void WireFolderDirty()
     {
         _cfg.Folders.CollectionChanged += (_, e) =>
@@ -186,6 +229,11 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnFolderItemChanged(object? s, PropertyChangedEventArgs e) { _dirty = true; RefreshScriptStatus(); }
+
+    private void WireExcludeDirty()
+    {
+        _cfg.Excludes.CollectionChanged += (_, _) => { _dirty = true; RefreshScriptStatus(); };
+    }
 
     private void OnFolderListGotFocus(object sender, RoutedEventArgs e)
     {
@@ -227,24 +275,27 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
+    // Status-dot colors: green = saved and healthy, amber = needs attention
+    // (unsaved changes, nothing saved yet, or low destination space).
+    private static readonly Color StatusGreen = Color.FromArgb(0xFF, 0x3F, 0xB9, 0x50);
+    private static readonly Color StatusAmber = Color.FromArgb(0xFF, 0xD2, 0x99, 0x22);
+
     private void RefreshScriptStatus(bool announce = true)
     {
         if (StatusBarText == null) return;
-        var green = Color.FromArgb(0xFF, 0x3F, 0xB9, 0x50);
-        var amber = Color.FromArgb(0xFF, 0xD2, 0x99, 0x22);
         if (!File.Exists(GuardPaths.ScriptPath))
         {
-            _fileStatusBrush = new SolidColorBrush(amber);
+            _fileStatusBrush = new SolidColorBrush(StatusAmber);
             _fileStatusText = "No settings saved yet. Click Save Settings before running a backup.";
         }
         else if (_dirty)
         {
-            _fileStatusBrush = new SolidColorBrush(amber);
+            _fileStatusBrush = new SolidColorBrush(StatusAmber);
             _fileStatusText = "You have unsaved changes. Click Save Settings to apply them.";
         }
         else
         {
-            _fileStatusBrush = new SolidColorBrush(green);
+            _fileStatusBrush = new SolidColorBrush(StatusGreen);
             _fileStatusText = "Settings saved. Last updated " +
                 File.GetLastWriteTime(GuardPaths.ScriptPath).ToString("yyyy-MM-dd HH:mm") + ".";
         }
@@ -308,9 +359,18 @@ public sealed partial class MainWindow : Window
     {
         _cfg.Dest = (TxtDest.Text ?? "").Trim();
         _cfg.Mode = RbMirror.IsChecked == true ? "Mirror" : "Additive";
-        _cfg.ExcludeDirs = TxtExDirs.Text;
-        _cfg.ExcludeFiles = TxtExFiles.Text;
+        // Custom exclusions already live in _cfg.Excludes via two-way binding;
+        // only the preset checkboxes need harvesting.
+        _cfg.ExcludePresets = new List<string>();
+        foreach (var (box, id) in _presetBoxes)
+            if (box.IsChecked == true) _cfg.ExcludePresets.Add(id);
+        _cfg.Versioned = ChkVersioned.IsChecked == true;
+        // NumberBox.Value is NaN while the field is cleared; fall back to the
+        // last saved count rather than writing NaN into the keep count.
+        if (!double.IsNaN(NumVersionsKeep.Value))
+            _cfg.VersionsToKeep = Math.Clamp((int)NumVersionsKeep.Value, 1, 365);
         _cfg.ScheduleEnabled = ChkSchedule.IsChecked == true;
+        _cfg.TriggerOnConnect = ChkOnConnect.IsChecked == true;
         _cfg.ScheduleDays = new List<DayOfWeek>();
         foreach (var (box, day) in _dayBoxes)
             if (box.IsChecked == true) _cfg.ScheduleDays.Add(day);
@@ -332,33 +392,133 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "Pick at least one day for the scheduled backup, or turn the schedule off.");
             return false;
         }
-        SettingsStore.Save(_cfg);
-        BackupScript.Write(_cfg);
-        // Save Settings is the single source of truth for the scheduled task:
-        // register it when enabled, remove it (current + legacy name) when not.
-        _taskError = _cfg.ScheduleEnabled ? ScheduledTasks.UpdateFileTask(_cfg) : null;
-        if (!_cfg.ScheduleEnabled) ScheduledTasks.RemoveAllTasks();
-        RefreshNextRun();
-        _dirty = false;
-        RefreshScriptStatus();
-        return true;
+        // The settings and script are written synchronously (fast, and the
+        // ground truth the rest of the app reads), then everything slow runs
+        // off the UI thread so the window never freezes: the scheduled-task
+        // state is applied in one batched PowerShell invocation (each extra
+        // powershell.exe start pays a multi-second module import - this used
+        // to be 3-4 sequential ones and froze the UI for tens of seconds),
+        // and a dead UNC source can make Directory.Exists block for seconds.
+        if (_saving) return false;
+        _saving = true;
+        try
+        {
+            SettingsStore.Save(_cfg);
+            BackupScript.Write(_cfg);
+            _dirty = false;
+            RefreshScriptStatus();
+            // Save Settings is the single source of truth for both scheduled
+            // tasks: each is registered when its own option is on and removed
+            // when not, so the schedule and the on-connect trigger toggle
+            // independently (ApplyAll handles both plus the legacy-name cleanup).
+            var applied = await System.Threading.Tasks.Task.Run(
+                () => ScheduledTasks.ApplyAll(_cfg));
+            _taskError = applied.Error;
+            LblNextRun.Text = applied.NextRun == null
+                ? "Next run: (no scheduled task)" : "Next run: " + applied.NextRun;
+            _missingSources = await System.Threading.Tasks.Task.Run(
+                () => SaveValidation.UnreachableSources(_cfg.Folders));
+            return true;
+        }
+        finally { _saving = false; }
     }
 
+    // A successful save shows no dialog: the status line (a live region, so it
+    // is announced) already reads "Settings saved..." and later gains the
+    // space/size figures from the background check. Dialogs are reserved for
+    // actual problems - a task-registration failure or unreachable sources.
     private async void OnSave(object sender, RoutedEventArgs e)
     {
         if (!await SaveAllAsync()) return;
+
         if (_taskError != null)
-            await ShowMessageAsync("GUARD", "Settings saved, but registering the scheduled task reported a problem:\n\n" + _taskError);
-        else
-            await ShowMessageAsync("GUARD", _cfg.ScheduleEnabled
-                ? "Settings saved. The backup script and scheduled task have been updated."
-                : "Settings saved. The backup script has been updated; no scheduled task is set.");
+        {
+            await ShowMessageAsync("GUARD", "Settings saved, but registering a scheduled task reported a problem:\n\n" + _taskError);
+            return;
+        }
+        if (_missingSources.Count > 0)
+            await ShowMessageAsync("GUARD", "Settings saved. Note: " + DescribeMissingSources(_missingSources)
+                + "\n\nThey will be skipped if still unreachable when the backup runs.");
+
+        StartSpaceStatusCheck();
     }
 
-    private void RefreshNextRun()
+    // Background space/size check; appends its findings to the saved-status
+    // line when done. Out of the modal path entirely, the size estimate can
+    // afford a cap long enough to usually finish, so the figure is normally
+    // the full total rather than a lower bound. The sequence counter plus the
+    // dirty re-check drop a stale result if the user edited or saved again
+    // while the walk was still running.
+    private async void StartSpaceStatusCheck()
+    {
+        int seq = ++_spaceCheckSeq;
+
+        // Interim placeholder so the line never sits silently mid-check; the
+        // result replaces it (rebuilt from baseText, not appended) when done.
+        string baseText = _fileStatusText;
+        SetFileStatusText(baseText + " Calculating backup size and destination space...");
+
+        var estimateTask = SaveValidation.EstimateBackupSizeAsync(_cfg.Folders, SaveValidation.EstimateCap);
+        var freeTask = System.Threading.Tasks.Task.Run(() => SaveValidation.TryGetFreeSpace(_cfg.Dest));
+        long? free = await freeTask;
+        var est = await estimateTask;
+
+        // A stale result (the user edited or saved again) leaves the line to
+        // whoever rewrote it; RefreshScriptStatus has already replaced the text.
+        if (seq != _spaceCheckSeq || _dirty) return;
+
+        // Deliberately terse: this rides on the end of the status line, so a
+        // sentence per fact would scroll the line off the window and pad the
+        // screen-reader announcement. Tight space gets a Warning: prefix and
+        // keeps the dot amber; the full explanation lives in the user manual.
+        string extra;
+        if (free is not long freeBytes)
+        {
+            extra = " Destination space could not be checked.";
+        }
+        else
+        {
+            bool tight = est.Bytes > 0 && est.Bytes > freeBytes * 0.9;
+            extra = tight ? " Warning: space may be too low." : "";
+            if (est.Bytes > 0)
+                extra += " Backup size: " + (est.Complete ? "" : "at least ")
+                    + SaveValidation.FormatBytes(est.Bytes) + ";";
+            extra += " destination available space: " + SaveValidation.FormatBytes(freeBytes) + ".";
+            if (tight) _fileStatusBrush = new SolidColorBrush(StatusAmber);
+        }
+        SetFileStatusText(baseText + extra);
+    }
+
+    // Mid-flow file-status updates (the space-check placeholder and result)
+    // route through the status bar like RefreshScriptStatus does: repaint the
+    // bar, announce only while File Backup is the active tab, and record the
+    // text so an unchanged status is not re-spoken.
+    private void SetFileStatusText(string text)
+    {
+        _fileStatusText = text;
+        UpdateStatusBar();
+        if (Tabs.SelectedIndex == 0 && _fileStatusText != _lastAnnouncedStatus)
+            Announce(StatusBarText);
+        _lastAnnouncedStatus = _fileStatusText;
+    }
+
+    private static string DescribeMissingSources(List<string> missing)
+    {
+        string list = "\n" + string.Join("\n", missing);
+        return missing.Count == 1
+            ? "this source folder is not currently reachable:" + list
+            : "these source folders are not currently reachable:" + list;
+    }
+
+    // Off the UI thread: the query launches powershell.exe, whose cold start
+    // pays a multi-second module import. The label keeps its "(unknown)"
+    // placeholder until the answer arrives. Saves do not call this; ApplyAll
+    // returns the next run from its own batched invocation.
+    private async void RefreshNextRun()
     {
         if (LblNextRun == null) return;
-        var next = ScheduledTasks.QueryNextRun(GuardPaths.FileTaskName);
+        var next = await System.Threading.Tasks.Task.Run(
+            () => ScheduledTasks.QueryNextRun(GuardPaths.FileTaskName));
         LblNextRun.Text = next == null ? "Next run: (no scheduled task)" : "Next run: " + next;
     }
 
@@ -430,6 +590,28 @@ public sealed partial class MainWindow : Window
             _cfg.Folders.Remove(f);
             _currentFolder = null;
         }
+    }
+
+    // =====================================================================
+    //  EXCLUSION ADD / REMOVE
+    // =====================================================================
+    private async void OnAddExclude(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Views.ExcludeDialog { XamlRoot = Content.XamlRoot };
+        var result = await ShowDialogAsync(dlg);
+        if (result == ContentDialogResult.Primary)
+            _cfg.Excludes.Add(new ExcludeItem(dlg.IsFolder, dlg.Pattern));
+    }
+
+    private async void OnRemoveExclude(object sender, RoutedEventArgs e)
+    {
+        if (ExcludeList.SelectedItem is not ExcludeItem x)
+        {
+            await ShowMessageAsync("GUARD", "Select the exclusion you want to remove in the custom exclusions list, then press Remove Exclusion.");
+            return;
+        }
+        if (await ShowConfirmAsync("GUARD", "Remove this exclusion?\n\n" + x.Caption))
+            _cfg.Excludes.Remove(x);
     }
 
     // =====================================================================
@@ -749,6 +931,12 @@ public sealed partial class MainWindow : Window
 
         TxtOutput.Text = "";
         AppendOut(TxtOutput, "> " + Path.GetFileName(script) + (arg.Length > 0 ? " " + arg : "") + "\r\n");
+        // A modal here would interrupt the run the user just asked for; the
+        // script SKIPs unreachable sources itself, so a line in the output is
+        // the right weight.
+        if (_missingSources.Count > 0)
+            AppendOut(TxtOutput, "WARNING: " + DescribeMissingSources(_missingSources).Replace("\n", "\r\n  ")
+                + "\r\nThey will be skipped if still unreachable.\r\n");
         _progTotal = 0;
         _summaryParser = new RobocopySummaryParser();
         _runIsPreview = arg == "test";
