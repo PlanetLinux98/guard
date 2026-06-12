@@ -15,14 +15,18 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   the current app (apps already installed stay installed). Each button sits with
   its tab's other actions and is enabled only while its job is running, and the
   output box and progress line report the cancellation instead of going silent.
+  Keyboard focus follows the job: starting one moves focus to its Stop button,
+  and when it ends focus returns to the button that started it, with the
+  end-of-job summary or cancellation message spoken by screen readers.
 - A persistent status bar at the bottom of the window. It shows the active
   tab's status (the settings saved/unsaved line on File Backup, the scan or
   import summary on App Inventory) and, while a backup or reinstall is running,
   a compact progress bar with the current action, so progress stays visible
   even when the in-tab progress area is scrolled away or the other tab is
-  active. The status bar is the screen-reader live region for status changes;
-  the File Backup mid-page status line moved into it, and the App Inventory
-  summary stays in place next to the list but is announced once via the bar.
+  active. The status bar is the screen-reader live region for status changes,
+  and both the File Backup mid-page status line and the App Inventory scan
+  summary moved into it; it is exposed to assistive tech as a real status bar,
+  so a screen reader's read-status-bar command (NVDA+End) finds it.
 - A plain-language summary at the end of every backup and preview run, built
   from Robocopy's own totals: files copied (with size), files skipped because
   they were already up to date, failures (called out first, with a pointer to
