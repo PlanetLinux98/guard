@@ -9,6 +9,44 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- Stop buttons for both long-running jobs: "Stop Backup" on the File Backup tab
+  cancels a running backup (the whole cmd/robocopy process tree is stopped), and
+  "Stop Reinstall" on the App Inventory tab stops the winget reinstall loop after
+  the current app (apps already installed stay installed). Each button sits with
+  its tab's other actions and is enabled only while its job is running, and the
+  output box and progress line report the cancellation instead of going silent.
+  Keyboard focus follows the job: starting one moves focus to its Stop button,
+  and when it ends focus returns to the button that started it. Screen readers
+  hear the job begin (the first progress update) and end (the summary or
+  cancellation message).
+- A persistent status bar at the bottom of the window. It shows the active
+  tab's status (the settings saved/unsaved line on File Backup, the scan or
+  import summary on App Inventory) and, while a backup or reinstall is running,
+  a compact progress bar with the current action, so progress stays visible
+  even when the in-tab progress area is scrolled away or the other tab is
+  active. The status bar is the screen-reader live region for status changes,
+  and both the File Backup mid-page status line and the App Inventory scan
+  summary moved into it. It is exposed to assistive tech as a real status bar
+  (control type StatusBar), so NVDA's read-status-bar command (NVDA+End) reads
+  it, including the running job's progress text. After a job ends, the bar
+  keeps the outcome (the run summary, "Backup cancelled.", or the reinstall
+  result) in its progress slot until the next job starts, so the hotkey can
+  always answer how the last run went.
+- A plain-language summary at the end of every backup and preview run, built
+  from Robocopy's own totals: files copied (with size), files skipped because
+  they were already up to date, failures (called out first, with a pointer to
+  the log), and extra destination files (noting whether Mirror mode removed
+  them). The summary appears in the output box and on the progress line, so
+  you no longer need to read the raw log to know how a run went.
+- "Edit Folder..." button on the File Backup tab: change the source path or
+  destination subfolder of an existing folder pair in place, instead of removing
+  and re-adding it. The edit applies to the folder row that last held focus,
+  matching how Remove Folder picks its target.
+- A results count next to the App Inventory filter box (e.g. "42 of 187 apps"),
+  so you can tell how many apps match as you type. It is announced to screen
+  readers only while typing in the filter box, and only when the count actually
+  changes.
+
 - Optional "Keep dated backup versions" mode: each run copies into a dated
   folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
   dated folders beyond a configurable keep count (default 5) are pruned. Off by
@@ -32,6 +70,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   interrupting the run with a dialog.
 
 ### Changed
+- The output consoles on both tabs now scroll automatically to the newest line
+  while a backup or reinstall is running, without moving keyboard focus.
+- Exporting an app list no longer overwrites an existing app-list.json at the
+  destination: when one is already there, the new export is written to the
+  first free numbered name (app-list-1.json, app-list-2.json, and so on).
 - Reworked the exclude UI so no wildcard typing is needed for the common cases:
   four one-tick preset checkboxes (temporary files, system clutter, developer
   folders, caches and disc images) replace the free-text boxes, and anything
