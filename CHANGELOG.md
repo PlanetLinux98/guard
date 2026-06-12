@@ -9,6 +9,27 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- Optional "Keep dated backup versions" mode: each run copies into a dated
+  folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
+  dated folders beyond a configurable keep count (default 5) are pruned. Off by
+  default; the generated script is unchanged unless you opt in. Pruning only
+  ever touches folders directly under the destination whose names exactly match
+  the date pattern.
+- New "Automatically run when the backup destination becomes available" option:
+  a second scheduled task ("GUARD On-Connect Backup") quietly checks for the
+  destination every 15 minutes and at sign-in, and runs the backup at most once
+  per day when it is reachable - so plugging in the external drive (or the
+  network share coming back) is enough to get that day's backup. Works with or
+  without the day/time schedule, and like all GUARD backups it does not need the
+  app open.
+- Save Settings now reports the destination's free space, a rough size for a
+  first full backup, and any included source folders that are not currently
+  reachable (these are skipped at run time, so an offline network source is
+  fine). The figures appear in the status line and are announced to screen
+  readers, calculated in the background so they never hold up the save, with a
+  warning (and an amber status indicator) when space looks tight. Run Now and
+  Preview note any unreachable sources in the output box rather than
+  interrupting the run with a dialog.
 - Stop buttons for both long-running jobs: "Stop Backup" on the File Backup tab
   cancels a running backup (the whole cmd/robocopy process tree is stopped), and
   "Stop Reinstall" on the App Inventory tab stops the winget reinstall loop after
@@ -47,34 +68,7 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   readers only while typing in the filter box, and only when the count actually
   changes.
 
-- Optional "Keep dated backup versions" mode: each run copies into a dated
-  folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
-  dated folders beyond a configurable keep count (default 5) are pruned. Off by
-  default; the generated script is unchanged unless you opt in. Pruning only
-  ever touches folders directly under the destination whose names exactly match
-  the date pattern.
-- New "Automatically run when the backup destination becomes available" option:
-  a second scheduled task ("GUARD On-Connect Backup") quietly checks for the
-  destination every 15 minutes and at sign-in, and runs the backup at most once
-  per day when it is reachable - so plugging in the external drive (or the
-  network share coming back) is enough to get that day's backup. Works with or
-  without the day/time schedule, and like all GUARD backups it does not need the
-  app open.
-- Save Settings now reports the destination's free space, a rough size for a
-  first full backup, and any included source folders that are not currently
-  reachable (these are skipped at run time, so an offline network source is
-  fine). The figures appear in the status line and are announced to screen
-  readers, calculated in the background so they never hold up the save, with a
-  warning (and an amber status indicator) when space looks tight. Run Now and
-  Preview note any unreachable sources in the output box rather than
-  interrupting the run with a dialog.
-
 ### Changed
-- The output consoles on both tabs now scroll automatically to the newest line
-  while a backup or reinstall is running, without moving keyboard focus.
-- Exporting an app list no longer overwrites an existing app-list.json at the
-  destination: when one is already there, the new export is written to the
-  first free numbered name (app-list-1.json, app-list-2.json, and so on).
 - Reworked the exclude UI so no wildcard typing is needed for the common cases:
   four one-tick preset checkboxes (temporary files, system clutter, developer
   folders, caches and disc images) replace the free-text boxes, and anything
@@ -94,6 +88,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   (dialogs now appear only for problems, such as a failed task registration).
   The "Next run" label also loads in the background instead of delaying the
   window at startup.
+- The output consoles on both tabs now scroll automatically to the newest line
+  while a backup or reinstall is running, without moving keyboard focus.
+- Exporting an app list no longer overwrites an existing app-list.json at the
+  destination: when one is already there, the new export is written to the
+  first free numbered name (app-list-1.json, app-list-2.json, and so on).
 
 ### Fixed
 - Screen readers announced the static label ("Inventory status" / "Settings
