@@ -27,11 +27,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   active. The status bar is the screen-reader live region for status changes,
   and both the File Backup mid-page status line and the App Inventory scan
   summary moved into it. It is exposed to assistive tech as a real status bar
-  (control type StatusBar), reachable by screen-reader object navigation and
-  mouse/touch exploration. NVDA's read-status-bar hotkey cannot locate it: that
-  command hit-tests the window's bottom-left pixel, which on Windows 11 falls
-  in the invisible resize frame outside the app's content - a limitation that
-  affects WinUI 3 apps generally, not GUARD specifically.
+  (control type StatusBar), so NVDA's read-status-bar command (NVDA+End) reads
+  it, including the running job's progress text. After a job ends, the bar
+  keeps the outcome (the run summary, "Backup cancelled.", or the reinstall
+  result) in its progress slot until the next job starts, so the hotkey can
+  always answer how the last run went.
 - A plain-language summary at the end of every backup and preview run, built
   from Robocopy's own totals: files copied (with size), files skipped because
   they were already up to date, failures (called out first, with a pointer to

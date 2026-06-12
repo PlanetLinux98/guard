@@ -946,12 +946,14 @@ public sealed partial class MainWindow : Window
         if (ct.IsCancellationRequested)
         {
             AppProgressLabel.Text = "Cancelled after " + attempted + " of " + targets.Count + " app(s).";
+            StatusBarProgressText.Text = AppProgressLabel.Text;
             AppendOut(TxtAppOutput, "\r\n--- Cancelled by user after " + attempted + " of " + targets.Count +
                 " app(s): " + ok + " installed, " + fail + " failed. Apps already installed stay installed. ---\r\n");
         }
         else
         {
             AppProgressLabel.Text = "Done. " + ok + " installed, " + fail + " failed.";
+            StatusBarProgressText.Text = AppProgressLabel.Text;
             AppendOut(TxtAppOutput, "\r\n--- Reinstall complete: " + ok + " installed, " + fail + " failed ---\r\n");
         }
         _reinstalling = false;
@@ -1045,7 +1047,13 @@ public sealed partial class MainWindow : Window
                 // update the output handlers enqueued during the drain above;
                 // a direct set could be overwritten by a stale "Backing up"
                 // line still sitting in the queue.
-                DispatcherQueue.TryEnqueue(() => FileProgressLabel.Text = "Backup cancelled.");
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    FileProgressLabel.Text = "Backup cancelled.";
+                    // Mirror into the bar's outcome slot; SetProgress last wrote
+                    // a stale "Backing up..." line there.
+                    StatusBarProgressText.Text = "Backup cancelled.";
+                });
             }
             else
             {
@@ -1235,12 +1243,22 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    // The bar's progress area only exists while a job runs; callers show it when
-    // they start a backup or reinstall and hide it when the job ends.
+    // The bar's progress area shows live progress while a job runs; when the
+    // job ends only the progress bar hides, and the area keeps the final
+    // outcome message (summary / cancelled / done counts) until the next job,
+    // so the read-status-bar hotkey reports how the last run ended from
+    // anywhere in the app. The area only collapses entirely when there is no
+    // outcome to show (before any job, or after a launch failure).
     private void ShowStatusBarProgress(bool show)
     {
         DispatcherQueue.TryEnqueue(() =>
-            StatusBarProgressArea.Visibility = show ? Visibility.Visible : Visibility.Collapsed);
+        {
+            StatusBarProgress.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (show)
+                StatusBarProgressArea.Visibility = Visibility.Visible;
+            else if (string.IsNullOrEmpty(StatusBarProgressText.Text))
+                StatusBarProgressArea.Visibility = Visibility.Collapsed;
+        });
     }
 
     private void AppendOut(TextBox box, string text)
