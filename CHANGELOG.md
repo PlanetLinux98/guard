@@ -26,8 +26,12 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   even when the in-tab progress area is scrolled away or the other tab is
   active. The status bar is the screen-reader live region for status changes,
   and both the File Backup mid-page status line and the App Inventory scan
-  summary moved into it; it is exposed to assistive tech as a real status bar,
-  so a screen reader's read-status-bar command (NVDA+End) finds it.
+  summary moved into it. It is exposed to assistive tech as a real status bar
+  (control type StatusBar), reachable by screen-reader object navigation and
+  mouse/touch exploration. NVDA's read-status-bar hotkey cannot locate it: that
+  command hit-tests the window's bottom-left pixel, which on Windows 11 falls
+  in the invisible resize frame outside the app's content - a limitation that
+  affects WinUI 3 apps generally, not GUARD specifically.
 - A plain-language summary at the end of every backup and preview run, built
   from Robocopy's own totals: files copied (with size), files skipped because
   they were already up to date, failures (called out first, with a pointer to

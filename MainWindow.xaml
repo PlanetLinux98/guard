@@ -467,13 +467,18 @@
              StatusBarText is the single live region for status announcements,
              and the bar is the only home of the inventory scan/import summary,
              so each change is announced exactly once. -->
-        <Border Grid.Row="1" BorderThickness="0,1,0,0" Padding="14,6"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-            <!-- StatusBarHost exposes the bar to UIA as control type StatusBar,
-                 so NVDA's read-status-bar command (NVDA+End) can find it. -->
-            <views:StatusBarHost HorizontalContentAlignment="Stretch">
-            <Grid ColumnSpacing="10">
+        <Border Grid.Row="1" BorderThickness="0,1,0,0"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+            <!-- StatusBarHost exposes the bar to UIA as control type StatusBar.
+                 The background and padding sit on the Grid INSIDE the host, not
+                 on the Border: hit-testing resolves to the nearest ancestor with
+                 an automation peer, so a hit anywhere on the bar surface must
+                 land on content within the host for screen-reader mouse and
+                 touch exploration to report the status bar (a Border background
+                 would bubble hits past the host to the XAML island root). -->
+            <views:StatusBarHost HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Grid ColumnSpacing="10" Padding="14,6"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
