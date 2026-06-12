@@ -18,6 +18,98 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   are written alongside. Cache subfolders, junctions, registry-stored settings,
   ProgramData and Store packaged app state are not copied; locked files are
   skipped and counted instead of failing the export.
+- Optional "Keep dated backup versions" mode: each run copies into a dated
+  folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
+  dated folders beyond a configurable keep count (default 5) are pruned. Off by
+  default; the generated script is unchanged unless you opt in. Pruning only
+  ever touches folders directly under the destination whose names exactly match
+  the date pattern.
+- New "Automatically run when the backup destination becomes available" option:
+  a second scheduled task ("GUARD On-Connect Backup") quietly checks for the
+  destination every 15 minutes and at sign-in, and runs the backup at most once
+  per day when it is reachable - so plugging in the external drive (or the
+  network share coming back) is enough to get that day's backup. Works with or
+  without the day/time schedule, and like all GUARD backups it does not need the
+  app open.
+- Save Settings now reports the destination's free space, a rough size for a
+  first full backup, and any included source folders that are not currently
+  reachable (these are skipped at run time, so an offline network source is
+  fine). The figures appear in the status line and are announced to screen
+  readers, calculated in the background so they never hold up the save, with a
+  warning (and an amber status indicator) when space looks tight. Run Now and
+  Preview note any unreachable sources in the output box rather than
+  interrupting the run with a dialog.
+- Stop buttons for both long-running jobs: "Stop Backup" on the File Backup tab
+  cancels a running backup (the whole cmd/robocopy process tree is stopped), and
+  "Stop Reinstall" on the App Inventory tab stops the winget reinstall loop after
+  the current app (apps already installed stay installed). Each button sits with
+  its tab's other actions and is enabled only while its job is running, and the
+  output box and progress line report the cancellation instead of going silent.
+  Keyboard focus follows the job: starting one moves focus to its Stop button,
+  and when it ends focus returns to the button that started it. Screen readers
+  hear the job begin (the first progress update) and end (the summary or
+  cancellation message).
+- A persistent status bar at the bottom of the window. It shows the active
+  tab's status (the settings saved/unsaved line on File Backup, the scan or
+  import summary on App Inventory) and, while a backup or reinstall is running,
+  a compact progress bar with the current action, so progress stays visible
+  even when the in-tab progress area is scrolled away or the other tab is
+  active. The status bar is the screen-reader live region for status changes,
+  and both the File Backup mid-page status line and the App Inventory scan
+  summary moved into it. It is exposed to assistive tech as a real status bar
+  (control type StatusBar), so NVDA's read-status-bar command (NVDA+End) reads
+  it, including the running job's progress text. After a job ends, the bar
+  keeps the outcome (the run summary, "Backup cancelled.", or the reinstall
+  result) in its progress slot until the next job starts, so the hotkey can
+  always answer how the last run went.
+- A plain-language summary at the end of every backup and preview run, built
+  from Robocopy's own totals: files copied (with size), files skipped because
+  they were already up to date, failures (called out first, with a pointer to
+  the log), and extra destination files (noting whether Mirror mode removed
+  them). The summary appears in the output box and on the progress line, so
+  you no longer need to read the raw log to know how a run went.
+- "Edit Folder..." button on the File Backup tab: change the source path or
+  destination subfolder of an existing folder pair in place, instead of removing
+  and re-adding it. The edit applies to the folder row that last held focus,
+  matching how Remove Folder picks its target.
+- A results count next to the App Inventory filter box (e.g. "42 of 187 apps"),
+  so you can tell how many apps match as you type. It is announced to screen
+  readers only while typing in the filter box, and only when the count actually
+  changes.
+
+### Changed
+- Reworked the exclude UI so no wildcard typing is needed for the common cases:
+  four one-tick preset checkboxes (temporary files, system clutter, developer
+  folders, caches and disc images) replace the free-text boxes, and anything
+  else is added through a new "Add Exclusion" dialog that asks what to exclude
+  (a folder name, a file extension, or a name/pattern) and builds the pattern
+  for you. Custom exclusions appear in a list with Add/Remove buttons. Existing
+  saved excludes migrate automatically: lines a preset covers tick that preset
+  (which can also enable the preset's sibling patterns - review the checkboxes
+  after upgrading), and the rest become custom entries.
+- Tidied the File Backup tab layout: the exclude controls now sit directly
+  below the Add/Remove Folder buttons (above the Mode choice), and the
+  "Versions to keep" count sits on the same line as the "Keep dated backup
+  versions" checkbox.
+- Save Settings is now fast and no longer freezes the app: the scheduled tasks
+  are registered in a single background step instead of several foreground ones,
+  and a successful save is confirmed inline rather than with a pop-up dialog
+  (dialogs now appear only for problems, such as a failed task registration).
+  The "Next run" label also loads in the background instead of delaying the
+  window at startup.
+- The output consoles on both tabs now scroll automatically to the newest line
+  while a backup or reinstall is running, without moving keyboard focus.
+- Exporting an app list no longer overwrites an existing app-list.json at the
+  destination: when one is already there, the new export is written to the
+  first free numbered name (app-list-1.json, app-list-2.json, and so on).
+
+### Fixed
+- Screen readers announced the static label ("Inventory status" / "Settings
+  status") instead of the actual message whenever a status line updated, e.g.
+  after the app scan finished. The status text itself is now announced.
+- Exclude names containing spaces (such as "System Volume Information") are now
+  quoted in the generated script, so robocopy reads each as a single name
+  instead of several.
 
 ## [0.3.0] - 2026-06-11
 
