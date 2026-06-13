@@ -9,6 +9,20 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- App settings export on the App Management tab: tick "Also export app
+  settings" and the Export action copies the ticked apps' settings folders
+  alongside the app list, as one operation. GUARD matches the apps' names and
+  publishers against folder names under `%APPDATA%`, `%LOCALAPPDATA%` and
+  `%USERPROFILE%\.config`, shows the matched folders in a confirmation dialog
+  of tickable rows (with Select All / Select None buttons, and sizes that
+  calculate in the background while you review), and copies the confirmed ones
+  to an `AppSettings` folder under the list destination, sorted by which root
+  they came from. A JSON manifest and a plain-text README with restore
+  instructions are written alongside. Cancelling the confirmation cancels the
+  whole export, so a cancel never leaves a partial result. Cache subfolders,
+  junctions, registry-stored settings, ProgramData and Store packaged app
+  state are not copied; locked files are skipped and counted instead of
+  failing the export.
 - Optional "Keep dated backup versions" mode: each run copies into a dated
   folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
   dated folders beyond a configurable keep count (default 5) are pruned. Off by
@@ -32,7 +46,7 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   interrupting the run with a dialog.
 - Stop buttons for both long-running jobs: "Stop Backup" on the File Backup tab
   cancels a running backup (the whole cmd/robocopy process tree is stopped), and
-  "Stop Reinstall" on the App Inventory tab stops the winget reinstall loop after
+  "Stop Reinstall" on the App Management tab stops the winget reinstall loop after
   the current app (apps already installed stay installed). Each button sits with
   its tab's other actions and is enabled only while its job is running, and the
   output box and progress line report the cancellation instead of going silent.
@@ -42,11 +56,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   cancellation message).
 - A persistent status bar at the bottom of the window. It shows the active
   tab's status (the settings saved/unsaved line on File Backup, the scan or
-  import summary on App Inventory) and, while a backup or reinstall is running,
+  import summary on App Management) and, while a backup or reinstall is running,
   a compact progress bar with the current action, so progress stays visible
   even when the in-tab progress area is scrolled away or the other tab is
   active. The status bar is the screen-reader live region for status changes,
-  and both the File Backup mid-page status line and the App Inventory scan
+  and both the File Backup mid-page status line and the App Management scan
   summary moved into it. It is exposed to assistive tech as a real status bar
   (control type StatusBar), so NVDA's read-status-bar command (NVDA+End) reads
   it, including the running job's progress text. After a job ends, the bar
@@ -63,12 +77,17 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   destination subfolder of an existing folder pair in place, instead of removing
   and re-adding it. The edit applies to the folder row that last held focus,
   matching how Remove Folder picks its target.
-- A results count next to the App Inventory filter box (e.g. "42 of 187 apps"),
+- A results count next to the App Management filter box (e.g. "42 of 187 apps"),
   so you can tell how many apps match as you type. It is announced to screen
   readers only while typing in the filter box, and only when the count actually
   changes.
 
 ### Changed
+- Renamed the "App Inventory" tab to "App Management": with reinstalling apps
+  and exporting their settings sitting alongside the inventory scan, the old
+  name undersold what the tab does.
+- The App Management tab's "Export List" button is now just "Export", since
+  the one action covers the list and (optionally) the app settings.
 - Reworked the exclude UI so no wildcard typing is needed for the common cases:
   four one-tick preset checkboxes (temporary files, system clutter, developer
   folders, caches and disc images) replace the free-text boxes, and anything

@@ -61,7 +61,7 @@ public sealed partial class MainWindow : Window
     private string? _lastAnnouncedStatus;
 
     // The File Backup settings status, kept here (not only in the status bar
-    // text) so switching back from App Inventory can repaint the bar without
+    // text) so switching back from App Management can repaint the bar without
     // recomputing it.
     private string _fileStatusText = "";
     private Brush? _fileStatusBrush;
@@ -76,7 +76,7 @@ public sealed partial class MainWindow : Window
     // output box instead so the run is not interrupted by a modal.
     private List<string> _missingSources = new();
 
-    // The App Inventory scan/import summary; the status bar is its only home
+    // The App Management scan/import summary; the status bar is its only home
     // (an in-place copy under the list was removed as redundant), so it lives
     // here for repainting the bar on tab switches.
     private string _appStatusText = "Open this tab to scan installed apps.";
@@ -84,6 +84,7 @@ public sealed partial class MainWindow : Window
     private bool _appScanned;
     private bool _scanning;
     private bool _reinstalling;
+    private bool _exporting;
     private bool _wingetAvailable;
     private bool _allowClose;
 
@@ -148,6 +149,7 @@ public sealed partial class MainWindow : Window
         if (clocks.Count > 0) TimeSchedule.ClockIdentifier = clocks[0];
         TimeSchedule.SelectedTime = ParseScheduleTime(_cfg.ScheduleTime);
         TxtAppDest.Text = _cfg.AppListDest;
+        ChkExportSettings.IsChecked = _cfg.ExportAppSettings;
 
         // Track which folder row last held focus (for Remove). Handled at the
         // list level, not in the DataTemplate: a code-behind event handler
@@ -340,7 +342,7 @@ public sealed partial class MainWindow : Window
     }
 
     // Inventory status lives in the status bar (its single home); announce
-    // only while App Inventory is the active tab, since the bar shows the
+    // only while App Management is the active tab, since the bar shows the
     // file status otherwise (the text repaints on switching back regardless).
     private void AnnounceAppStatus()
     {
@@ -416,6 +418,7 @@ public sealed partial class MainWindow : Window
             if (box.IsChecked == true) _cfg.ScheduleDays.Add(day);
         _cfg.ScheduleTime = FormatScheduleTime(TimeSchedule.SelectedTime, _cfg.ScheduleTime);
         _cfg.AppListDest = (TxtAppDest.Text ?? "").Trim();
+        _cfg.ExportAppSettings = ChkExportSettings.IsChecked == true;
     }
 
     // Returns false (after showing a message) when a required value is missing.
@@ -702,6 +705,7 @@ public sealed partial class MainWindow : Window
         BtnAppExport.IsEnabled = e;
         BtnAppImport.IsEnabled = e;
         BtnAppReinstall.IsEnabled = e;
+        ChkExportSettings.IsEnabled = e;
         BtnAppAll.IsEnabled = e;
         BtnAppNone.IsEnabled = e;
     }
@@ -766,8 +770,19 @@ public sealed partial class MainWindow : Window
     // =====================================================================
     //  EXPORT / IMPORT
     // =====================================================================
+    // One Export action covers both outputs: the app-list JSON always, plus
+    // the ticked apps' settings folders when "Also export app settings" is
+    // ticked. The settings step runs first because it is the only part the
+    // user can cancel, and cancelling must abort the whole export - a Cancel
+    // that still wrote the list would be a surprise partial result (untick
+    // the option to export the list alone).
     private async void OnExportApps(object sender, RoutedEventArgs e)
     {
+        if (_exporting)
+        {
+            await ShowMessageAsync("GUARD", "An export is already running. Wait for it to finish.");
+            return;
+        }
         HarvestUi();
         if (string.IsNullOrEmpty(_cfg.AppListDest))
         {
@@ -788,38 +803,127 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var file = new AppListFile
-        {
-            Exported = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
-            Machine = Environment.MachineName
-        };
-        var items = new List<AppListItem>();
-        foreach (var a in picked)
-            items.Add(new AppListItem
-            {
-                Name = a.Name, Id = a.Id, Source = a.Source, Version = a.Version,
-                Publisher = a.Publisher, InstallLocation = a.InstallLocation, PublisherUrl = a.PublisherUrl
-            });
-        file.Apps = items.ToArray();
-
-        // Never overwrite an existing list: an export next to one picks the
-        // first free numbered name (app-list-1.json, app-list-2.json, ...),
-        // so repeated exports accumulate instead of silently replacing the
-        // previous snapshot.
-        string path = Path.Combine(_cfg.AppListDest, GuardPaths.AppListFileName);
-        string stem = Path.GetFileNameWithoutExtension(GuardPaths.AppListFileName);
-        string ext = Path.GetExtension(GuardPaths.AppListFileName);
-        for (int n = 1; File.Exists(path); n++)
-            path = Path.Combine(_cfg.AppListDest, stem + "-" + n + ext);
+        _exporting = true;
+        SetAppBusy(true);
         try
         {
+            // ---- Settings confirmation step (only when opted in) ----
+            bool wantSettings = _cfg.ExportAppSettings;
+            bool noMatches = false;
+            List<AppSettingsCandidate>? chosen = null;
+            if (wantSettings)
+            {
+                _appStatusText = "Looking for settings folders for " + picked.Count + " ticked app(s)...";
+                AnnounceAppStatus();
+
+                // Candidate matching walks the disk, so it runs off the UI
+                // thread; sizes are measured later, inside the open dialog.
+                var candidates = await System.Threading.Tasks.Task.Run(
+                    () => AppSettingsExport.FindCandidates(picked));
+                if (candidates.Count == 0)
+                {
+                    // Nothing to confirm and nothing the user can act on here;
+                    // the list export still goes ahead and the summary says
+                    // why no settings folders came with it.
+                    noMatches = true;
+                }
+                else
+                {
+                    // The matching is heuristic; nothing is copied until the
+                    // user has confirmed (and could untick) every match.
+                    var dlg = new Views.AppSettingsDialog(candidates) { XamlRoot = Content.XamlRoot };
+                    if (await ShowDialogAsync(dlg) != ContentDialogResult.Primary)
+                    {
+                        _appStatusText = "Export cancelled. Nothing was exported.";
+                        AnnounceAppStatus();
+                        return;
+                    }
+                    chosen = new List<AppSettingsCandidate>();
+                    foreach (var c in candidates) if (c.Include) chosen.Add(c);
+                }
+            }
+
+            // ---- App list (never overwrites: picks the first free numbered
+            // name, so repeated exports accumulate instead of silently
+            // replacing the previous snapshot) ----
+            var file = new AppListFile
+            {
+                Exported = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                Machine = Environment.MachineName
+            };
+            var items = new List<AppListItem>();
+            foreach (var a in picked)
+                items.Add(new AppListItem
+                {
+                    Name = a.Name, Id = a.Id, Source = a.Source, Version = a.Version,
+                    Publisher = a.Publisher, InstallLocation = a.InstallLocation, PublisherUrl = a.PublisherUrl
+                });
+            file.Apps = items.ToArray();
+
+            string dest = _cfg.AppListDest;
+            string path = Path.Combine(dest, GuardPaths.AppListFileName);
+            string stem = Path.GetFileNameWithoutExtension(GuardPaths.AppListFileName);
+            string ext = Path.GetExtension(GuardPaths.AppListFileName);
+            for (int n = 1; File.Exists(path); n++)
+                path = Path.Combine(dest, stem + "-" + n + ext);
             AppListIo.Write(path, file);
+
+            // ---- Settings copy (after the list, so a cancel above never
+            // leaves either output behind) ----
+            string summary = "Exported " + picked.Count + " app(s) to " + Path.GetFileName(path) + ".";
+            string detail = "Exported " + picked.Count + " apps to:\n" + path;
+            if (wantSettings)
+            {
+                if (noMatches)
+                {
+                    string why = " No settings folders matched the ticked apps. Apps that keep settings in the registry, in ProgramData, or under a folder name unlike the app name are not found by this search.";
+                    summary += why;
+                    detail += "\n" + why.Trim();
+                }
+                else if (chosen!.Count == 0)
+                {
+                    summary += " No settings folders were ticked, so none were copied.";
+                    detail += "\n\nNo settings folders were ticked, so none were copied.";
+                }
+                else
+                {
+                    // Per-folder progress updates the status bar silently, the
+                    // same convention as SetProgress: announcing each line made
+                    // NVDA read the whole queued stream after the (fast) copy
+                    // had already finished, delaying the summary dialog. The
+                    // spoken story is start -> summary only.
+                    var stats = await System.Threading.Tasks.Task.Run(() =>
+                        AppSettingsExport.CopyCandidates(chosen, dest, msg =>
+                            DispatcherQueue.TryEnqueue(() => { _appStatusText = msg; UpdateStatusBar(); })));
+                    string copied = "Copied " + stats.Folders + " settings folder(s): " + stats.Files + " file(s)."
+                        + (stats.SkippedFiles > 0
+                            ? " " + stats.SkippedFiles + " file(s) were locked or unreadable and were skipped."
+                            : "");
+                    summary += " " + copied;
+                    detail += "\n\n" + copied + "\nSettings saved to:\n"
+                        + Path.Combine(dest, AppSettingsExport.OutputFolderName)
+                        + "\n\nA manifest and restore instructions (README.txt) were written there too.";
+                }
+            }
+
             SettingsStore.Save(_cfg);
-            await ShowMessageAsync("GUARD", "Exported " + picked.Count + " apps to:\n" + path);
+            // The bar keeps the outcome for NVDA+End, but it is not announced:
+            // the dialog opening right after would cut the speech off, and the
+            // dialog reads the same result itself.
+            _appStatusText = summary;
+            UpdateStatusBar();
+            await ShowMessageAsync("GUARD", detail);
         }
         catch (Exception ex)
         {
-            await ShowMessageAsync("GUARD", "Could not write the app list:\n" + path + "\n\n" + ex.Message);
+            _appStatusText = "Export failed: " + ex.Message;
+            UpdateStatusBar();
+            await ShowMessageAsync("GUARD", "Export failed:\n" + ex.Message);
+        }
+        finally
+        {
+            _exporting = false;
+            SetAppBusy(false);
         }
     }
 

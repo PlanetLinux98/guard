@@ -2,7 +2,7 @@ using System.ComponentModel;
 
 namespace GuardWui3.Models;
 
-// One installed-application row (App Inventory tab). Source is "winget" or
+// One installed-application row (App Management tab). Source is "winget" or
 // "msstore" (a package id is known, so it can be reinstalled automatically) or
 // "manual" (in Add/Remove Programs but not in any winget source).
 public sealed class AppEntry : INotifyPropertyChanged

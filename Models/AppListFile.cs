@@ -25,6 +25,8 @@ public sealed class AppListFile
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(AppListFile))]
 [JsonSerializable(typeof(AppListItem))]
+[JsonSerializable(typeof(AppSettingsManifest))]
+[JsonSerializable(typeof(AppSettingsManifestEntry))]
 public partial class GuardJsonContext : JsonSerializerContext
 {
 }

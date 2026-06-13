@@ -78,6 +78,7 @@ public static class SettingsStore
                 case "Schedule.Days": cfg.ScheduleDays = ParseDays(val); break;
                 case "Schedule.OnConnect": cfg.TriggerOnConnect = val == "1"; break;
                 case "AppList.Dest": cfg.AppListDest = val; break;
+                case "AppList.ExportSettings": cfg.ExportAppSettings = val == "1"; break;
             }
         }
         if (sawFolders) cfg.Folders = folders;
@@ -178,6 +179,7 @@ public static class SettingsStore
         sb.AppendLine();
         sb.AppendLine("[AppList]");
         sb.AppendLine("Dest=" + cfg.AppListDest);
+        sb.AppendLine("ExportSettings=" + (cfg.ExportAppSettings ? "1" : "0"));
         File.WriteAllText(GuardPaths.IniPath, sb.ToString());
     }
 
