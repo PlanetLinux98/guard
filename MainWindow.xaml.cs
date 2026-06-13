@@ -887,9 +887,14 @@ public sealed partial class MainWindow : Window
                 }
                 else
                 {
+                    // Per-folder progress updates the status bar silently, the
+                    // same convention as SetProgress: announcing each line made
+                    // NVDA read the whole queued stream after the (fast) copy
+                    // had already finished, delaying the summary dialog. The
+                    // spoken story is start -> summary only.
                     var stats = await System.Threading.Tasks.Task.Run(() =>
                         AppSettingsExport.CopyCandidates(chosen, dest, msg =>
-                            DispatcherQueue.TryEnqueue(() => { _appStatusText = msg; AnnounceAppStatus(); })));
+                            DispatcherQueue.TryEnqueue(() => { _appStatusText = msg; UpdateStatusBar(); })));
                     string copied = "Copied " + stats.Folders + " settings folder(s): " + stats.Files + " file(s)."
                         + (stats.SkippedFiles > 0
                             ? " " + stats.SkippedFiles + " file(s) were locked or unreadable and were skipped."
@@ -902,14 +907,17 @@ public sealed partial class MainWindow : Window
             }
 
             SettingsStore.Save(_cfg);
+            // The bar keeps the outcome for NVDA+End, but it is not announced:
+            // the dialog opening right after would cut the speech off, and the
+            // dialog reads the same result itself.
             _appStatusText = summary;
-            AnnounceAppStatus();
+            UpdateStatusBar();
             await ShowMessageAsync("GUARD", detail);
         }
         catch (Exception ex)
         {
             _appStatusText = "Export failed: " + ex.Message;
-            AnnounceAppStatus();
+            UpdateStatusBar();
             await ShowMessageAsync("GUARD", "Export failed:\n" + ex.Message);
         }
         finally
