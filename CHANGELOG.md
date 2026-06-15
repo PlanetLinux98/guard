@@ -85,11 +85,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   active. The status bar is the screen-reader live region for status changes,
   and both the File Backup mid-page status line and the App Management scan
   summary moved into it. It is exposed to assistive tech as a real status bar
-  (control type StatusBar), so NVDA's read-status-bar command (NVDA+End) reads
-  it, including the running job's progress text. After a job ends, the bar
-  keeps the outcome (the run summary, "Backup cancelled.", or the reinstall
-  result) in its progress slot until the next job starts, so the hotkey can
-  always answer how the last run went.
+  (control type StatusBar), so screen reader users can invoke the read-status-bar 
+  command (e.g. NVDA+End) to read it at any time, including the running job's 
+  progress text. After a job ends, the bar keeps the outcome (the run summary, 
+  "Backup cancelled.", or the reinstall result) in its progress slot until the next
+  job starts, so the hotkey can always answer how the last run went.
 - A plain-language summary at the end of every backup and preview run, built
   from Robocopy's own totals: files copied (with size), files skipped because
   they were already up to date, failures (called out first, with a pointer to
