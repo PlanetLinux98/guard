@@ -9,6 +9,21 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- App settings restore on the App Management tab. Import List now opens the
+  saved list in its own dialog (instead of replacing the installed-apps list
+  behind the tab) with the apps as tickable rows and the list's source machine
+  and date. From there you can "Reinstall Selected" (apps only) or, when an
+  `AppSettings` bundle was saved beside the list, "Reinstall & Restore Settings"
+  - which reinstalls the ticked Winget/Store apps and then puts their settings
+  folders back. The restore step shows a second confirmation of tickable rows
+  with each folder's target location (re-anchored to your current user profile
+  via the manifest, so it works even if the Windows username changed), whether a
+  folder already exists, and its size. An existing target is renamed aside to
+  `<name>.guard-old-<timestamp>` before being replaced, never deleted, so a
+  restore is reversible. Settings are restored after the installs finish (before
+  you launch anything), folders whose app is running are skipped and counted,
+  and Stop Reinstall halts the whole operation. If none of the ticked apps
+  reinstall automatically, the settings are restored on their own.
 - App settings export on the App Management tab: tick "Also export app
   settings" and the Export action copies the ticked apps' settings folders
   alongside the app list, as one operation. GUARD matches the apps' names and
@@ -16,13 +31,13 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   `%USERPROFILE%\.config`, shows the matched folders in a confirmation dialog
   of tickable rows (with Select All / Select None buttons, and sizes that
   calculate in the background while you review), and copies the confirmed ones
-  to an `AppSettings` folder under the list destination, sorted by which root
-  they came from. A JSON manifest and a plain-text README with restore
-  instructions are written alongside. Cancelling the confirmation cancels the
-  whole export, so a cancel never leaves a partial result. Cache subfolders,
-  junctions, registry-stored settings, ProgramData and Store packaged app
-  state are not copied; locked files are skipped and counted instead of
-  failing the export.
+  into an `AppSettings` folder inside the export's dated folder, sorted by which
+  root they came from, with a progress bar that advances by size as it copies. A
+  JSON manifest and a plain-text README with restore instructions are written
+  alongside. Cancelling the confirmation cancels the whole export, so a cancel
+  never leaves a partial result. Cache subfolders, junctions, registry-stored
+  settings, ProgramData and Store packaged app state are not copied; locked
+  files are skipped and counted instead of failing the export.
 - Optional "Keep dated backup versions" mode: each run copies into a dated
   folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
   dated folders beyond a configurable keep count (default 5) are pruned. Off by
@@ -109,9 +124,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   window at startup.
 - The output consoles on both tabs now scroll automatically to the newest line
   while a backup or reinstall is running, without moving keyboard focus.
-- Exporting an app list no longer overwrites an existing app-list.json at the
-  destination: when one is already there, the new export is written to the
-  first free numbered name (app-list-1.json, app-list-2.json, and so on).
+- Each export now goes into its own dated folder under the destination
+  (`app-export-YYYY-MM-DD_HHMM`) holding the `app-list.json` and, when included,
+  the `AppSettings` folder. Repeated exports never overwrite each other, and a
+  list is always kept together with the matching settings (replacing the earlier
+  numbered-filename scheme, which shared one `AppSettings` folder across exports).
 
 ### Fixed
 - Screen readers announced the static label ("Inventory status" / "Settings
