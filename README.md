@@ -12,6 +12,10 @@ then run the `GUARD.exe` inside.
 > feature in detail. It also ships inside the release zip, and the in-app Help
 > button (F1) opens it.
 
+GUARD is also on **winget**: `winget install --id PlanetLinux98.GUARD` (or just
+`winget install GUARD`). New releases usually appear in winget within a couple of
+days of the GitHub Release.
+
 The goal is to become the ultimate portable data-protection toolkit. More
 functionality to come!
 

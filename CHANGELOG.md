@@ -9,6 +9,9 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- GUARD is now available through **winget**: `winget install --id
+  PlanetLinux98.GUARD` (or just `winget install GUARD`). New releases usually
+  appear in winget within a couple of days of the GitHub Release.
 - A full **User Manual** (`USER_GUIDE.md`) covering setup and every feature and
   workflow, written for keyboard and mouse users alike. It ships inside the
   release zip, and the in-app Help button (F1) now opens it.
