@@ -1644,7 +1644,7 @@ public sealed partial class MainWindow : Window
 
     private async void OnHelp(object sender, RoutedEventArgs e)
     {
-        if (File.Exists(GuardPaths.ReadmePath)) { OpenPath(GuardPaths.ReadmePath); return; }
+        if (File.Exists(GuardPaths.ManualPath)) { OpenPath(GuardPaths.ManualPath); return; }
         try { Process.Start(new ProcessStartInfo(GuardPaths.RepoUrl) { UseShellExecute = true }); }
         catch (Exception ex) { await ShowMessageAsync("GUARD", "Could not open help:\n\n" + ex.Message); }
     }

@@ -17,7 +17,7 @@ public static class GuardPaths
     public static string IniPath => Path.Combine(BaseDir, "backup-settings.ini");
     public static string ScriptPath => Path.Combine(BaseDir, "guard-backup.cmd");
     public static string LogPath => Path.Combine(BaseDir, @"Logs\backup_last.log");
-    public static string ReadmePath => Path.Combine(BaseDir, "README.md");
+    public static string ManualPath => Path.Combine(BaseDir, "USER_GUIDE.md");
 
     // Frequency-neutral name (the schedule can be daily, weekly, or custom).
     public const string FileTaskName = "GUARD Backup";

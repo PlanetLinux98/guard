@@ -1,11 +1,20 @@
 # GUARD
 
 A portable, fully accessible backup and data-protection utility for Windows.
-GUARD lets you back up your chosen folders to any destination (a local drive, an
-external disk, or a network share) and keep an inventory of your installed apps
-so they are easy to reinstall after a clean OS install. It carries no installer
-and no dependencies to track down: the shipping release is a small `GUARD.zip`
-you extract to a self-contained `GUARD\` folder, then run the `GUARD.exe` inside.
+GUARD backs up your chosen folders to any destination (a local drive, an
+external disk, or a network share) and keeps an inventory of your installed apps
+so they are easy to reinstall, and their settings to restore, after a clean OS
+install. It carries no installer and no dependencies to track down: the shipping
+release is a small `GUARD.zip` you extract to a self-contained `GUARD\` folder,
+then run the `GUARD.exe` inside.
+
+> **New to GUARD?** The [User Manual](USER_GUIDE.md) covers setup and every
+> feature in detail. It also ships inside the release zip, and the in-app Help
+> button (F1) opens it.
+
+GUARD is also on **winget**: `winget install --id PlanetLinux98.GUARD` (or just
+`winget install GUARD`). New releases usually appear in winget within a couple of
+days of the GitHub Release.
 
 The goal is to become the ultimate portable data-protection toolkit. More
 functionality to come!
@@ -22,25 +31,32 @@ theming. It targets **.NET 10 + Windows App SDK 1.8**.
 - **Additive** or **Mirror** copy modes (built on Robocopy): Additive only adds
   new and changed files and never deletes anything at the destination; Mirror
   makes the destination match the source exactly.
-- **Folder- and file-name exclusions**, one per line, so you can skip caches,
-  temp folders, or specific file types.
-- **Preview (dry-run)** mode that shows what a backup would do without changing
-  anything, per-folder progress, and a saved log of the last run.
-- Optional **scheduled task** so backups run unattended on the days and at the
-  time you set (pick any mix of weekdays: all seven for daily, one for weekly).
-- **App Inventory**: lists your installed apps from the Windows registry, marks
-  the ones winget can reinstall, and exports the list as plain JSON.
+- **Exclusion presets** (temporary files, system clutter, developer folders,
+  caches and disc images) plus a guided dialog for custom folder, extension, or
+  pattern exclusions, so common cases need no wildcard typing.
+- **Preview (dry-run)** mode, per-folder progress, a plain-language run summary,
+  and a saved log of the last run.
+- **Optional dated backup versions**: keep a configurable number of dated copies
+  instead of just the latest.
+- **Scheduling**: run on any mix of weekdays at a set time, and/or
+  automatically when the backup destination becomes available, all unattended
+  whether or not GUARD is open.
+- **App Management**: lists your installed apps from the Windows registry, marks
+  the ones winget can reinstall, and exports the list (optionally bundled with
+  the apps' settings folders) as a dated export. Importing a saved list back
+  onto a fresh PC reinstalls the apps and can restore their settings.
+- **Stop buttons** for both long-running jobs and a persistent status bar
+  surfacing progress and the last run's outcome.
 - **Dark / light Mica theming** that follows the Windows setting automatically.
-- **Screen-reader-first design** (see [Accessibility](#accessibility) below)
+- **Screen-reader-first design** is the reason this app exists; accessibility is
+  woven through every control. See the [User Manual](USER_GUIDE.md) for details.
 
 ## Planned Features & Improvements
 
 - A menu bar and further UX polish.
 - More backup scheduling options (e.g. hourly, monthly).
-- Multi-version retention (keep previous backup versions, not just the latest).
 - More granular progress reporting and cleaner output text.
-- New capabilities such as full system images and application-data
-  export / import.
+- New capabilities such as full system images.
 
 ## Requirements
 
@@ -62,9 +78,9 @@ publish-singlefile.cmd
 ```
 
 Produces one ~88 MB `GUARD.exe` (self-contained, compressed, ReadyToRun), staged
-inside a `GUARD\` folder alongside `README.md` and zipped to `GUARD.zip` in the
-project root. The bundled runtime extracts once to a per-user temp cache and is
-reused on later launches (it does not scatter DLLs beside the exe). Being a
+inside a `GUARD\` folder alongside `USER_GUIDE.md` and zipped to `GUARD.zip` in
+the project root. The bundled runtime extracts once to a per-user temp cache and
+is reused on later launches (it does not scatter DLLs beside the exe). Being a
 portable app, GUARD writes its working files (`backup-settings.ini`,
 `guard-backup.cmd`, `Logs\`) into the folder the exe sits in, so shipping it
 inside a folder keeps everything together instead of littering the folder the zip
@@ -89,52 +105,20 @@ Output folder: `bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\`
 
 | Path | Purpose |
 |---|---|
-| `Models/` | FolderPair, AppEntry, Settings, AppListFile (+ System.Text.Json source-gen context) |
-| `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, JSON I/O, process helpers |
+| `Models/` | FolderPair, AppEntry, Settings, AppListFile, exclude and app-settings models (+ System.Text.Json source-gen context) |
+| `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, app-settings export/restore, JSON I/O, process helpers |
 | `MainWindow.xaml(.cs)` | Both tabs and all wiring |
-| `Views/` | FolderDialog, AboutDialog (ContentDialogs) |
+| `Views/` | FolderDialog, AboutDialog, the exclude / app-import / app-settings dialogs, and the status-bar host (ContentDialogs + controls) |
 | `publish-singlefile.cmd` | Build the shipping `GUARD.exe` and stage it into `GUARD.zip` |
 | `publish-aot.cmd` | Opt-in NativeAOT publish (see note below) |
 | `GUARD\`, `GUARD.zip` | The staged release folder and its zip (project root; not source) |
+| `USER_GUIDE.md` | The end-user manual; shipped in the zip and opened by Help (F1) |
 
 ## Usage
 
-GUARD has two tabs.
-
-**File Backup.** Add one or more source/destination folder pairs, choose
-Additive or Mirror, and optionally list folder and file names to exclude.
-Scheduling is off by default; tick **Run a scheduled backup**, choose which
-weekdays it runs on (all seven for daily, one for weekly, or any custom mix) and
-the time, if you want it to run unattended. **Preview** shows what the backup
-would do without touching anything; **Save Settings** writes
-`backup-settings.ini` and a standalone `guard-backup.cmd` (which can be run
-independently of the main app), and (if scheduling is enabled) registers the
-Windows scheduled task `GUARD Backup`. Because the generated script is
-self-contained, your backups keep running on schedule whether or not GUARD itself
-is open.
-
-**App Inventory.** Scans the Windows uninstall registry for your installed apps
-and marks the ones winget can reinstall. You can export the full list to JSON and
-use it to reinstall the winget-capable apps after an OS reinstall.
-
-### Exported app list
-
-The App Inventory export is plain, indented JSON you can open in any text editor.
-Each entry records the app name, version, publisher, and (where known) its winget
-package id, so you can also run `winget install --id <id>` yourself.
-
-## Accessibility
-
-Accessibility is the reason this app exists. Some current accessibility-related
-efforts include the folder and app lists being built from real check boxes rather
-than a grid or list view, so a screen reader announces each row's own checked / 
-unchecked state with no selection-versus-check confusion. Within a list:
-
-- **Tab treats the whole list as one stop** - Tab enters the list once and the
-  next Tab leaves it, instead of stepping through every row.
-- **Arrow keys move between rows**, and **Space toggles** the focused check box.
-- **Focus is remembered** - tabbing back into a list returns you to the row you
-  were last on, not the top.
+GUARD has two tabs, **File Backup** and **App Management**. For a full,
+step-by-step walkthrough of every control and workflow, see the
+[User Manual](USER_GUIDE.md) (or press F1 in the app).
 
 ## NativeAOT (not currently usable)
 

@@ -1,6 +1,6 @@
 @echo off
 REM Build GUARD as a single, self-contained, compressed .exe (ReadyToRun, not
-REM AOT), then stage it inside a GUARD\ folder alongside README.md and zip that
+REM AOT), then stage it inside a GUARD\ folder alongside USER_GUIDE.md and zip that
 REM folder to GUARD.zip. Shipping GUARD inside a folder keeps the app portable:
 REM its runtime files (backup-settings.ini, guard-backup.cmd, Logs\) land next to
 REM the exe in that folder instead of littering wherever a bare exe was saved.
@@ -21,7 +21,7 @@ REM Rebuild the staged folder from scratch so stale files never ship.
 if exist "%STAGE%" rmdir /S /Q "%STAGE%"
 mkdir "%STAGE%"
 copy /Y "%PUB%\GUARD.exe" "%STAGE%\GUARD.exe" >nul
-copy /Y "%ROOT%\README.md" "%STAGE%\README.md" >nul
+copy /Y "%ROOT%\USER_GUIDE.md" "%STAGE%\USER_GUIDE.md" >nul
 
 REM Zip the folder (extracts to GUARD\GUARD.exe). This zip is the release asset.
 REM Use bsdtar (built-in tar.exe), not PowerShell's Compress-Archive: the latter
