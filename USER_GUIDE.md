@@ -143,7 +143,7 @@ tick any of the four presets, which cover the common clutter:
 - **Developer folders** (node_modules, .git, bin, obj, .vs)
 - **Caches and disc images** (`cache` and `.cache` folders, `*.iso`, `*.img`)
 
-For anything else, click **Add Exclusion...** (Alt+E in the exclusions area). The
+For anything else, click **Add Exclusion...** (Alt+U in the exclusions area). The
 dialog asks what you want to exclude:
 
 - **Folders with a certain name** (skips every folder with that name and all its
