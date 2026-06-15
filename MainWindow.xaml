@@ -4,13 +4,22 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:GuardWui3.Models"
+    xmlns:views="using:GuardWui3.Views"
     Title="GUARD">
 
     <Window.SystemBackdrop>
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Pivot x:Name="Tabs" Margin="4,4,4,8"
+    <!-- Two rows: the tabs fill the window; a persistent status bar sits below
+         them, outside both tabs' ScrollViewers so it is always visible. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+    <Pivot x:Name="Tabs" Grid.Row="0" Margin="4,4,4,8"
            AutomationProperties.Name="Backup sections"
            SelectionChanged="OnTabChanged">
 
@@ -80,17 +89,20 @@
                                               XYFocusKeyboardNavigation="Enabled">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:FolderPair">
+                                            <!-- OneWay (x:Bind defaults to OneTime) so an Edit Folder
+                                                 change to an existing pair refreshes the visible row
+                                                 and its spoken name in place. -->
                                             <CheckBox Margin="3,2" HorizontalAlignment="Stretch"
                                                       IsChecked="{x:Bind Include, Mode=TwoWay}"
-                                                      AutomationProperties.Name="{x:Bind Caption}">
+                                                      AutomationProperties.Name="{x:Bind Caption, Mode=OneWay}">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="360" />
                                                         <ColumnDefinition Width="200" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="0" Text="{x:Bind Source}"
+                                                    <TextBlock Grid.Column="0" Text="{x:Bind Source, Mode=OneWay}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
-                                                    <TextBlock Grid.Column="1" Text="{x:Bind SubFolder}"
+                                                    <TextBlock Grid.Column="1" Text="{x:Bind SubFolder, Mode=OneWay}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
                                                 </Grid>
                                             </CheckBox>
@@ -102,9 +114,70 @@
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
                             <Button Content="Add Folder..." AccessKey="A"
                                     Click="OnAddFolder" />
+                            <Button Content="Edit Folder..." AccessKey="E"
+                                    ToolTipService.ToolTip="Edit the folder row that last held focus"
+                                    Click="OnEditFolder" />
                             <Button Content="Remove Folder" AccessKey="R"
                                     ToolTipService.ToolTip="Remove this folder from the list entirely. To skip it temporarily, untick it instead."
                                     Click="OnRemoveFolder" />
+                        </StackPanel>
+
+                        <!-- Exclusions. Curated preset checkboxes cover the common
+                             cases with no wildcard typing; anything else goes through
+                             the Add Exclusion builder dialog into the custom list
+                             (checkbox rows, same screen-reader idiom as the folder
+                             list, so unticking pauses an exclusion without deleting
+                             it). Tooltips carry each preset's full pattern list. -->
+                        <TextBlock Text="Exclude from backup" FontWeight="SemiBold" Margin="0,12,0,0" />
+                        <!-- The automation name promotes this panel to a named UIA
+                             group (like DayGroup), so a screen reader announces
+                             "Exclude from backup" once when focus enters the
+                             checkboxes and stays quiet while moving inside. One
+                             full-width column so each label can enumerate every
+                             pattern it covers; tooltips carry the semantics. -->
+                        <StackPanel AutomationProperties.Name="Exclude from backup">
+                            <CheckBox x:Name="ChkExTemp"
+                                      Content="Temporary files (*.tmp, *.bak, ~$* lock files)"
+                                      ToolTipService.ToolTip="Skips *.tmp and *.bak files and Office lock files (~$*) everywhere."
+                                      Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                            <CheckBox x:Name="ChkExSystem"
+                                      Content="System clutter (Thumbs.db, desktop.ini, .DS_Store, $RECYCLE.BIN, System Volume Information)"
+                                      ToolTipService.ToolTip="Skips Thumbs.db, desktop.ini and .DS_Store files, and the $RECYCLE.BIN and System Volume Information folders."
+                                      Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                            <CheckBox x:Name="ChkExDev"
+                                      Content="Developer folders (node_modules, .git, bin, obj, .vs)"
+                                      ToolTipService.ToolTip="Skips folders with these names wherever they appear."
+                                      Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                            <CheckBox x:Name="ChkExCache"
+                                      Content="Caches and disc images (cache and .cache folders, *.iso, *.img)"
+                                      ToolTipService.ToolTip="Skips folders named cache or .cache wherever they appear, and *.iso and *.img files."
+                                      Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                        </StackPanel>
+                        <TextBlock Text="Custom exclusions:" Margin="0,4,0,0" />
+                        <!-- A plain single-select ListView, unlike the checkbox-row
+                             lists elsewhere: these entries carry no per-row state to
+                             announce (Add/Remove is the whole interaction), so the
+                             native list idiom - one tab stop, arrows move selection,
+                             "x of y" position reporting - is the clearer fit. -->
+                        <Border BorderThickness="1" Height="92" CornerRadius="4"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                            <ListView x:Name="ExcludeList" ItemsSource="{x:Bind Excludes}"
+                                      AutomationProperties.Name="Custom exclusions"
+                                      SelectionMode="Single">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ExcludeItem">
+                                        <TextBlock Text="{x:Bind Caption}" />
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                            <Button Content="Add Exclusion..." AccessKey="E"
+                                    Click="OnAddExclude" />
+                            <Button Content="Remove Exclusion" AccessKey="X"
+                                    ToolTipService.ToolTip="Remove the selected exclusion from the list"
+                                    Click="OnRemoveExclude" />
                         </StackPanel>
 
                         <!-- Mode. RadioButtons (the container) gives arrow-key
@@ -130,23 +203,23 @@
                                          Content="Mirror  (make the destination match the source exactly; files deleted from the source are also deleted at the destination)" />
                         </RadioButtons>
 
-                        <!-- Excludes -->
-                        <Grid Margin="0,8,0,0" ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtExDirs" Grid.Column="0" Header="Exclude folder names (one per line):"
-                                     AcceptsReturn="True" Height="80" TextWrapping="NoWrap"
-                                     ToolTipService.ToolTip="One name or pattern per line. Wildcards work: * matches any text, ? matches one character (e.g. node_modules, temp*)."
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     TextChanged="OnDirtyChanged" />
-                            <TextBox x:Name="TxtExFiles" Grid.Column="1" Header="Exclude file names (one per line):"
-                                     AcceptsReturn="True" Height="80" TextWrapping="NoWrap"
-                                     ToolTipService.ToolTip="One name or pattern per line. Wildcards work: * matches any text, ? matches one character (e.g. *.iso, *.tmp, ~$*)."
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     TextChanged="OnDirtyChanged" />
-                        </Grid>
+                        <!-- Versioning. The keep-count NumberBox sits on the same row
+                             as the checkbox (labelled by the adjacent TextBlock, whose
+                             text the AutomationProperties.Name matches) and greys out
+                             while the box is off, mirroring the schedule pattern. -->
+                        <TextBlock Text="Versioning" FontWeight="SemiBold" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <CheckBox x:Name="ChkVersioned" Content="Keep dated backup versions" IsChecked="False" AccessKey="V"
+                                      VerticalAlignment="Center"
+                                      ToolTipService.ToolTip="Each run copies into a dated folder (like 2026-06-10) inside the destination, and the oldest dated folders beyond the keep count are removed after a successful run."
+                                      Checked="OnVersionedChanged" Unchecked="OnVersionedChanged" />
+                            <TextBlock Text="Versions to keep:" VerticalAlignment="Center" Margin="16,0,0,0" />
+                            <NumberBox x:Name="NumVersionsKeep" AccessKey="K" VerticalAlignment="Center"
+                                       AutomationProperties.Name="Versions to keep"
+                                       Minimum="1" Maximum="365" Value="5" SmallChange="1"
+                                       SpinButtonPlacementMode="Compact" HorizontalAlignment="Left" MinWidth="100"
+                                       ValueChanged="OnVersionsKeepChanged" />
+                        </StackPanel>
 
                         <!-- Schedule. Save Settings is the single source of truth:
                              ticking this box and saving registers the task; unticking
@@ -189,19 +262,34 @@
                                             SelectedTimeChanged="OnScheduleTimeChanged" />
                             </StackPanel>
                         </StackPanel>
+                        <!-- Deliberately outside ScheduleConfig: this is its own
+                             trigger (a second scheduled task), usable with or
+                             without the day/time schedule, so it must not grey
+                             out when "Run a scheduled backup" is off. -->
+                        <CheckBox x:Name="ChkOnConnect" AccessKey="W" Margin="0,4,0,0"
+                                  Content="Automatically run when the backup destination becomes available (checks every 15 min)"
+                                  ToolTipService.ToolTip="Adds a second scheduled task that quietly checks for the destination every 15 minutes and at sign-in, and runs the backup at most once per day when it is reachable. Works for external drives and network shares, with or without the day/time schedule."
+                                  Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
                         <TextBlock x:Name="LblNextRun" Text="Next run: (unknown)" Margin="0,4,0,0" />
 
                         <!-- Actions -->
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
-                            <Button Content="Save Settings" AccessKey="S" Style="{ThemeResource AccentButtonStyle}"
+                            <Button x:Name="BtnSave" Content="Save Settings" AccessKey="S" Style="{ThemeResource AccentButtonStyle}"
                                     ToolTipService.ToolTip="Save settings and regenerate the backup script and scheduled task"
                                     Click="OnSave" />
-                            <Button Content="Run Now" AccessKey="N"
+                            <Button x:Name="BtnRunNow" Content="Run Now" AccessKey="N"
                                     ToolTipService.ToolTip="Run the backup now"
                                     Click="OnRunNow" />
-                            <Button Content="Preview" AccessKey="P"
+                            <Button x:Name="BtnPreview" Content="Preview" AccessKey="P"
                                     ToolTipService.ToolTip="Preview the backup without making changes"
                                     Click="OnPreview" />
+                            <!-- Always present, enabled only while a backup runs: a
+                                 button that pops into existence is not discoverable
+                                 with a screen reader, whereas a disabled button is
+                                 announced as unavailable in its stable place. -->
+                            <Button x:Name="BtnStopBackup" Content="Stop Backup" AccessKey="C" IsEnabled="False"
+                                    ToolTipService.ToolTip="Stop the running backup"
+                                    Click="OnStopBackup" />
                             <Button Content="Open Last Log" AccessKey="L"
                                     ToolTipService.ToolTip="Open the last backup log"
                                     Click="OnOpenLog" />
@@ -210,16 +298,14 @@
                                     Click="OnOpenDest" />
                         </StackPanel>
 
-                        <!-- Status line (live region) -->
-                        <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,8,0,0" VerticalAlignment="Center"
-                                    AutomationProperties.Name="Settings status">
-                            <Ellipse x:Name="ScriptDot" Width="10" Height="10" VerticalAlignment="Center" />
-                            <TextBlock x:Name="ScriptStatusText" VerticalAlignment="Center"
-                                       AutomationProperties.LiveSetting="Polite"
-                                       AutomationProperties.Name="Settings status" />
-                        </StackPanel>
+                        <!-- The settings status (saved / unsaved / none yet) lives
+                             in the window status bar below the tabs. -->
 
                         <!-- Progress + output -->
+                        <!-- Not a live region: the end-of-run summary and the
+                             cancellation message are spoken via a UIA notification
+                             (AnnounceNotification), which carries its text in the
+                             event and is more reliable for one-shot messages. -->
                         <TextBlock x:Name="FileProgressLabel" Margin="0,8,0,2"
                                    AutomationProperties.Name="Backup progress" />
                         <ProgressBar x:Name="FileProgress" Minimum="0" Maximum="1" Value="0"
@@ -234,13 +320,13 @@
                 </ScrollViewer>
             </PivotItem>
 
-            <!-- ============================ APP INVENTORY ============================ -->
-            <PivotItem Header="App Inventory">
+            <!-- ============================ APP MANAGEMENT ============================ -->
+            <PivotItem Header="App Management">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Width="720" HorizontalAlignment="Left" Margin="14" Spacing="6">
 
                         <TextBlock TextWrapping="Wrap" Margin="0,0,0,8"
-                                   Text="Installed apps are read from the Windows uninstall registry, and cross-checked against winget when it is available. Apps winget can reinstall are marked &quot;Winget&quot;; the rest are marked &quot;Manual&quot;. Tick the apps you want to keep, then Export the list to your chosen destination. After an OS reinstall, Import the list and Reinstall Selected to put the Winget ones back automatically. The exported file is plain JSON, so you can also open it to read your app list by hand." />
+                                   Text="Apps installed on this PC, marked &quot;Winget&quot; or &quot;Store&quot; (these reinstall automatically) or &quot;Manual&quot;. Tick the ones to keep, then press Export to save the list - tick &quot;Also export app settings&quot; first to copy their settings folders alongside it. On a new PC, use Import List to reinstall from a saved list." />
 
                         <!-- Export destination -->
                         <Grid>
@@ -278,6 +364,12 @@
                                          ToolTipService.ToolTip="Filter by name, publisher, app type (winget / store / manual) or package ID"
                                          TextChanged="OnFilterChanged" />
                             </StackPanel>
+                            <!-- Results count. Its visible text is its accessible name; it
+                                 only announces while the filter box has focus (see
+                                 UpdateAppCount) so scans and imports are not double-spoken. -->
+                            <TextBlock x:Name="LblAppCount" VerticalAlignment="Center" Margin="6,0,0,0"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       AutomationProperties.LiveSetting="Polite" />
                         </StackPanel>
 
                         <!-- App list -->
@@ -327,24 +419,33 @@
                             </ScrollViewer>
                         </Border>
 
-                        <TextBlock x:Name="AppStatus" Text="Open this tab to scan installed apps." Margin="0,4,0,0"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   AutomationProperties.Name="Inventory status" />
+                        <!-- One Export action covers the list and (optionally) the apps'
+                             settings folders; the checkbox sits above the buttons so the
+                             option is read before the action that uses it. -->
+                        <CheckBox x:Name="ChkExportSettings" Margin="0,6,0,0" AccessKey="A"
+                                  Content="Also export app settings"
+                                  ToolTipService.ToolTip="When ticked, Export also finds the ticked apps' settings folders and copies them alongside the app list, after you confirm the matches" />
 
-                        <!-- Actions -->
+                        <!-- Actions. Reinstall is launched from the Import List
+                             dialog (it acts on the saved list, not the installed
+                             apps shown here), so the only reinstall control on the
+                             tab is Stop, which governs the run that streams into
+                             the progress / output area below. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-                            <Button x:Name="BtnAppExport" Content="Export List" AccessKey="E"
-                                    ToolTipService.ToolTip="Export the ticked apps to the destination"
+                            <Button x:Name="BtnAppExport" Content="Export" AccessKey="E"
+                                    ToolTipService.ToolTip="Export the ticked apps to the destination as a JSON list, plus their settings folders when the option above is ticked"
                                     Click="OnExportApps" />
                             <Button x:Name="BtnAppImport" Content="Import List" AccessKey="I"
-                                    ToolTipService.ToolTip="Import an app list from a file"
+                                    ToolTipService.ToolTip="Open a saved app list to reinstall its apps (and optionally restore their settings)"
                                     Click="OnImportApps" />
-                            <Button x:Name="BtnAppReinstall" Content="Reinstall Selected" AccessKey="S"
-                                    ToolTipService.ToolTip="Reinstall the ticked Winget apps"
-                                    Click="OnReinstall" />
                             <Button Content="Open Folder" AccessKey="P"
                                     ToolTipService.ToolTip="Open the app list destination folder"
                                     Click="OnOpenAppDest" />
+                            <!-- Enabled only while a reinstall runs; same
+                                 discoverability reasoning as Stop Backup. -->
+                            <Button x:Name="BtnAppStop" Content="Stop Reinstall" AccessKey="C" IsEnabled="False"
+                                    ToolTipService.ToolTip="Stop the running reinstall; apps already installed stay installed"
+                                    Click="OnStopReinstall" />
                         </StackPanel>
 
                         <TextBlock TextWrapping="Wrap" Margin="0,8,0,4"
@@ -366,4 +467,54 @@
                 </ScrollViewer>
             </PivotItem>
     </Pivot>
+
+        <!-- Status bar. Shows the active tab's status (settings state on File
+             Backup, scan/import summary on App Management); the right-hand
+             progress area mirrors a running job so it stays visible even when
+             the in-tab progress area is scrolled away or on the other tab.
+             StatusBarText is the single live region for status announcements,
+             and the bar is the only home of the inventory scan/import summary,
+             so each change is announced exactly once. -->
+        <Border Grid.Row="1" BorderThickness="0,1,0,0"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+            <!-- StatusBarHost exposes the bar to UIA as control type StatusBar.
+                 The background and padding sit on the Grid INSIDE the host, not
+                 on the Border: hit-testing resolves to the nearest ancestor with
+                 an automation peer, so a hit anywhere on the bar surface must
+                 land on content within the host for screen-reader mouse and
+                 touch exploration to report the status bar (a Border background
+                 would bubble hits past the host to the XAML island root). -->
+            <views:StatusBarHost HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Grid ColumnSpacing="10" Padding="14,6"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <!-- Colour reinforces the saved/unsaved state but never carries
+                     it alone; the text always says it in words. Hidden on the
+                     App Management tab, where that semantic does not apply. -->
+                <Ellipse x:Name="StatusDot" Grid.Column="0" Width="10" Height="10"
+                         VerticalAlignment="Center" />
+                <!-- No AutomationProperties.Name: an explicit name overrides the
+                     text as the UIA Name, and a live-region change announces the
+                     Name, so a static name would make every announcement read
+                     "Status" instead of the message (same bug fixed on the old
+                     in-tab status lines). -->
+                <TextBlock x:Name="StatusBarText" Grid.Column="1" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           AutomationProperties.LiveSetting="Polite" />
+                <StackPanel x:Name="StatusBarProgressArea" Grid.Column="2" Orientation="Horizontal"
+                            Spacing="8" VerticalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock x:Name="StatusBarProgressText" VerticalAlignment="Center"
+                               MaxWidth="320" TextTrimming="CharacterEllipsis" />
+                    <ProgressBar x:Name="StatusBarProgress" Width="140" Minimum="0" Maximum="1" Value="0"
+                                 VerticalAlignment="Center"
+                                 AutomationProperties.Name="Running job progress bar" />
+                </StackPanel>
+            </Grid>
+            </views:StatusBarHost>
+        </Border>
+    </Grid>
 </Window>

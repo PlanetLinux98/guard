@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -12,8 +13,11 @@ public static class BackupScript
     public static void Write(Settings cfg)
     {
         string mirror = cfg.Mode == "Mirror" ? "/MIR" : "/E";
-        string exDirs = ToOneLine(cfg.ExcludeDirs);
-        string exFiles = ToOneLine(cfg.ExcludeFiles);
+        // Mirror the SettingsStore load clamp: keep must never reach the script
+        // as 0 or negative, or pruning could delete the folder just written.
+        int keep = Math.Clamp(cfg.VersionsToKeep, 1, 365);
+        string exDirs = JoinTokens(cfg.EffectiveExcludeDirs());
+        string exFiles = JoinTokens(cfg.EffectiveExcludeFiles());
         var opts = new StringBuilder();
         // /XJ is MANDATORY: skips junction points. Without it the hidden
         // My Music / My Pictures / My Videos junctions in Documents cause
@@ -33,9 +37,15 @@ public static class BackupScript
         sb.AppendLine("REM    guard-backup.cmd          run the backup for real (keeps window open)");
         sb.AppendLine("REM    guard-backup.cmd test     PREVIEW only - shows what WOULD change");
         sb.AppendLine("REM    guard-backup.cmd auto     silent (used by the scheduled task)");
+        sb.AppendLine("REM    guard-backup.cmd onconnect");
+        sb.AppendLine("REM                              silent; backs up only if the destination is");
+        sb.AppendLine("REM                              reachable and no backup succeeded yet today");
+        sb.AppendLine("REM                              (used by the on-connect scheduled task)");
         sb.AppendLine("REM ===========================================================================");
         sb.AppendLine();
         sb.AppendLine("set \"DEST=" + cfg.Dest + "\"");
+        if (cfg.Versioned)
+            sb.AppendLine("set \"KEEP=" + keep + "\"");
         sb.AppendLine("set \"LOGDIR=%~dp0Logs\"");
         sb.AppendLine("set \"LOG=%LOGDIR%\\backup_last.log\"");
         sb.AppendLine();
@@ -43,19 +53,57 @@ public static class BackupScript
         sb.AppendLine("set \"PAUSEATEND=1\"");
         sb.AppendLine("if /I \"%~1\"==\"test\" set \"DRY=/L\"");
         sb.AppendLine("if /I \"%~1\"==\"auto\" set \"PAUSEATEND=\"");
+        sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"PAUSEATEND=\"");
+        sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"ONCONNECT=1\"");
+        sb.AppendLine();
+        // On-connect gate: the periodic task fires this every few minutes, so it
+        // must cost nothing when there is nothing to do. Exit silently (and before
+        // the log header, so the last real backup log is never overwritten) when
+        // the destination is absent or the stamp already records a successful run
+        // today. The stamp holds %DATE% verbatim; findstr /x compares it the same
+        // way it was written, so locale date formats are irrelevant. A failed run
+        // does not update the stamp (see the HADERR branch), so the next check
+        // retries instead of skipping the rest of the day.
+        sb.AppendLine("set \"OCSTAMP=%~dp0onconnect-stamp.txt\"");
+        sb.AppendLine("if not defined ONCONNECT goto :checked");
+        sb.AppendLine("if not exist \"%DEST%\\\" exit /b 0");
+        sb.AppendLine("findstr /l /x /c:\"%DATE%\" \"%OCSTAMP%\" >nul 2>&1");
+        sb.AppendLine("if not errorlevel 1 exit /b 0");
+        sb.AppendLine(":checked");
         sb.AppendLine();
         sb.AppendLine("set \"OPTS=" + opts + "\"");
         sb.AppendLine();
         sb.AppendLine("if not exist \"%LOGDIR%\" md \"%LOGDIR%\"");
         sb.AppendLine();
+        if (cfg.Versioned)
+        {
+            // %date% is locale-formatted and wmic is removed from current
+            // Windows 11, so PowerShell (present on every supported Windows)
+            // is the only portable way to get a YYYY-MM-DD stamp in batch.
+            sb.AppendLine("REM Versioned mode: each run copies into a dated subfolder of DEST and");
+            sb.AppendLine("REM the oldest dated folders beyond KEEP are pruned after a clean run.");
+            sb.AppendLine("set \"STAMP=\"");
+            sb.AppendLine("for /f %%I in ('powershell -NoProfile -Command \"Get-Date -Format yyyy-MM-dd\"') do set \"STAMP=%%I\"");
+            sb.AppendLine("if not defined STAMP (");
+            sb.AppendLine("   echo ERROR: could not compute the date stamp for the versioned backup - aborting.");
+            sb.AppendLine("   >\"%LOG%\" echo ERROR: could not compute the date stamp for the versioned backup - aborting.");
+            sb.AppendLine("   goto :end");
+            sb.AppendLine(")");
+            sb.AppendLine("set \"RUNDEST=%DEST%\\%STAMP%\"");
+            sb.AppendLine();
+        }
         sb.AppendLine(">\"%LOG%\"  echo ===========================================================");
         sb.AppendLine(">>\"%LOG%\" echo  Backup     %date% %time%");
         sb.AppendLine(">>\"%LOG%\" echo  Destination: %DEST%");
+        if (cfg.Versioned)
+            sb.AppendLine(">>\"%LOG%\" echo  Version folder: %STAMP%  (keeping the newest %KEEP%)");
         sb.AppendLine("if defined DRY >>\"%LOG%\" echo  *** PREVIEW MODE - no changes made ***");
         sb.AppendLine(">>\"%LOG%\" echo ===========================================================");
         sb.AppendLine();
         sb.AppendLine("echo.");
         sb.AppendLine("echo Backup    destination: %DEST%");
+        if (cfg.Versioned)
+            sb.AppendLine("echo Version folder: %STAMP%  (keeping the newest %KEEP%)");
         sb.AppendLine("if defined DRY echo *** PREVIEW MODE - nothing will be copied or deleted ***");
         sb.AppendLine("echo Log file: %LOG%");
         sb.AppendLine("echo.");
@@ -72,11 +120,12 @@ public static class BackupScript
         // GUARD_UI, sent to stdout only (never the log).
         var inc = new List<FolderPair>();
         foreach (var f in cfg.Folders) if (f.Include) inc.Add(f);
+        string runDest = cfg.Versioned ? "%RUNDEST%" : "%DEST%";
         for (int i = 0; i < inc.Count; i++)
         {
             var f = inc[i];
             sb.AppendLine("if defined GUARD_UI echo @@PROGRESS@@ " + (i + 1) + " " + inc.Count + " " + MarkerSafe(f.SubFolder));
-            sb.AppendLine("call :backup \"" + f.Source + "\" \"%DEST%\\" + f.SubFolder + "\"");
+            sb.AppendLine("call :backup \"" + f.Source + "\" \"" + runDest + "\\" + f.SubFolder + "\"");
         }
         sb.AppendLine("if defined GUARD_UI echo @@PROGRESS@@ DONE");
         sb.AppendLine();
@@ -89,7 +138,18 @@ public static class BackupScript
         sb.AppendLine("   >>\"%LOG%\" echo FINISHED OK   %date% %time%");
         sb.AppendLine("   echo.");
         sb.AppendLine("   echo Backup finished successfully.");
+        // Stamp only clean on-connect runs (an error should retry on the next
+        // check, and the DRY guard is belt-and-braces; the task never passes
+        // "test"). %DATE% expands when this block executes, i.e. at the finish,
+        // so a run crossing midnight stamps the new day as already covered.
+        sb.AppendLine("   if defined ONCONNECT if not defined DRY >\"%OCSTAMP%\" echo %DATE%");
         sb.AppendLine(")");
+        if (cfg.Versioned)
+        {
+            sb.AppendLine("REM Prune only after a clean real run: if this run had errors the new");
+            sb.AppendLine("REM version may be incomplete, so keeping extra old versions is safer.");
+            sb.AppendLine("if not defined DRY if not defined HADERR call :prune");
+        }
         sb.AppendLine("goto :end");
         sb.AppendLine();
         sb.AppendLine(":backup");
@@ -109,6 +169,36 @@ public static class BackupScript
         sb.AppendLine(")");
         sb.AppendLine("goto :eof");
         sb.AppendLine();
+        if (cfg.Versioned)
+        {
+            // Deletion is deliberately narrow: only directories DIRECTLY under
+            // DEST whose names are exactly YYYY-MM-DD (findstr whole-line digit
+            // match) qualify, so any other content the user keeps at the
+            // destination can never be touched. The dated names sort
+            // lexicographically in date order, so dir /o:n lists oldest first
+            // and the first EXCESS matches are the oldest versions.
+            sb.AppendLine(":prune");
+            sb.AppendLine("set \"EXCESS=\"");
+            sb.AppendLine("set /a COUNT=0");
+            sb.AppendLine("for /f \"delims=\" %%D in ('dir /b /ad /o:n \"%DEST%\" 2^>nul ^| findstr /r \"^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$\"') do set /a COUNT+=1");
+            sb.AppendLine("set /a EXCESS=COUNT-KEEP");
+            sb.AppendLine("if %EXCESS% leq 0 goto :eof");
+            sb.AppendLine(">>\"%LOG%\" echo.");
+            sb.AppendLine(">>\"%LOG%\" echo Pruning %EXCESS% old version folder(s), keeping the newest %KEEP%.");
+            sb.AppendLine("for /f \"delims=\" %%D in ('dir /b /ad /o:n \"%DEST%\" 2^>nul ^| findstr /r \"^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$\"') do call :prunedel \"%%D\"");
+            sb.AppendLine("goto :eof");
+            sb.AppendLine();
+            sb.AppendLine(":prunedel");
+            sb.AppendLine("if %EXCESS% leq 0 goto :eof");
+            sb.AppendLine("REM Never delete the folder this run just wrote, whatever the count says.");
+            sb.AppendLine("if /I \"%~1\"==\"%STAMP%\" goto :eof");
+            sb.AppendLine("echo Removing old version: %~1");
+            sb.AppendLine(">>\"%LOG%\" echo Removed old version: %~1");
+            sb.AppendLine("rd /s /q \"%DEST%\\%~1\"");
+            sb.AppendLine("set /a EXCESS-=1");
+            sb.AppendLine("goto :eof");
+            sb.AppendLine();
+        }
         sb.AppendLine(":end");
         sb.AppendLine("endlocal");
         sb.AppendLine("echo.");
@@ -127,14 +217,17 @@ public static class BackupScript
         return sb.ToString().Trim();
     }
 
-    private static string ToOneLine(string multiline)
+    // Quote any token holding a space ("System Volume Information") so robocopy
+    // reads it as a single /XD or /XF argument; the quotes survive the
+    // set "OPTS=..." wrapper, which only strips its own outer pair.
+    private static string JoinTokens(List<string> tokens)
     {
-        if (string.IsNullOrEmpty(multiline)) return "";
-        // Handle every newline form, including the bare CR a WinUI multi-line
-        // TextBox uses, so each excluded name becomes its own /XD or /XF token.
-        var parts = multiline.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-        var keep = new List<string>();
-        foreach (var p in parts) { var t = p.Trim(); if (t.Length > 0) keep.Add(t); }
-        return string.Join(" ", keep.ToArray());
+        var sb = new StringBuilder();
+        foreach (var t in tokens)
+        {
+            if (sb.Length > 0) sb.Append(' ');
+            sb.Append(t.Contains(' ') ? "\"" + t + "\"" : t);
+        }
+        return sb.ToString();
     }
 }

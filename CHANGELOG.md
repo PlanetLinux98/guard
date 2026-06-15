@@ -8,12 +8,135 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+- App settings restore on the App Management tab. Import List now opens the
+  saved list in its own dialog (instead of replacing the installed-apps list
+  behind the tab) with the apps as tickable rows and the list's source machine
+  and date. From there you can "Reinstall Selected" (apps only) or, when an
+  `AppSettings` bundle was saved beside the list, "Reinstall & Restore Settings"
+  - which reinstalls the ticked Winget/Store apps and then puts their settings
+  folders back. The restore step shows a second confirmation of tickable rows
+  with each folder's target location (re-anchored to your current user profile
+  via the manifest, so it works even if the Windows username changed), whether a
+  folder already exists, and its size. An existing target is renamed aside to
+  `<name>.guard-old-<timestamp>` before being replaced, never deleted, so a
+  restore is reversible. Settings are restored after the installs finish (before
+  you launch anything), folders whose app is running are skipped and counted,
+  and Stop Reinstall halts the whole operation. If none of the ticked apps
+  reinstall automatically, the settings are restored on their own.
+- App settings export on the App Management tab: tick "Also export app
+  settings" and the Export action copies the ticked apps' settings folders
+  alongside the app list, as one operation. GUARD matches the apps' names and
+  publishers against folder names under `%APPDATA%`, `%LOCALAPPDATA%` and
+  `%USERPROFILE%\.config`, shows the matched folders in a confirmation dialog
+  of tickable rows (with Select All / Select None buttons, and sizes that
+  calculate in the background while you review), and copies the confirmed ones
+  into an `AppSettings` folder inside the export's dated folder, sorted by which
+  root they came from, with a progress bar that advances by size as it copies. A
+  JSON manifest and a plain-text README with restore instructions are written
+  alongside. Cancelling the confirmation cancels the whole export, so a cancel
+  never leaves a partial result. Cache subfolders, junctions, registry-stored
+  settings, ProgramData and Store packaged app state are not copied; locked
+  files are skipped and counted instead of failing the export.
+- Optional "Keep dated backup versions" mode: each run copies into a dated
+  folder (YYYY-MM-DD) inside the destination, and after a clean run the oldest
+  dated folders beyond a configurable keep count (default 5) are pruned. Off by
+  default; the generated script is unchanged unless you opt in. Pruning only
+  ever touches folders directly under the destination whose names exactly match
+  the date pattern.
+- New "Automatically run when the backup destination becomes available" option:
+  a second scheduled task ("GUARD On-Connect Backup") quietly checks for the
+  destination every 15 minutes and at sign-in, and runs the backup at most once
+  per day when it is reachable - so plugging in the external drive (or the
+  network share coming back) is enough to get that day's backup. Works with or
+  without the day/time schedule, and like all GUARD backups it does not need the
+  app open.
+- Save Settings now reports the destination's free space, a rough size for a
+  first full backup, and any included source folders that are not currently
+  reachable (these are skipped at run time, so an offline network source is
+  fine). The figures appear in the status line and are announced to screen
+  readers, calculated in the background so they never hold up the save, with a
+  warning (and an amber status indicator) when space looks tight. Run Now and
+  Preview note any unreachable sources in the output box rather than
+  interrupting the run with a dialog.
+- Stop buttons for both long-running jobs: "Stop Backup" on the File Backup tab
+  cancels a running backup (the whole cmd/robocopy process tree is stopped), and
+  "Stop Reinstall" on the App Management tab stops the winget reinstall loop after
+  the current app (apps already installed stay installed). Each button sits with
+  its tab's other actions and is enabled only while its job is running, and the
+  output box and progress line report the cancellation instead of going silent.
+  Keyboard focus follows the job: starting one moves focus to its Stop button,
+  and when it ends focus returns to the button that started it. Screen readers
+  hear the job begin (the first progress update) and end (the summary or
+  cancellation message).
+- A persistent status bar at the bottom of the window. It shows the active
+  tab's status (the settings saved/unsaved line on File Backup, the scan or
+  import summary on App Management) and, while a backup or reinstall is running,
+  a compact progress bar with the current action, so progress stays visible
+  even when the in-tab progress area is scrolled away or the other tab is
+  active. The status bar is the screen-reader live region for status changes,
+  and both the File Backup mid-page status line and the App Management scan
+  summary moved into it. It is exposed to assistive tech as a real status bar
+  (control type StatusBar), so NVDA's read-status-bar command (NVDA+End) reads
+  it, including the running job's progress text. After a job ends, the bar
+  keeps the outcome (the run summary, "Backup cancelled.", or the reinstall
+  result) in its progress slot until the next job starts, so the hotkey can
+  always answer how the last run went.
+- A plain-language summary at the end of every backup and preview run, built
+  from Robocopy's own totals: files copied (with size), files skipped because
+  they were already up to date, failures (called out first, with a pointer to
+  the log), and extra destination files (noting whether Mirror mode removed
+  them). The summary appears in the output box and on the progress line, so
+  you no longer need to read the raw log to know how a run went.
+- "Edit Folder..." button on the File Backup tab: change the source path or
+  destination subfolder of an existing folder pair in place, instead of removing
+  and re-adding it. The edit applies to the folder row that last held focus,
+  matching how Remove Folder picks its target.
+- A results count next to the App Management filter box (e.g. "42 of 187 apps"),
+  so you can tell how many apps match as you type. It is announced to screen
+  readers only while typing in the filter box, and only when the count actually
+  changes.
+
 ### Changed
-- README rewritten as an end-user manual: install and first-run guidance
-  (including the SmartScreen note), a guided first-backup walkthrough, full
-  documentation of every control on both tabs, portability and generated-file
-  reference, an expanded accessibility section, FAQ, and troubleshooting.
-  Developer and build content moved to a short section at the end.
+- Renamed the "App Inventory" tab to "App Management": with reinstalling apps
+  and exporting their settings sitting alongside the inventory scan, the old
+  name undersold what the tab does.
+- The App Management tab's "Export List" button is now just "Export", since
+  the one action covers the list and (optionally) the app settings.
+- Reworked the exclude UI so no wildcard typing is needed for the common cases:
+  four one-tick preset checkboxes (temporary files, system clutter, developer
+  folders, caches and disc images) replace the free-text boxes, and anything
+  else is added through a new "Add Exclusion" dialog that asks what to exclude
+  (a folder name, a file extension, or a name/pattern) and builds the pattern
+  for you. Custom exclusions appear in a list with Add/Remove buttons. Existing
+  saved excludes migrate automatically: lines a preset covers tick that preset
+  (which can also enable the preset's sibling patterns - review the checkboxes
+  after upgrading), and the rest become custom entries.
+- Tidied the File Backup tab layout: the exclude controls now sit directly
+  below the Add/Remove Folder buttons (above the Mode choice), and the
+  "Versions to keep" count sits on the same line as the "Keep dated backup
+  versions" checkbox.
+- Save Settings is now fast and no longer freezes the app: the scheduled tasks
+  are registered in a single background step instead of several foreground ones,
+  and a successful save is confirmed inline rather than with a pop-up dialog
+  (dialogs now appear only for problems, such as a failed task registration).
+  The "Next run" label also loads in the background instead of delaying the
+  window at startup.
+- The output consoles on both tabs now scroll automatically to the newest line
+  while a backup or reinstall is running, without moving keyboard focus.
+- Each export now goes into its own dated folder under the destination
+  (`app-export-YYYY-MM-DD_HHMM`) holding the `app-list.json` and, when included,
+  the `AppSettings` folder. Repeated exports never overwrite each other, and a
+  list is always kept together with the matching settings (replacing the earlier
+  numbered-filename scheme, which shared one `AppSettings` folder across exports).
+
+### Fixed
+- Screen readers announced the static label ("Inventory status" / "Settings
+  status") instead of the actual message whenever a status line updated, e.g.
+  after the app scan finished. The status text itself is now announced.
+- Exclude names containing spaces (such as "System Volume Information") are now
+  quoted in the generated script, so robocopy reads each as a single name
+  instead of several.
 
 ## [0.3.0] - 2026-06-11
 
