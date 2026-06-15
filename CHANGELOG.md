@@ -8,6 +8,8 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-15
+
 ### Added
 - GUARD is now available through **winget**: `winget install --id
   PlanetLinux98.GUARD` (or just `winget install GUARD`). New releases usually
@@ -273,7 +275,8 @@ shipping as a single self-contained `GUARD.exe`.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/PlanetLinux98/guard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/PlanetLinux98/guard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/PlanetLinux98/guard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/PlanetLinux98/guard/releases/tag/v0.1.0
