@@ -326,7 +326,7 @@
                     <StackPanel Width="720" HorizontalAlignment="Left" Margin="14" Spacing="6">
 
                         <TextBlock TextWrapping="Wrap" Margin="0,0,0,8"
-                                   Text="Installed apps are read from the Windows uninstall registry, and cross-checked against winget when it is available. Apps winget can reinstall are marked &quot;Winget&quot;; the rest are marked &quot;Manual&quot;. Tick the apps you want to keep, then press Export to save the list to your chosen destination - tick &quot;Also export app settings&quot; first to copy the apps' settings folders alongside it. After an OS reinstall, Import the list and Reinstall Selected to put the Winget ones back automatically. The exported file is plain JSON, so you can also open it to read your app list by hand." />
+                                   Text="Apps installed on this PC, marked &quot;Winget&quot; or &quot;Store&quot; (these reinstall automatically) or &quot;Manual&quot;. Tick the ones to keep, then press Export to save the list - tick &quot;Also export app settings&quot; first to copy their settings folders alongside it. On a new PC, use Import List to reinstall from a saved list." />
 
                         <!-- Export destination -->
                         <Grid>
@@ -426,25 +426,26 @@
                                   Content="Also export app settings"
                                   ToolTipService.ToolTip="When ticked, Export also finds the ticked apps' settings folders and copies them alongside the app list, after you confirm the matches" />
 
-                        <!-- Actions -->
+                        <!-- Actions. Reinstall is launched from the Import List
+                             dialog (it acts on the saved list, not the installed
+                             apps shown here), so the only reinstall control on the
+                             tab is Stop, which governs the run that streams into
+                             the progress / output area below. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
                             <Button x:Name="BtnAppExport" Content="Export" AccessKey="E"
                                     ToolTipService.ToolTip="Export the ticked apps to the destination as a JSON list, plus their settings folders when the option above is ticked"
                                     Click="OnExportApps" />
                             <Button x:Name="BtnAppImport" Content="Import List" AccessKey="I"
-                                    ToolTipService.ToolTip="Import an app list from a file"
+                                    ToolTipService.ToolTip="Open a saved app list to reinstall its apps (and optionally restore their settings)"
                                     Click="OnImportApps" />
-                            <Button x:Name="BtnAppReinstall" Content="Reinstall Selected" AccessKey="S"
-                                    ToolTipService.ToolTip="Reinstall the ticked Winget apps"
-                                    Click="OnReinstall" />
-                            <!-- Always present, enabled only while a reinstall runs;
-                                 same discoverability reasoning as Stop Backup. -->
-                            <Button x:Name="BtnAppStop" Content="Stop Reinstall" AccessKey="C" IsEnabled="False"
-                                    ToolTipService.ToolTip="Stop the running reinstall; apps already installed stay installed"
-                                    Click="OnStopReinstall" />
                             <Button Content="Open Folder" AccessKey="P"
                                     ToolTipService.ToolTip="Open the app list destination folder"
                                     Click="OnOpenAppDest" />
+                            <!-- Enabled only while a reinstall runs; same
+                                 discoverability reasoning as Stop Backup. -->
+                            <Button x:Name="BtnAppStop" Content="Stop Reinstall" AccessKey="C" IsEnabled="False"
+                                    ToolTipService.ToolTip="Stop the running reinstall; apps already installed stay installed"
+                                    Click="OnStopReinstall" />
                         </StackPanel>
 
                         <TextBlock TextWrapping="Wrap" Margin="0,8,0,4"

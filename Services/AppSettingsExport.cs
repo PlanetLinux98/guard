@@ -165,24 +165,48 @@ public static class AppSettingsExport
         c.SizePartial = partial || stack.Count > 0;
     }
 
+    // Throttled cumulative-byte reporter for the copy progress bar. A big folder
+    // (an Electron app's profile, say) otherwise copies with no feedback between
+    // the per-folder lines and looks frozen; reporting running bytes lets the
+    // caller advance a determinate bar smoothly. Throttled to every few MB so the
+    // UI dispatcher is not flooded.
+    private sealed class CopyProgress
+    {
+        public Action<long>? OnBytes;
+        private long _total;
+        private long _lastReport;
+        public void Add(long bytes)
+        {
+            _total += bytes;
+            if (OnBytes != null && _total - _lastReport >= 4L * 1024 * 1024)
+            {
+                _lastReport = _total;
+                OnBytes(_total);
+            }
+        }
+    }
+
     // Copies the confirmed folders under destBase\AppSettings\<Root>\<Folder>
     // and writes the manifest + readme. Locked/unreadable files are skipped and
-    // counted, never fatal. progress receives one line per folder.
+    // counted, never fatal. onFolder receives one line per folder; onBytes (if
+    // given) receives the running total of bytes copied across all folders.
     public static AppSettingsCopyStats CopyCandidates(
-        List<AppSettingsCandidate> picked, string destBase, Action<string>? progress)
+        List<AppSettingsCandidate> picked, string destBase,
+        Action<string>? onFolder, Action<long>? onBytes = null)
     {
         string outBase = Path.Combine(destBase, OutputFolderName);
         Directory.CreateDirectory(outBase);
         var stats = new AppSettingsCopyStats();
         var entries = new List<AppSettingsManifestEntry>();
+        var prog = new CopyProgress { OnBytes = onBytes };
 
         for (int i = 0; i < picked.Count; i++)
         {
             var c = picked[i];
-            progress?.Invoke("Copying settings: " + c.DisplayPath + " (" + (i + 1) + " of " + picked.Count + ")...");
+            onFolder?.Invoke("Copying settings: " + c.DisplayPath + " (" + (i + 1) + " of " + picked.Count + ")...");
             string dest = Path.Combine(outBase, c.RootName, c.FolderName);
             var folderStats = new AppSettingsCopyStats();
-            CopyTree(new DirectoryInfo(c.FolderPath), dest, outBase, folderStats, top: true);
+            CopyTree(new DirectoryInfo(c.FolderPath), dest, outBase, folderStats, top: true, prog);
             stats.Folders++;
             stats.Files += folderStats.Files;
             stats.Bytes += folderStats.Bytes;
@@ -207,7 +231,7 @@ public static class AppSettingsExport
     }
 
     private static void CopyTree(DirectoryInfo src, string dest, string outBase,
-        AppSettingsCopyStats stats, bool top)
+        AppSettingsCopyStats stats, bool top, CopyProgress prog)
     {
         // Junctions/symlinks are skipped rather than followed: following them
         // can loop forever or pull in trees the user never confirmed.
@@ -224,6 +248,7 @@ public static class AppSettingsExport
                     f.CopyTo(Path.Combine(dest, f.Name), true);
                     stats.Files++;
                     stats.Bytes += f.Length;
+                    prog.Add(f.Length);
                 }
                 catch { stats.SkippedFiles++; }
             }
@@ -233,7 +258,7 @@ public static class AppSettingsExport
                 // destination sits inside a folder being copied).
                 if (string.Equals(sub.FullName.TrimEnd('\\'), outBase.TrimEnd('\\'),
                         StringComparison.OrdinalIgnoreCase)) continue;
-                CopyTree(sub, Path.Combine(dest, sub.Name), outBase, stats, top: false);
+                CopyTree(sub, Path.Combine(dest, sub.Name), outBase, stats, top: false, prog);
             }
         }
         catch { stats.SkippedFiles++; }
@@ -246,9 +271,11 @@ public static class AppSettingsExport
             Exported = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
             Machine = Environment.MachineName,
             UserProfile = Environment.UserName,
-            RestoreNote = "To restore: install the app, then copy each folder back under the " +
-                "location its rootAnchor names (e.g. AppSettings\\AppData\\Foo goes to %APPDATA%\\Foo). " +
-                "The environment variables resolve to the NEW user profile automatically.",
+            RestoreNote = "To restore: in GUARD, App Management tab, press Import List and pick the " +
+                "app-list.json next to this folder; GUARD reinstalls the apps and puts these settings " +
+                "back. By hand: copy each folder under the location its rootAnchor names (e.g. " +
+                "AppSettings\\AppData\\Foo goes to %APPDATA%\\Foo); the variables resolve to the NEW " +
+                "user profile automatically.",
             Entries = entries.ToArray(),
         };
         using var fs = File.Create(Path.Combine(outBase, ManifestFileName));
@@ -258,25 +285,34 @@ public static class AppSettingsExport
     private static void WriteReadme(string outBase)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("GUARD app settings export");
+        sb.AppendLine("GUARD app settings backup");
         sb.AppendLine("=========================");
         sb.AppendLine();
         sb.AppendLine("Created " + DateTime.Now.ToString("yyyy-MM-dd HH:mm") +
                       " on " + Environment.MachineName +
                       " for Windows user " + Environment.UserName + ".");
         sb.AppendLine();
-        sb.AppendLine("Each folder in here was copied from one of these per-user locations:");
+        sb.AppendLine("These folders are the per-user settings of the apps you exported.");
         sb.AppendLine();
-        sb.AppendLine("  AppSettings\\AppData\\<name>       came from  %APPDATA%\\<name>");
-        sb.AppendLine("  AppSettings\\LocalAppData\\<name>  came from  %LOCALAPPDATA%\\<name>");
-        sb.AppendLine("  AppSettings\\DotConfig\\<name>     came from  %USERPROFILE%\\.config\\<name>");
+        sb.AppendLine("To restore them");
+        sb.AppendLine("---------------");
+        sb.AppendLine("Easiest: in GUARD, open the App Management tab, press Import List and");
+        sb.AppendLine("choose the app-list.json file next to this AppSettings folder. GUARD");
+        sb.AppendLine("reinstalls the apps and puts these settings back for you - you do not");
+        sb.AppendLine("need to open this folder yourself.");
         sb.AppendLine();
-        sb.AppendLine("To restore after reinstalling Windows: install the app first, then copy");
-        sb.AppendLine("each folder back into the matching location shown above. The environment");
-        sb.AppendLine("variables resolve to the NEW user profile automatically, so this works");
-        sb.AppendLine("even if the Windows username changed.");
+        sb.AppendLine("By hand: install each app, then copy each folder back into the location");
+        sb.AppendLine("shown below. The %...% locations resolve to the CURRENT user profile, so");
+        sb.AppendLine("this works even if the Windows username changed:");
         sb.AppendLine();
-        sb.AppendLine("Not included in this export:");
+        sb.AppendLine("  AppSettings\\AppData\\<name>       ->  %APPDATA%\\<name>");
+        sb.AppendLine("  AppSettings\\LocalAppData\\<name>  ->  %LOCALAPPDATA%\\<name>");
+        sb.AppendLine("  AppSettings\\DotConfig\\<name>     ->  %USERPROFILE%\\.config\\<name>");
+        sb.AppendLine();
+        sb.AppendLine("Tip: close an app before backing it up for the most complete copy; files");
+        sb.AppendLine("locked by a running app are skipped.");
+        sb.AppendLine();
+        sb.AppendLine("Not included in this backup:");
         sb.AppendLine("  - settings stored in the Windows registry");
         sb.AppendLine("  - per-machine data in C:\\ProgramData");
         sb.AppendLine("  - Microsoft Store packaged app state (%LOCALAPPDATA%\\Packages)");
