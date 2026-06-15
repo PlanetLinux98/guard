@@ -144,6 +144,9 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 - Exclude names containing spaces (such as "System Volume Information") are now
   quoted in the generated script, so robocopy reads each as a single name
   instead of several.
+- On the File Backup tab, "Add Exclusion..." and "Edit Folder..." both used the
+  Alt+E access key. "Add Exclusion..." is now Alt+U so each control has a unique
+  mnemonic.
 
 ## [0.3.0] - 2026-06-11
 

@@ -173,7 +173,7 @@
                             </ListView>
                         </Border>
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-                            <Button Content="Add Exclusion..." AccessKey="E"
+                            <Button Content="Add Exclusion..." AccessKey="U"
                                     Click="OnAddExclude" />
                             <Button Content="Remove Exclusion" AccessKey="X"
                                     ToolTipService.ToolTip="Remove the selected exclusion from the list"
