@@ -9,6 +9,9 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- A full **User Manual** (`USER_GUIDE.md`) covering setup and every feature and
+  workflow, written for keyboard and mouse users alike. It ships inside the
+  release zip, and the in-app Help button (F1) now opens it.
 - App settings restore on the App Management tab. Import List now opens the
   saved list in its own dialog (instead of replacing the installed-apps list
   behind the tab) with the apps as tickable rows and the list's source machine
@@ -98,6 +101,10 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   changes.
 
 ### Changed
+- The README is now development-focused (build, layout, contributing) and links
+  to the new User Manual; end-user usage documentation moved into `USER_GUIDE.md`.
+  The release zip and the in-app Help button now ship and open the User Manual
+  instead of the README.
 - Renamed the "App Inventory" tab to "App Management": with reinstalling apps
   and exporting their settings sitting alongside the inventory scan, the old
   name undersold what the tab does.
