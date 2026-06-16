@@ -1,0 +1,28 @@
+name: Publish to WinGet
+
+# Auto-submits a winget-pkgs manifest PR whenever a (non-prerelease) GitHub
+# Release is published, so winget updates no longer need a manual wingetcreate
+# run. It only fires on releases published AFTER this workflow is merged - the
+# v0.4.1 release still needs a one-time manual submission.
+#
+# Requires a repository secret named WINGET_TOKEN: a *classic* Personal Access
+# Token with the public_repo scope (fine-grained PATs are not supported by the
+# action). The action uses it to push to your fork of microsoft/winget-pkgs and
+# open the version-bump PR.
+
+on:
+  release:
+    types: [released]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: PlanetLinux98.GUARD
+          # GUARD ships as GUARD.zip; the action's default regex only matches
+          # exe/msi/msix/appx, so match the release asset explicitly.
+          installers-regex: 'GUARD\.zip$'
+          max-versions-to-keep: 5
+          token: ${{ secrets.WINGET_TOKEN }}
