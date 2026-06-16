@@ -61,7 +61,7 @@
                                         VerticalAlignment="Bottom" Margin="8,0,0,0">
                                 <Button Content="Browse..." AccessKey="B"
                                         Click="OnBrowseDest" />
-                                <Button Content="Test" AccessKey="T"
+                                <Button Content="Test"
                                         ToolTipService.ToolTip="Test the backup destination"
                                         Click="OnTestDest" />
                             </StackPanel>
@@ -214,7 +214,7 @@
                                       ToolTipService.ToolTip="Each run copies into a dated folder (like 2026-06-10) inside the destination, and the oldest dated folders beyond the keep count are removed after a successful run."
                                       Checked="OnVersionedChanged" Unchecked="OnVersionedChanged" />
                             <TextBlock Text="Versions to keep:" VerticalAlignment="Center" Margin="16,0,0,0" />
-                            <NumberBox x:Name="NumVersionsKeep" AccessKey="K" VerticalAlignment="Center"
+                            <NumberBox x:Name="NumVersionsKeep" VerticalAlignment="Center"
                                        AutomationProperties.Name="Versions to keep"
                                        Minimum="1" Maximum="365" Value="5" SmallChange="1"
                                        SpinButtonPlacementMode="Compact" HorizontalAlignment="Left" MinWidth="100"
@@ -339,7 +339,7 @@
                                         VerticalAlignment="Bottom" Margin="8,0,0,0">
                                 <Button Content="Browse..." AccessKey="B"
                                         Click="OnBrowseApp" />
-                                <Button Content="Test" AccessKey="T"
+                                <Button Content="Test"
                                         ToolTipService.ToolTip="Test the app list destination"
                                         Click="OnTestApp" />
                             </StackPanel>
@@ -353,7 +353,7 @@
                             <Button x:Name="BtnAppAll" Content="Select All" AccessKey="L"
                                     ToolTipService.ToolTip="Tick all visible apps"
                                     Click="OnSelectAll" />
-                            <Button x:Name="BtnAppNone" Content="Select None" AccessKey="O"
+                            <Button x:Name="BtnAppNone" Content="Select None" AccessKey="N"
                                     ToolTipService.ToolTip="Untick all visible apps"
                                     Click="OnSelectNone" />
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -438,7 +438,7 @@
                             <Button x:Name="BtnAppImport" Content="Import List" AccessKey="I"
                                     ToolTipService.ToolTip="Open a saved app list to reinstall its apps (and optionally restore their settings)"
                                     Click="OnImportApps" />
-                            <Button Content="Open Folder" AccessKey="P"
+                            <Button Content="Open Folder" AccessKey="O"
                                     ToolTipService.ToolTip="Open the app list destination folder"
                                     Click="OnOpenAppDest" />
                             <!-- Enabled only while a reinstall runs; same

@@ -16,6 +16,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   prefix.
 
 ### Changed
+- Tidied the Alt access keys. The Test buttons and the "Versions to keep" field
+  no longer claim a mnemonic (both are a Tab away from an adjacent control), and
+  on the App Management tab "Select None" is now Alt+N (was Alt+O) so "Open
+  Folder" can take its natural Alt+O. "Select None" in the Import, Export and
+  Restore dialogs moved to Alt+N to match.
 - The folder list now shows each source as its resolved path (e.g.
   `C:\Users\you\Documents`) instead of the raw `%USERPROFILE%\Documents`, so the
   rows read clearly and first-letter navigation matches the real folder name.
