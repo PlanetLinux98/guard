@@ -12,8 +12,9 @@ no program files outside its own folder (the one optional exception is the Windo
 task it can create for you).
 
 GUARD is built to be fully usable with either the keyboard or the mouse, and to
-read cleanly with a screen reader. Every control has an Alt access key and 
-the lists can be navigated with the arrow keys.
+read cleanly with a screen reader. Most controls have an Alt access key, and
+the lists can be navigated with the arrow keys or by typing the first letter of
+an item.
 
 Press **F1**, or the **Help** button at the top right, to open this manual from
 inside the app at any time.
@@ -122,7 +123,7 @@ external drive, or a network share (a UNC path like `\\server\share\Backups`
 works). Each folder you back up gets its own subfolder under this root.
 
 - **Browse...** (Alt+B) opens a folder picker.
-- **Test** (Alt+T) checks the destination is reachable and creates it if it does
+- **Test** checks the destination is reachable and creates it if it does
   not exist yet. Use it after plugging in a drive or before trusting a network
   path.
 
@@ -198,7 +199,7 @@ make before anything happens.
 By default each backup copies into the destination subfolders directly, so the
 destination holds the latest backup. Tick **Keep dated backup versions** (Alt+V)
 to copy each run into a dated folder (`YYYY-MM-DD`) inside the destination
-instead, keeping a history. Set **Versions to keep** (Alt+K) to how many dated
+instead, keeping a history. Set **Versions to keep** to how many dated
 copies to retain (default 5); after a clean run, older dated folders beyond that
 count are pruned (deleted). Pruning only ever removes folders directly under the
 destination whose names exactly match the date pattern.
@@ -274,12 +275,12 @@ Each app shows a **Source**:
 
 ### Controls
 
-- **List destination** (Alt+D), with **Browse...** (Alt+B) and **Test** (Alt+T),
+- **List destination** (Alt+D), with **Browse...** (Alt+B) and **Test**,
   is the folder your exports are written to. A folder on your backup drive is a
   good choice.
 - **Refresh List** (Alt+R) rescans installed apps, for example after you install
   or remove something.
-- **Select All** (Alt+L) / **Select None** (Alt+O) tick or untick every app
+- **Select All** (Alt+L) / **Select None** (Alt+N) tick or untick every app
   currently visible, so with a filter active they affect only the matching rows.
 - **Filter** (Alt+F) narrows the list as you type. It matches the app name,
   publisher, type (try `winget`, `store`, or `manual`), or winget package ID. A
@@ -356,7 +357,7 @@ Other controls here:
 - **Stop Reinstall** (Alt+C) stops the reinstall loop after the current app;
   apps already installed stay installed. It is available only while a reinstall is
   running.
-- **Open Folder** (Alt+P) opens the list destination in File Explorer.
+- **Open Folder** (Alt+O) opens the list destination in File Explorer.
 
 Two practical notes:
 
@@ -416,6 +417,9 @@ screen reader. A few specifics worth knowing:
 - **Tab treats each list as a single stop:** Tab enters the list once and the
   next Tab leaves it. Inside a list, the **arrow keys move between rows**
   and **Space toggles** the focused checkbox.
+- **First-letter navigation:** with focus in a list, type a letter to jump to
+  the next row that starts with it, and press it again to cycle through the
+  matches; typing several letters quickly matches a longer prefix.
 - **Focus is remembered:** tabbing back into a list returns you to the row you
   were last on, not the top.
 - The **Mode** radio options follow the same  expected convention:
