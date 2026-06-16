@@ -16,6 +16,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   prefix.
 
 ### Changed
+- The folder list now shows each source as its resolved path (e.g.
+  `C:\Users\you\Documents`) instead of the raw `%USERPROFILE%\Documents`, so the
+  rows read clearly and first-letter navigation matches the real folder name.
+  The saved path stays variable-based, so the generated backup script remains
+  portable.
 - The shipping build is now **NativeAOT** instead of ReadyToRun: faster startup
   (no JIT) and a much smaller download - the release zip is ~28 MB, down from
   ~81 MB. Built with `publish-release.cmd` (replaces `publish-singlefile.cmd`).

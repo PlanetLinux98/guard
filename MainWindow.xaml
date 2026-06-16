@@ -100,7 +100,7 @@
                                                         <ColumnDefinition Width="360" />
                                                         <ColumnDefinition Width="200" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="0" Text="{x:Bind Source, Mode=OneWay}"
+                                                    <TextBlock Grid.Column="0" Text="{x:Bind DisplaySource, Mode=OneWay}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
                                                     <TextBlock Grid.Column="1" Text="{x:Bind SubFolder, Mode=OneWay}"
                                                                TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />

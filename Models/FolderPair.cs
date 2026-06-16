@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 
 namespace GuardWui3.Models;
@@ -20,8 +21,15 @@ public sealed partial class FolderPair : INotifyPropertyChanged
     public string Source
     {
         get => _source;
-        set { if (_source != value) { _source = value; OnChanged(nameof(Source)); OnChanged(nameof(Caption)); } }
+        set { if (_source != value) { _source = value; OnChanged(nameof(Source)); OnChanged(nameof(DisplaySource)); OnChanged(nameof(Caption)); } }
     }
+
+    // The list shows (and first-letter navigation matches, and the screen reader
+    // speaks) the resolved path, so a default like %USERPROFILE%\Documents reads
+    // as the actual folder rather than the variable. Source itself stays raw so
+    // the generated backup script remains portable. Paths with no variable (e.g.
+    // a browse-picked folder) pass through unchanged.
+    public string DisplaySource => Environment.ExpandEnvironmentVariables(Source);
 
     private string _subFolder;               // name under the destination root
     public string SubFolder
@@ -39,7 +47,7 @@ public sealed partial class FolderPair : INotifyPropertyChanged
 
     // Spoken name for the row's checkbox. The checked/unchecked state is
     // announced by the checkbox role itself, so it is NOT included here.
-    public string Caption => $"Source folder, {Source}, destination subfolder, {SubFolder}";
+    public string Caption => $"Source folder, {DisplaySource}, destination subfolder, {SubFolder}";
 
     public override string ToString() => Caption;
 

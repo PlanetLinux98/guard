@@ -166,7 +166,7 @@ public sealed partial class MainWindow : Window
         // First-letter navigation: type a letter to jump to the matching row,
         // repeat to cycle. Matches the visible primary-column text (folder path,
         // app name).
-        ListTypeAhead.Attach(FolderList, o => ((FolderPair)o).Source);
+        ListTypeAhead.Attach(FolderList, o => ((FolderPair)o).DisplaySource);
         ListTypeAhead.Attach(AppListControl, o => ((AppEntry)o).Name);
 
         WireFolderDirty();
