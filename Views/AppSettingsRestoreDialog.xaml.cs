@@ -22,6 +22,7 @@ public sealed partial class AppSettingsRestoreDialog : ContentDialog
         foreach (var c in candidates) Candidates.Add(c);
         HeaderText = headerText;
         InitializeComponent();
+        ListTypeAhead.Attach(CandidateList, o => ((AppSettingsRestoreCandidate)o).DisplayPath);
     }
 
     private void OnSelectAll(object sender, RoutedEventArgs e)

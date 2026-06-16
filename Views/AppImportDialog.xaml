@@ -24,7 +24,7 @@
             <Button Content="Select All" AccessKey="L"
                     ToolTipService.ToolTip="Tick all apps"
                     Click="OnSelectAll" />
-            <Button Content="Select None" AccessKey="O"
+            <Button Content="Select None" AccessKey="N"
                     ToolTipService.ToolTip="Untick all apps"
                     Click="OnSelectNone" />
         </StackPanel>
@@ -46,7 +46,7 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{x:Bind Apps}"
+                <ItemsControl x:Name="AppList" ItemsSource="{x:Bind Apps}"
                               AutomationProperties.Name="Apps to reinstall"
                               TabFocusNavigation="Once"
                               XYFocusKeyboardNavigation="Enabled">

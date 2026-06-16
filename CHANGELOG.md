@@ -8,7 +8,24 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+- First-letter navigation in the folder and app lists (both the main window and
+  the Import, Export-settings and Restore dialogs): with focus in a list, type a
+  letter to jump to the next row whose text starts with it, and press it again to
+  cycle through the matches. Typing several letters quickly matches a longer
+  prefix.
+
 ### Changed
+- Tidied the Alt access keys. The Test buttons and the "Versions to keep" field
+  no longer claim a mnemonic (both are a Tab away from an adjacent control), and
+  on the App Management tab "Select None" is now Alt+N (was Alt+O) so "Open
+  Folder" can take its natural Alt+O. "Select None" in the Import, Export and
+  Restore dialogs moved to Alt+N to match.
+- The folder list now shows each source as its resolved path (e.g.
+  `C:\Users\you\Documents`) instead of the raw `%USERPROFILE%\Documents`, so the
+  rows read clearly and first-letter navigation matches the real folder name.
+  The saved path stays variable-based, so the generated backup script remains
+  portable.
 - The shipping build is now **NativeAOT** instead of ReadyToRun: faster startup
   (no JIT) and a much smaller download - the release zip is ~28 MB, down from
   ~81 MB. Built with `publish-release.cmd` (replaces `publish-singlefile.cmd`).
@@ -19,6 +36,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   2.x line).
 
 ### Fixed
+- Enabling "Automatically run when the backup destination becomes available"
+  (on-connect) and saving no longer fails with "On-connect task: Access is
+  denied". The task's logon trigger was registered as an "any user" trigger,
+  which Task Scheduler only permits an administrator to create; it is now scoped
+  to the current user, so saving works without elevation.
 - NativeAOT no longer crashes at startup (0xc000027b in Microsoft.UI.Xaml.dll the
   moment a data-templated list bound its `ItemsSource`) - which is what unblocked
   shipping an AOT build. The cause was CsWinRT silently omitting the `unsafe`

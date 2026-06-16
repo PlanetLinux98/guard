@@ -42,7 +42,7 @@ public static class ScheduledTasks
             sb.Append("try {")
               .Append("$A2 = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '" + PsQuote(arg) + "';")
               .Append("$T2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650);")
-              .Append("$L2 = New-ScheduledTaskTrigger -AtLogOn;")
+              .Append("$L2 = New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name);")
               .Append("$S2 = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;")
               .Append("Register-ScheduledTask -TaskName '" + GuardPaths.OnConnectTaskName + "' -Action $A2 -Trigger $T2,$L2 -Settings $S2 -Force -ErrorAction Stop | Out-Null")
               .Append("} catch { Write-Output ('ERRCONN ' + $_.Exception.Message) };");
@@ -123,13 +123,17 @@ public static class ScheduledTasks
     // requires an explicit -RepetitionDuration; 10 years is effectively
     // indefinite). The -AtLogOn trigger catches the common "drive was already
     // plugged in when the PC started" case without waiting out the interval.
+    // It is scoped to the current user (-User ...GetCurrent().Name): a bare
+    // -AtLogOn is an "any user" logon trigger, which Task Scheduler only lets
+    // an administrator register, so saving without elevation failed with
+    // "Access is denied". Per-user registers fine non-elevated.
     public static string? UpdateOnConnectTask()
     {
         string arg = "/c \"" + GuardPaths.ScriptPath + "\" onconnect";
         string ps =
             "$A = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '" + PsQuote(arg) + "';" +
             "$T = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650);" +
-            "$L = New-ScheduledTaskTrigger -AtLogOn;" +
+            "$L = New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name);" +
             "$S = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;" +
             "Register-ScheduledTask -TaskName '" + GuardPaths.OnConnectTaskName + "' -Action $A -Trigger $T,$L -Settings $S -Force | Out-Null";
         return ProcessRunner.RunPowerShell(ps);

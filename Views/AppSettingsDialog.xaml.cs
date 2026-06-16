@@ -23,6 +23,7 @@ public sealed partial class AppSettingsDialog : ContentDialog
     {
         foreach (var c in candidates) Candidates.Add(c);
         InitializeComponent();
+        ListTypeAhead.Attach(CandidateList, o => ((AppSettingsCandidate)o).DisplayPath);
         Opened += OnOpened;
     }
 

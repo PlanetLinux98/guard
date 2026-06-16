@@ -23,7 +23,7 @@
             <Button Content="Select All" AccessKey="L"
                     ToolTipService.ToolTip="Tick all settings folders"
                     Click="OnSelectAll" />
-            <Button Content="Select None" AccessKey="O"
+            <Button Content="Select None" AccessKey="N"
                     ToolTipService.ToolTip="Untick all settings folders"
                     Click="OnSelectNone" />
         </StackPanel>
@@ -45,7 +45,7 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{x:Bind Candidates}"
+                <ItemsControl x:Name="CandidateList" ItemsSource="{x:Bind Candidates}"
                               AutomationProperties.Name="Settings folders to restore"
                               TabFocusNavigation="Once"
                               XYFocusKeyboardNavigation="Enabled">

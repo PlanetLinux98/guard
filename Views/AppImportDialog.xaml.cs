@@ -30,6 +30,7 @@ public sealed partial class AppImportDialog : ContentDialog
         HeaderText = headerText;
         InitializeComponent();
         IsSecondaryButtonEnabled = settingsBundleFound;
+        ListTypeAhead.Attach(AppList, o => ((AppEntry)o).Name);
     }
 
     private void OnSelectAll(object sender, RoutedEventArgs e)
