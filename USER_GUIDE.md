@@ -57,12 +57,12 @@ winget install --id PlanetLinux98.GUARD
 
 `winget install GUARD` also works. New releases usually appear in winget within
 a couple of days of the GitHub Release, so `winget upgrade` keeps GUARD current.
-Once installed, launch it like any app, then move on to
+Once installed, launch GUARD.exe, then move on to
 [Your first backup](#your-first-backup).
 
 ### Download manually
 
-Prefer a portable copy you control, or do not have winget? Download it instead:
+Prefer a portable copy, or do not have winget? Download it instead:
 
 1. On the [Releases page](https://github.com/PlanetLinux98/guard/releases),
    download `GUARD.zip` from the latest release.
