@@ -45,7 +45,7 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{x:Bind Candidates}"
+                <ItemsControl x:Name="CandidateList" ItemsSource="{x:Bind Candidates}"
                               AutomationProperties.Name="Settings folders to restore"
                               TabFocusNavigation="Once"
                               XYFocusKeyboardNavigation="Enabled">

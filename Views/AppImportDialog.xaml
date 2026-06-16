@@ -46,7 +46,7 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{x:Bind Apps}"
+                <ItemsControl x:Name="AppList" ItemsSource="{x:Bind Apps}"
                               AutomationProperties.Name="Apps to reinstall"
                               TabFocusNavigation="Once"
                               XYFocusKeyboardNavigation="Enabled">

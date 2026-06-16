@@ -8,6 +8,13 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+- First-letter navigation in the folder and app lists (both the main window and
+  the Import, Export-settings and Restore dialogs): with focus in a list, type a
+  letter to jump to the next row whose text starts with it, and press it again to
+  cycle through the matches. Typing several letters quickly matches a longer
+  prefix.
+
 ### Changed
 - The shipping build is now **NativeAOT** instead of ReadyToRun: faster startup
   (no JIT) and a much smaller download - the release zip is ~28 MB, down from
