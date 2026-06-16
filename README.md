@@ -71,20 +71,22 @@ theming. It targets **.NET 10 + Windows App SDK 1.8**.
 
 ## Building
 
-### Shipping build: single-file GUARD.exe in a release zip (recommended)
+### Shipping build: NativeAOT release zip (recommended)
 
 ```
-publish-singlefile.cmd
+publish-release.cmd
 ```
 
-Produces one ~88 MB `GUARD.exe` (self-contained, compressed, ReadyToRun), staged
-inside a `GUARD\` folder alongside `USER_GUIDE.md` and zipped to `GUARD.zip` in
-the project root. The bundled runtime extracts once to a per-user temp cache and
-is reused on later launches (it does not scatter DLLs beside the exe). Being a
-portable app, GUARD writes its working files (`backup-settings.ini`,
-`guard-backup.cmd`, `Logs\`) into the folder the exe sits in, so shipping it
-inside a folder keeps everything together instead of littering the folder the zip
-was downloaded to.
+Builds a self-contained **NativeAOT** GUARD, stages the publish folder into a
+`GUARD\` folder alongside `USER_GUIDE.md`, and zips it to `GUARD.zip` in the
+project root. NativeAOT cannot be a single `.exe` (WinUI 3 / Windows App SDK ship
+native DLLs that cannot be merged into the AOT binary), so the release is the
+whole folder - which GUARD already ships as. Being a portable app, GUARD writes
+its working files (`backup-settings.ini`, `guard-backup.cmd`, `Logs\`) next to
+`GUARD.exe` in that folder, so shipping a folder keeps everything together
+instead of littering the folder the zip was downloaded to. Requires the VS 2022
+Build Tools "Desktop development with C++" workload for the AOT link step (see
+[NativeAOT](#nativeaot)).
 
 ### Build and run (development)
 
@@ -92,14 +94,27 @@ was downloaded to.
 dotnet build -r win-x64 -c Debug
 ```
 
-### Alternative: folder publish (not single-file)
+Development builds are plain JIT - debuggable and buildable with just the .NET
+SDK (no C++ toolchain). Only the shipping build is AOT.
+
+### Quick AOT build (no packaging)
+
+```
+publish-aot.cmd
+```
+
+Publishes the AOT binary to `bin\...\publish\` without staging or zipping - handy
+for testing an AOT build quickly.
+
+### R2R fallback (no C++ toolchain)
 
 ```
 dotnet publish -r win-x64 -c Release
 ```
 
-Output folder: `bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\`
-(self-contained; ~285 files, the exe needs the DLLs beside it).
+A self-contained ReadyToRun folder build (~285 files, the exe needs the DLLs
+beside it) in `bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\`. Not the
+shipped artifact, but a working build for anyone without the C++ tools AOT needs.
 
 ## Project layout
 
@@ -109,8 +124,8 @@ Output folder: `bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\`
 | `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, app-settings export/restore, JSON I/O, process helpers |
 | `MainWindow.xaml(.cs)` | Both tabs and all wiring |
 | `Views/` | FolderDialog, AboutDialog, the exclude / app-import / app-settings dialogs, and the status-bar host (ContentDialogs + controls) |
-| `publish-singlefile.cmd` | Build the shipping `GUARD.exe` and stage it into `GUARD.zip` |
-| `publish-aot.cmd` | Opt-in NativeAOT publish (see note below) |
+| `publish-release.cmd` | Build the shipping NativeAOT `GUARD` and stage it into `GUARD.zip` |
+| `publish-aot.cmd` | Quick NativeAOT build, no packaging (see [NativeAOT](#nativeaot)) |
 | `GUARD\`, `GUARD.zip` | The staged release folder and its zip (project root; not source) |
 | `USER_GUIDE.md` | The end-user manual; shipped in the zip and opened by Help (F1) |
 
@@ -120,16 +135,35 @@ GUARD has two tabs, **File Backup** and **App Management**. For a full,
 step-by-step walkthrough of every control and workflow, see the
 [User Manual](USER_GUIDE.md) (or press F1 in the app).
 
-## NativeAOT (not currently usable)
+## NativeAOT
 
 `publish-aot.cmd` builds a true native binary (`-p:PublishAot=true`) inside the
-VC x64 developer environment. It compiles and links, but the resulting exe
-**crashes at startup** (0xc000027b in Microsoft.UI.Xaml.dll) the moment a
-data-templated list renders. This reproduces under both .NET 9 and .NET 10 with
-Windows App SDK 1.8: it is believed to be a current WinUI-3-under-AOT XAML/binding
-limitation (see microsoft/WindowsAppSDK discussion #3856). The shipping build
-is therefore ReadyToRun, not AOT. Will revisit AOT in the future, but am open to
-development assistance in this regard.
+VC x64 developer environment. On Windows App SDK **2.2.0 + .NET 10** it now
+launches and renders every data-templated list correctly.
+
+The long-standing startup fail-fast (0xc000027b in Microsoft.UI.Xaml.dll, the
+moment a data-templated list bound its `ItemsSource`) had a concrete, two-part
+cause that was invisible at the default CsWinRT warning level:
+
+1. **`<AllowUnsafeBlocks>true</AllowUnsafeBlocks>`** - CsWinRT must emit `unsafe`
+   marshalling stubs for the generic WinRT collection interfaces an
+   `ObservableCollection<T>` / `List<T>` of an app type implements when it crosses
+   the ABI as `ItemsControl.ItemsSource`. Without it the stubs are silently
+   omitted and `set_ItemsSource` throws `E_INVALIDARG` ("Value does not fall
+   within the expected range") - the crash (CsWinRT1030).
+2. **`partial` on the bound `INotifyPropertyChanged` models** (FolderPair,
+   AppEntry, AppSettingsCandidate, AppSettingsRestoreCandidate) so CsWinRT can
+   generate their `WinRTExposedType` vtable (CsWinRT1028).
+
+Build with `-p:CsWinRTAotWarningLevel=2` to surface these (the collection
+warnings are Level 2; the default level only shows Level 1). The earlier
+dotnet/runtime#115881 attribution was a red herring - that was a .NET 10
+*preview* interop regression, since fixed, and not AOT-specific.
+
+NativeAOT is the **shipping build** (`publish-release.cmd`). It cannot be a single
+`.exe` (WinUI 3 / Windows App SDK native DLLs cannot be merged), so the release is
+the whole publish folder, zipped - which GUARD already ships as. Development builds
+stay JIT for fast, debuggable iteration without the C++ toolchain.
 
 ## Contributing & branching
 

@@ -13,12 +13,27 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
-    <!-- NativeAOT is opt-in via publish-aot.cmd (-p:PublishAot=true). It is
-         disabled by default because .NET 10 currently crashes WinUI item
-         containers under AOT (dotnet/runtime#115881); use .NET 9 for AOT. -->
+    <!-- The SHIPPING build is NativeAOT: publish-release.cmd (-p:PublishAot=true)
+         stages the publish folder into GUARD\ and zips it. Dev/default builds stay
+         JIT (debuggable, no C++ toolchain); this ReadyToRun setting only applies to
+         a plain non-AOT `dotnet publish` (the R2R fallback) and is ignored under
+         AOT. AOT was historically blocked by a startup fail-fast (0xc000027b) when
+         a data-templated list bound its ItemsSource; the real cause was CsWinRT not
+         emitting the generic-collection marshalling stubs (see AllowUnsafeBlocks
+         below) plus the bound INotifyPropertyChanged models not being `partial`.
+         With both fixed, AOT launches and renders all lists on WASDK 2.2.0 + .NET 10.
+         (The earlier dotnet/runtime#115881 note was a red herring: that was a .NET 10
+         *preview* interop regression, since fixed, not AOT-specific.) -->
     <PublishReadyToRun>true</PublishReadyToRun>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <!-- Required for NativeAOT: CsWinRT generates `unsafe` marshalling stubs for
+         generic WinRT collection interfaces (e.g. ObservableCollection<FolderPair>
+         crossing the ABI as ItemsControl.ItemsSource). Without this the stubs are
+         not emitted and set_ItemsSource fails at runtime with
+         "Value does not fall within the expected range" (E_INVALIDARG)
+         (CsWinRT1030). Harmless for the ReadyToRun build. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>GUARD</AssemblyName>
     <!-- The shipped single-file GUARD.exe and the staged release folder/zip live
          in the project root; keep the SDK from globbing them as project items.
@@ -50,7 +65,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260508005" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
     <!-- Build-time only: computes the version during build, ships nothing. -->
     <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />

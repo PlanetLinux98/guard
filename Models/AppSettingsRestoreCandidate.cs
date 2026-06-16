@@ -12,7 +12,7 @@ namespace GuardWui3.Models;
 // username changed. The restore overwrites real user data, so each row is a
 // real CheckBox the user confirms - and TargetExists drives the per-row
 // "replaces existing" warning before anything is touched.
-public sealed class AppSettingsRestoreCandidate : INotifyPropertyChanged
+public sealed partial class AppSettingsRestoreCandidate : INotifyPropertyChanged
 {
     private bool _include = true;
     public bool Include

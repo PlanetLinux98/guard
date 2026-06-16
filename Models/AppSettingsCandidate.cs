@@ -8,7 +8,7 @@ namespace GuardWui3.Models;
 // dialog. The folder-to-app matching is heuristic (folder names compared against
 // app names and publishers), so each row is a real CheckBox the user confirms or
 // unticks before anything is copied.
-public sealed class AppSettingsCandidate : INotifyPropertyChanged
+public sealed partial class AppSettingsCandidate : INotifyPropertyChanged
 {
     private bool _include = true;
     public bool Include

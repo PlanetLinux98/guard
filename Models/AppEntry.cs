@@ -5,7 +5,7 @@ namespace GuardWui3.Models;
 // One installed-application row (App Management tab). Source is "winget" or
 // "msstore" (a package id is known, so it can be reinstalled automatically) or
 // "manual" (in Add/Remove Programs but not in any winget source).
-public sealed class AppEntry : INotifyPropertyChanged
+public sealed partial class AppEntry : INotifyPropertyChanged
 {
     private bool _include = true;
     public bool Include

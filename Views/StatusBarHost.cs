@@ -16,7 +16,7 @@ public sealed partial class StatusBarHost : ContentControl
 
     protected override AutomationPeer OnCreateAutomationPeer() => new StatusBarHostPeer(this);
 
-    private sealed class StatusBarHostPeer : FrameworkElementAutomationPeer
+    private sealed partial class StatusBarHostPeer : FrameworkElementAutomationPeer
     {
         public StatusBarHostPeer(StatusBarHost owner) : base(owner) { }
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.StatusBar;

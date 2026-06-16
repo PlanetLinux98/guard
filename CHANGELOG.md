@@ -8,6 +8,25 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+### Changed
+- The shipping build is now **NativeAOT** instead of ReadyToRun: faster startup
+  (no JIT) and a much smaller download - the release zip is ~28 MB, down from
+  ~81 MB. Built with `publish-release.cmd` (replaces `publish-singlefile.cmd`).
+  NativeAOT cannot be a single `.exe`, so the release ships as the whole publish
+  folder zipped - which GUARD already shipped as, so nothing changes for users
+  (extract `GUARD.zip`, run `GUARD.exe`). Development builds stay JIT.
+- Updated Windows App SDK from 1.8.260508005 to 2.2.0 (the newer, longer-supported
+  2.x line).
+
+### Fixed
+- NativeAOT no longer crashes at startup (0xc000027b in Microsoft.UI.Xaml.dll the
+  moment a data-templated list bound its `ItemsSource`) - which is what unblocked
+  shipping an AOT build. The cause was CsWinRT silently omitting the `unsafe`
+  marshalling stubs for the generic WinRT collection interfaces an
+  `ObservableCollection<T>` of an app type implements when crossing the ABI; the
+  fix adds `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` and marks the bound
+  `INotifyPropertyChanged` models `partial`.
+
 ## [0.4.0] - 2026-06-15
 
 ### Added

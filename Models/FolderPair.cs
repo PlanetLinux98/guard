@@ -4,7 +4,7 @@ namespace GuardWui3.Models;
 
 // Properties (not fields) so XAML data binding can two-way bind the include
 // checkbox in the folder list.
-public sealed class FolderPair : INotifyPropertyChanged
+public sealed partial class FolderPair : INotifyPropertyChanged
 {
     private bool _include;
     public bool Include
