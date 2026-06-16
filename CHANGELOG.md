@@ -19,6 +19,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   2.x line).
 
 ### Fixed
+- Enabling "Automatically run when the backup destination becomes available"
+  (on-connect) and saving no longer fails with "On-connect task: Access is
+  denied". The task's logon trigger was registered as an "any user" trigger,
+  which Task Scheduler only permits an administrator to create; it is now scoped
+  to the current user, so saving works without elevation.
 - NativeAOT no longer crashes at startup (0xc000027b in Microsoft.UI.Xaml.dll the
   moment a data-templated list bound its `ItemsSource`) - which is what unblocked
   shipping an AOT build. The cause was CsWinRT silently omitting the `unsafe`
