@@ -8,6 +8,8 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-16
+
 ### Added
 - First-letter navigation in the folder and app lists (both the main window and
   the Import, Export-settings and Restore dialogs): with focus in a list, type a
@@ -316,7 +318,8 @@ shipping as a single self-contained `GUARD.exe`.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/PlanetLinux98/guard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/PlanetLinux98/guard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/PlanetLinux98/guard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/PlanetLinux98/guard/compare/v0.1.0...v0.2.0
