@@ -23,27 +23,32 @@ public sealed partial class ExcludeDialog : ContentDialog
         // The initial IsChecked fires during InitializeComponent, before the
         // later-declared controls exist.
         if (TxtValue == null || LblHint == null) return;
+        string hint;
         if (RbFolder.IsChecked == true)
         {
             TxtValue.Header = "Folder name:";
-            LblHint.Text = "Every folder with this name is skipped wherever it appears "
+            hint = "Every folder with this name is skipped wherever it appears "
                 + "(for example node_modules or .git). Wildcards are allowed: "
                 + "* matches any text, ? matches one character.";
         }
         else if (RbType.IsChecked == true)
         {
             TxtValue.Header = "File extension:";
-            LblHint.Text = "All files of this type are skipped, in every folder. "
+            hint = "All files of this type are skipped, in every folder. "
                 + "Type just the extension (for example iso or mp4); GUARD turns "
                 + "it into a *.extension pattern for you.";
         }
         else
         {
             TxtValue.Header = "File name or pattern:";
-            LblHint.Text = "Files matching this name or pattern are skipped "
+            hint = "Files matching this name or pattern are skipped "
                 + "(for example Thumbs.db or report-*.pdf). Wildcards: "
                 + "* matches any text, ? matches one character.";
         }
+        // Visible caption for sighted users; the same text on the field as UIA
+        // HelpText so a screen reader speaks it when focus lands on the field.
+        LblHint.Text = hint;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(TxtValue, hint);
     }
 
     private async void OnPrimary(ContentDialog sender, ContentDialogButtonClickEventArgs args)

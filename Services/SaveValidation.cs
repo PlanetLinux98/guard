@@ -41,6 +41,48 @@ public static class SaveValidation
         return missing;
     }
 
+    // The one overlap that must BLOCK a save (everything else here is advisory):
+    // a source tree that contains the destination, or sits inside it, makes the
+    // generated script copy the backup back into itself. Robocopy walks the
+    // source recursively and re-copies the destination it just wrote, so every
+    // run nests one level deeper (DEST\Sub\DEST\Sub\...) until the paths pass
+    // MAX_PATH and the tree can no longer be read or even deleted from Explorer.
+    // Returns the raw Source strings of the included pairs that overlap DEST, in
+    // list order, for the caller to name. Sharing a drive root is NOT overlap:
+    // C:\ is a common ancestor of two separate folders, not one containing the
+    // other, so C:\Users\me\Documents -> C:\Backup is allowed.
+    public static List<string> OverlappingSources(string dest, IEnumerable<FolderPair> folders)
+    {
+        var bad = new List<string>();
+        string destKey = CompareKey(dest);
+        if (destKey.Length == 0) return bad;
+        foreach (var f in folders)
+        {
+            if (!f.Include) continue;
+            string srcKey = CompareKey(f.Source);
+            if (srcKey.Length == 0) continue;
+            // Both keys end in a separator, so StartsWith only matches whole-
+            // segment boundaries and catches containment in either direction
+            // (and equality). C:\Foo does not "contain" C:\Foobar.
+            if (destKey.StartsWith(srcKey, StringComparison.OrdinalIgnoreCase)
+                || srcKey.StartsWith(destKey, StringComparison.OrdinalIgnoreCase))
+                bad.Add(f.Source ?? "");
+        }
+        return bad;
+    }
+
+    // Full path, env-expanded, normalized, and forced to end in a separator so a
+    // StartsWith prefix test compares whole path segments. Empty for a blank or
+    // unparseable path so the caller skips it rather than guessing at overlap.
+    private static string CompareKey(string? raw)
+    {
+        string p = Environment.ExpandEnvironmentVariables((raw ?? "").Trim());
+        if (p.Length == 0) return "";
+        try { p = Path.GetFullPath(p); }
+        catch { return ""; }
+        return p.EndsWith(Path.DirectorySeparatorChar) ? p : p + Path.DirectorySeparatorChar;
+    }
+
     // GetDiskFreeSpaceEx handles both local paths and UNC shares, unlike
     // DriveInfo which throws on \\server\share roots.
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -97,6 +139,55 @@ public static class SaveValidation
             }
             return new EstimateResult(total, Complete: true);
         });
+    }
+
+    // Shorter cap than the status-line estimate: this runs at the start of a
+    // backup and adds startup latency before the copy begins, so bound it tighter
+    // and fall back to per-folder progress if a giant tree does not finish in time.
+    public static readonly TimeSpan RunSizeCap = TimeSpan.FromSeconds(60);
+
+    // Per-included-folder byte totals, in the SAME order the generated script
+    // processes them (its loop and this one both walk `folders where Include`), so
+    // the result indexes line up with the script's @@PROGRESS@@ markers. One entry
+    // per included folder, 0 for a missing/unreadable source (still emitted, to
+    // keep the index alignment). Returns null if cancelled or the cap is hit (a
+    // partial set would give wrong offsets), so the caller cleanly falls back.
+    public static Task<List<long>?> MeasureIncludedFolderSizesAsync(
+        IEnumerable<FolderPair> folders, TimeSpan cap, CancellationToken ct)
+    {
+        var sources = new List<string>();
+        foreach (var f in folders)
+            if (f.Include) sources.Add(Environment.ExpandEnvironmentVariables(f.Source ?? ""));
+
+        return Task.Run<List<long>?>(() =>
+        {
+            var sizes = new List<long>(sources.Count);
+            var deadline = DateTime.UtcNow + cap;
+            var opts = new EnumerationOptions
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = true,
+                AttributesToSkip = FileAttributes.ReparsePoint,
+            };
+            foreach (var src in sources)
+            {
+                long sum = 0;
+                try
+                {
+                    if (src.Length > 0 && Directory.Exists(src))
+                    {
+                        foreach (var file in new DirectoryInfo(src).EnumerateFiles("*", opts))
+                        {
+                            try { sum += file.Length; } catch { }
+                            if (ct.IsCancellationRequested || DateTime.UtcNow > deadline) return null;
+                        }
+                    }
+                }
+                catch { }
+                sizes.Add(sum);
+            }
+            return sizes;
+        }, ct);
     }
 
     public static string FormatBytes(long bytes)
