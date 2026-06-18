@@ -20,8 +20,12 @@
             <RadioButton x:Name="RbPattern" Content="Files matching a name or pattern"
                          Checked="OnKindChanged" />
         </RadioButtons>
+        <!-- The per-kind hint is set in OnKindChanged both as the field's UIA
+             HelpText (spoken on focus) and as the visible caption below. The
+             caption is AccessibilityView=Raw so it is not read as an orphan
+             paragraph out of context when the dialog opens. -->
         <TextBox x:Name="TxtValue" Header="Folder name:" AccessKey="N" />
         <TextBlock x:Name="LblHint" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                   TextWrapping="Wrap" />
+                   TextWrapping="Wrap" AutomationProperties.AccessibilityView="Raw" />
     </StackPanel>
 </ContentDialog>

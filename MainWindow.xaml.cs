@@ -36,6 +36,19 @@ public sealed partial class MainWindow : Window
     private bool _dirty;
     private int _progTotal;
 
+    // Byte-weighted backup progress. When a pre-run scan of the included folders
+    // succeeds (_progByBytes), the bar tracks bytes copied / total source bytes:
+    // _progOffsets[i] is the cumulative byte total BEFORE folder i, _progSizes[i]
+    // its size, so each @@PROGRESS@@ marker snaps the bar to the folder boundary
+    // (this accounts for skipped files) and robocopy's per-file byte lines move
+    // it smoothly within the current folder. If the scan fails or is empty the
+    // flag stays false and the bar falls back to the per-folder count.
+    private bool _progByBytes;
+    private long[]? _progSizes;
+    private long[]? _progOffsets;
+    private long _progTotalBytes;
+    private long _curBase, _curSize, _curCopied, _curLastPush, _curPushStep;
+
     // Per-run robocopy summary accumulation; recreated by RunScript so a stale
     // parser from a previous run can never leak counts into the next one.
     private RobocopySummaryParser? _summaryParser;
@@ -82,6 +95,10 @@ public sealed partial class MainWindow : Window
     private string _appStatusText = "Open this tab to scan installed apps.";
 
     private bool _appScanned;
+    // Which page the nav has selected (0 = File Backup, 1 = App Management);
+    // the status bar and its announcements key off this, as they did off the
+    // old Pivot's SelectedIndex.
+    private int _activePage;
     private bool _scanning;
     private bool _reinstalling;
     private bool _exporting;
@@ -110,9 +127,12 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "GUARD";
-        // 940 rather than the previous 900: the status bar row takes ~40 DIPs,
-        // and the extra height keeps the tab content area unchanged.
-        SizeToDips(820, 940);
+        // Wider than the old 820 to keep the page content roomy beside the
+        // ~210 DIP navigation pane (the seven schedule-day checkboxes need a
+        // full-width row). Height holds at 900: the expanders collapse the
+        // advanced sections, so the default page is shorter than before.
+        SizeToDips(1040, 900);
+        EnableMinimumWindowSize();
 
         _cfg = SettingsStore.Load();
 
@@ -183,18 +203,48 @@ public sealed partial class MainWindow : Window
     }
 
     // =====================================================================
-    //  TAB SWITCH (lazy app scan)
+    //  PAGE SWITCH (lazy app scan)
     // =====================================================================
-    private void OnTabChanged(object sender, SelectionChangedEventArgs e)
+    private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        // announceStart:false - on a tab switch the Pivot is already announcing
-        // the newly selected tab; announcing the scan start at the same instant
-        // makes a screen reader read them jumbled ("scanning... App Management
-        // selected"). The scan-complete summary is the spoken cue instead.
-        if (Tabs.SelectedIndex == 1 && !_appScanned) { _appScanned = true; ScanApps(announceStart: false); }
-        // Repaint the status bar for the new tab silently; switching tabs is
+        // FileBackupPage / AppMgmtPage are created by InitializeComponent; this
+        // can fire during it (NavFile.IsSelected="True"), before the rest of the
+        // constructor runs, so guard on the pages existing.
+        if (FileBackupPage == null || AppMgmtPage == null) return;
+        string tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "file";
+        if (tag == "apps")
+        {
+            _activePage = 1;
+            FileBackupPage.Visibility = Visibility.Collapsed;
+            AppMgmtPage.Visibility = Visibility.Visible;
+            // announceStart:false - the nav is already announcing the newly
+            // selected page; announcing the scan start at the same instant makes
+            // a screen reader read them jumbled. The scan-complete summary is the
+            // spoken cue instead.
+            if (!_appScanned) { _appScanned = true; ScanApps(announceStart: false); }
+        }
+        else
+        {
+            _activePage = 0;
+            AppMgmtPage.Visibility = Visibility.Collapsed;
+            FileBackupPage.Visibility = Visibility.Visible;
+        }
+        // Repaint the status bar for the new page silently; switching pages is
         // not a status change worth a live-region announcement.
         UpdateStatusBar();
+    }
+
+    // Help and About are invoke-only footer items (SelectsOnInvoked="False"), so
+    // they raise ItemInvoked without changing the selected page; dispatch them to
+    // the existing handlers. Page items also raise this, but their work is done
+    // by OnNavSelectionChanged, so they fall through.
+    private void OnNavItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    {
+        switch ((args.InvokedItemContainer as NavigationViewItem)?.Tag as string)
+        {
+            case "help": OnHelp(NavHelp, new RoutedEventArgs()); break;
+            case "about": OnAbout(NavAbout, new RoutedEventArgs()); break;
+        }
     }
 
     // =====================================================================
@@ -324,19 +374,19 @@ public sealed partial class MainWindow : Window
         // Only re-announce when the message actually changed; otherwise toggling
         // each day checkbox would re-read the status line on top of the box's own
         // checked/unchecked state. Announce only while the bar is showing this
-        // text (File Backup active); the bar repaints silently on a tab switch.
-        if (announce && Tabs.SelectedIndex == 0 && _fileStatusText != _lastAnnouncedStatus)
+        // text (File Backup active); the bar repaints silently on a page switch.
+        if (announce && _activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
         _lastAnnouncedStatus = _fileStatusText;
     }
 
-    // The status bar shows the active tab's status text; a running job's
+    // The status bar shows the active page's status text; a running job's
     // progress is mirrored into the bar's progress area independently (see
-    // SetProgress), so a job stays visible from either tab.
+    // SetProgress), so a job stays visible from either page.
     private void UpdateStatusBar()
     {
-        if (StatusBarText == null || Tabs == null) return;
-        if (Tabs.SelectedIndex == 0)
+        if (StatusBarText == null) return;
+        if (_activePage == 0)
         {
             StatusDot.Visibility = Visibility.Visible;
             if (_fileStatusBrush != null) StatusDot.Fill = _fileStatusBrush;
@@ -352,25 +402,29 @@ public sealed partial class MainWindow : Window
     }
 
     // Inventory status lives in the status bar (its single home); announce
-    // only while App Management is the active tab, since the bar shows the
+    // only while App Management is the active page, since the bar shows the
     // file status otherwise (the text repaints on switching back regardless).
     private void AnnounceAppStatus()
     {
         UpdateStatusBar();
-        if (Tabs.SelectedIndex == 1) Announce(StatusBarText);
+        if (_activePage == 1) Announce(StatusBarText);
     }
 
-    // One-shot spoken messages (end-of-run summary, cancellations) use a UIA
-    // notification instead of a live region: the notification carries its text
-    // inside the event, so the screen reader speaks exactly that string with no
-    // dependency on when the element's UIA Name catches up - live-region events
-    // on a just-updated TextBlock can be dropped or read stale.
-    private static void AnnounceNotification(UIElement el, string text)
+    // One-shot spoken messages (job start, end-of-run summary, cancellations) use
+    // a UIA notification instead of a live region: the notification carries its
+    // text inside the event, so the screen reader speaks exactly that string with
+    // no dependency on when an element's UIA Name catches up - live-region events
+    // on a just-updated TextBlock can be dropped or read stale. It is raised on the
+    // status bar text, which is always present and visible: the per-page progress
+    // labels now live inside collapsed "Output details" expanders, and a collapsed
+    // element is outside the UIA tree, so a notification raised on one is silently
+    // dropped (this is why preview/backup completion went unspoken).
+    private void AnnounceNotification(string text)
     {
         try
         {
-            var peer = FrameworkElementAutomationPeer.FromElement(el)
-                       ?? FrameworkElementAutomationPeer.CreatePeerForElement(el);
+            var peer = FrameworkElementAutomationPeer.FromElement(StatusBarText)
+                       ?? FrameworkElementAutomationPeer.CreatePeerForElement(StatusBarText);
             peer?.RaiseNotificationEvent(
                 AutomationNotificationKind.ActionCompleted,
                 AutomationNotificationProcessing.ImportantMostRecent,
@@ -387,10 +441,10 @@ public sealed partial class MainWindow : Window
     // focus announcement clear first. The start announcement works at 800ms
     // because script startup already adds ~1s; the end announcement fires
     // straight after the focus restore and needs the full two seconds.
-    private async void AnnounceSettled(UIElement el, string text, int delayMs = 800)
+    private async void AnnounceSettled(string text, int delayMs = 800)
     {
         await System.Threading.Tasks.Task.Delay(delayMs);
-        DispatcherQueue.TryEnqueue(() => AnnounceNotification(el, text));
+        DispatcherQueue.TryEnqueue(() => AnnounceNotification(text));
     }
 
     private static void Announce(UIElement el)
@@ -443,6 +497,17 @@ public sealed partial class MainWindow : Window
         if (_cfg.ScheduleEnabled && _cfg.ScheduleDays.Count == 0)
         {
             await ShowMessageAsync("GUARD", "Pick at least one day for the scheduled backup, or turn the schedule off.");
+            return false;
+        }
+        // A source that contains the destination (or sits inside it) would make
+        // the backup copy itself and nest without bound, so refuse to write a
+        // self-recursive script. Pure path math, no disk I/O, so it stays inline
+        // with the other required-value blocks above. (Unreachable sources and
+        // tight space stay advisory; this one cannot ever produce a good backup.)
+        var overlapping = SaveValidation.OverlappingSources(_cfg.Dest, _cfg.Folders);
+        if (overlapping.Count > 0)
+        {
+            await ShowMessageAsync("GUARD", DescribeOverlap(_cfg.Dest, overlapping));
             return false;
         }
         // The settings and script are written synchronously (fast, and the
@@ -544,13 +609,13 @@ public sealed partial class MainWindow : Window
 
     // Mid-flow file-status updates (the space-check placeholder and result)
     // route through the status bar like RefreshScriptStatus does: repaint the
-    // bar, announce only while File Backup is the active tab, and record the
+    // bar, announce only while File Backup is the active page, and record the
     // text so an unchanged status is not re-spoken.
     private void SetFileStatusText(string text)
     {
         _fileStatusText = text;
         UpdateStatusBar();
-        if (Tabs.SelectedIndex == 0 && _fileStatusText != _lastAnnouncedStatus)
+        if (_activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
         _lastAnnouncedStatus = _fileStatusText;
     }
@@ -561,6 +626,22 @@ public sealed partial class MainWindow : Window
         return missing.Count == 1
             ? "this source folder is not currently reachable:" + list
             : "these source folders are not currently reachable:" + list;
+    }
+
+    // Spells out which source(s) overlap the destination and how to fix it,
+    // rather than a bare refusal, so the user can see the problem and act on it.
+    private static string DescribeOverlap(string dest, List<string> sources)
+    {
+        string list = "\n" + string.Join("\n", sources);
+        string which = sources.Count == 1
+            ? "this source folder overlaps the backup destination:"
+            : "these source folders overlap the backup destination:";
+        return "Cannot save these settings. " + which + list
+            + "\n\nDestination: " + dest
+            + "\n\nA source cannot contain the destination, or sit inside it, or the "
+            + "backup would copy itself into itself and grow without end until the "
+            + "folder can no longer be opened or deleted. Choose a destination on a "
+            + "separate path (ideally a different drive), or remove the overlapping source.";
     }
 
     // Off the UI thread: the query launches powershell.exe, whose cold start
@@ -829,7 +910,7 @@ public sealed partial class MainWindow : Window
                 // while the disk is walked. Focus has not moved yet, so the
                 // spoken cue is a plain (undelayed) UIA notification.
                 SetExportProgress("Looking for settings folders for " + picked.Count + " ticked app(s)...", indeterminate: true);
-                AnnounceNotification(AppProgressLabel, "Looking for settings folders for " + picked.Count + " app(s)...");
+                AnnounceNotification("Looking for settings folders for " + picked.Count + " app(s)...");
 
                 // Candidate matching walks the disk, so it runs off the UI
                 // thread; sizes are measured later, inside the open dialog.
@@ -852,7 +933,7 @@ public sealed partial class MainWindow : Window
                         // Settled: the dialog just closed (a focus change) which
                         // would otherwise cut the cancellation message off.
                         SetExportOutcome("Export cancelled. Nothing was exported.");
-                        AnnounceSettled(AppProgressLabel, "Export cancelled. Nothing was exported.");
+                        AnnounceSettled("Export cancelled. Nothing was exported.");
                         return;
                     }
                     chosen = new List<AppSettingsCandidate>();
@@ -922,7 +1003,7 @@ public sealed partial class MainWindow : Window
                             {
                                 AppProgressLabel.Text = msg;
                                 StatusBarProgressText.Text = msg;
-                                if (!announced) { announced = true; AnnounceSettled(AppProgressLabel, msg); }
+                                if (!announced) { announced = true; AnnounceSettled(msg); }
                             }),
                             onBytes: done => DispatcherQueue.TryEnqueue(() =>
                             {
@@ -1188,7 +1269,7 @@ public sealed partial class MainWindow : Window
                 string installing = "Installing: " + app.Name + " (" + (i + 1) + " of " + targets.Count + ")";
                 SetProgress(AppProgress, AppProgressLabel, totalSteps, i, installing);
                 // First item only, like the backup run's start announcement.
-                if (i == 0) AnnounceSettled(AppProgressLabel, installing);
+                if (i == 0) AnnounceSettled(installing);
                 AppendOut(TxtAppOutput, "\r\n=== Installing " + app.Name + "  [" + app.Id + "] ===\r\n");
                 int code;
                 try { code = ProcessRunner.RunWingetInstall(app.Id, s => AppendOut(TxtAppOutput, s), ct); }
@@ -1218,7 +1299,7 @@ public sealed partial class MainWindow : Window
                     AppendOut(TxtAppOutput, msg + "\r\n");
                     // When there is no install phase, the restore start is the
                     // job's first spoken line (the install loop spoke otherwise).
-                    if (targets.Count == 0 && step == 0) AnnounceSettled(AppProgressLabel, msg);
+                    if (targets.Count == 0 && step == 0) AnnounceSettled(msg);
                 }, ct);
             }
         });
@@ -1242,7 +1323,7 @@ public sealed partial class MainWindow : Window
             launcher.Focus(FocusState.Programmatic);
         BtnAppStop.IsEnabled = false;
         ShowStatusBarProgress(false);
-        AnnounceSettled(AppProgressLabel, outcome, 2000);
+        AnnounceSettled(outcome, 2000);
     }
 
     // The end-of-job line, covering whichever phases ran: a cancelled run
@@ -1303,10 +1384,14 @@ public sealed partial class MainWindow : Window
             AppendOut(TxtOutput, "WARNING: " + DescribeMissingSources(_missingSources).Replace("\n", "\r\n  ")
                 + "\r\nThey will be skipped if still unreachable.\r\n");
         _progTotal = 0;
+        _progByBytes = false;
+        _progSizes = null;
+        _progOffsets = null;
+        _progTotalBytes = 0;
         _summaryParser = new RobocopySummaryParser();
         _runIsPreview = arg == "test";
         _runDoneAnnounce = null;
-        SetProgress(FileProgress, FileProgressLabel, 1, 0, "");
+        SetProgress(FileProgress, FileProgressLabel, 1, 0, "Measuring folders...");
         ShowStatusBarProgress(true);
 
         _backupRunning = true;
@@ -1315,6 +1400,36 @@ public sealed partial class MainWindow : Window
         SetFileBusy(true);
         try
         {
+            // Best-effort: pre-scan the included folders so the bar can advance by
+            // bytes copied within each folder (see _progByBytes). On failure, empty
+            // result, timeout or cancel it stays in per-folder mode. Cancellable, so
+            // Stop during a long measure aborts cleanly - the launch below then
+            // starts and is killed at once by the already-cancelled token.
+            try
+            {
+                var sizes = await SaveValidation.MeasureIncludedFolderSizesAsync(
+                    _cfg.Folders, SaveValidation.RunSizeCap, ct);
+                if (sizes != null && sizes.Count > 0)
+                {
+                    long tot = 0;
+                    foreach (var s in sizes) tot += s;
+                    if (tot > 0)
+                    {
+                        _progSizes = sizes.ToArray();
+                        _progOffsets = new long[sizes.Count];
+                        long acc = 0;
+                        for (int k = 0; k < sizes.Count; k++) { _progOffsets[k] = acc; acc += sizes[k]; }
+                        _progTotalBytes = tot;
+                        // Throttle per-file bar pushes to ~500 over the whole run so
+                        // a large backup cannot flood the dispatcher.
+                        _curPushStep = Math.Max(4L * 1024 * 1024, tot / 500);
+                        _progByBytes = true;
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch { }
+
             var psi = new ProcessStartInfo("cmd.exe", "/c \"\"" + script + "\" " + arg + "\"")
             {
                 UseShellExecute = false,
@@ -1376,7 +1491,7 @@ public sealed partial class MainWindow : Window
             SetFileBusy(false);
         }
         string? spoken = ct.IsCancellationRequested ? "Backup cancelled." : _runDoneAnnounce;
-        if (spoken != null) AnnounceSettled(FileProgressLabel, spoken, 2000);
+        if (spoken != null) AnnounceSettled(spoken, 2000);
     }
 
     private void OnStopBackup(object sender, RoutedEventArgs e) => _runCts?.Cancel();
@@ -1444,7 +1559,10 @@ public sealed partial class MainWindow : Window
                     done = summary;
                     AppendOut(TxtOutput, "\r\n" + summary + "\r\n");
                 }
-                SetProgress(FileProgress, FileProgressLabel, _progTotal > 0 ? _progTotal : 1, _progTotal, done);
+                if (_progByBytes)
+                    SetProgress(FileProgress, FileProgressLabel, _progTotalBytes, _progTotalBytes, done);
+                else
+                    SetProgress(FileProgress, FileProgressLabel, _progTotal > 0 ? _progTotal : 1, _progTotal, done);
                 // Stashed, not announced here: the announcement waits until
                 // RunScript has finished its end-of-run focus handling, or the
                 // focus change would cancel the speech mid-summary.
@@ -1459,13 +1577,58 @@ public sealed partial class MainWindow : Window
                 string nm = m.Groups[3].Value.Trim();
                 _progTotal = tot;
                 string prog = "Backing up: " + nm + " (" + n + " of " + tot + ")";
-                SetProgress(FileProgress, FileProgressLabel, tot, n - 1, prog);
+                if (_progByBytes && _progOffsets != null && _progSizes != null
+                    && n >= 1 && n <= _progOffsets.Length)
+                {
+                    // Snap to this folder's start (= the previous folder's end), so
+                    // skipped files are accounted for at the boundary; the per-file
+                    // lines below then move the bar within the folder.
+                    _curBase = _progOffsets[n - 1];
+                    _curSize = _progSizes[n - 1];
+                    _curCopied = 0;
+                    _curLastPush = _curBase;
+                    SetProgress(FileProgress, FileProgressLabel, _progTotalBytes, _curBase, prog);
+                }
+                else
+                {
+                    SetProgress(FileProgress, FileProgressLabel, tot, n - 1, prog);
+                }
                 // Speak the first progress line so a screen-reader user hears
                 // the run actually begin; the rest of the stream stays silent
                 // (a per-folder announcement stream would be noisy).
-                if (n == 1) AnnounceSettled(FileProgressLabel, prog);
+                if (n == 1) AnnounceSettled(prog);
             }
             return;
+        }
+        // Robocopy's per-file lines (the UI build drops /NFL and adds /BYTES) start
+        // with a tab and end "<bytes>\t<path>". On a large backup there are tens of
+        // thousands of them, so they are consumed for progress ONLY and never echoed
+        // to the output box or fed to the summary parser: each AppendOut forces a
+        // TextBox relayout, and echoing every line froze the UI. The full per-file
+        // list still goes to the log file via robocopy's /LOG+ (Open Last Log). This
+        // runs for every GUARD_UI run, even when byte-progress is off, because the
+        // script emits these lines whenever GUARD_UI is set.
+        if (data.Length > 0 && data[0] == '\t')
+        {
+            int lastTab = data.LastIndexOf('\t');
+            if (lastTab > 0)
+            {
+                var ms = Regex.Match(data.Substring(0, lastTab), "(\\d+)\\s*$");
+                if (ms.Success && long.TryParse(ms.Groups[1].Value, out long b))
+                {
+                    if (_progByBytes)
+                    {
+                        _curCopied += b;
+                        long val = _curBase + Math.Min(_curCopied, _curSize);
+                        if (val - _curLastPush >= _curPushStep)
+                        {
+                            _curLastPush = val;
+                            SetFileProgressValue(val);
+                        }
+                    }
+                    return; // identified per-file line: do not echo or feed
+                }
+            }
         }
         // Summary parsing must never break run handling; on any parser fault the
         // run degrades to the plain completion message.
@@ -1524,6 +1687,18 @@ public sealed partial class MainWindow : Window
         while (b >= 1024 && u < units.Length - 1) { b /= 1024; u++; }
         return (u == 0 ? b.ToString("N0", CultureInfo.CurrentCulture)
                        : b.ToString("0.#", CultureInfo.CurrentCulture)) + " " + units[u];
+    }
+
+    // Advances only the backup bar's value (file + status-bar mirror), leaving the
+    // max and the "Backing up: ... (n of N)" label untouched; used for the frequent
+    // within-folder byte updates so they neither rewrite the label nor reset the max.
+    private void SetFileProgressValue(double val)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            FileProgress.Value = val;
+            StatusBarProgress.Value = val;
+        });
     }
 
     private void SetProgress(ProgressBar bar, TextBlock lbl, double max, double val, string text)
@@ -1668,6 +1843,59 @@ public sealed partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint hwnd);
+
+    // ---- Minimum window size ------------------------------------------------
+    // WinUI 3 exposes no minimum-size property, so the resize floor is enforced
+    // the classic way: a window subclass that answers WM_GETMINMAXINFO with a
+    // minimum track size. The floor is kept in DIPs and converted to physical
+    // pixels per the window's current DPI, so it scales with the display. The
+    // width is chosen so the bottom action bar and the App Management toolbar
+    // (filter box + count) never clip on the right.
+    private const int MinWidthDip = 860;
+    private const int MinHeightDip = 620;
+    private const uint WM_GETMINMAXINFO = 0x0024;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct POINT { public int X; public int Y; }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MINMAXINFO
+    {
+        public POINT ptReserved;
+        public POINT ptMaxSize;
+        public POINT ptMaxPosition;
+        public POINT ptMinTrackSize;
+        public POINT ptMaxTrackSize;
+    }
+
+    [System.Runtime.InteropServices.DllImport("comctl32.dll", SetLastError = true)]
+    private static extern bool SetWindowSubclass(nint hWnd, nint pfnSubclass, nuint uIdSubclass, nuint dwRefData);
+
+    [System.Runtime.InteropServices.DllImport("comctl32.dll")]
+    private static extern nint DefSubclassProc(nint hWnd, uint uMsg, nuint wParam, nint lParam);
+
+    private unsafe void EnableMinimumWindowSize()
+    {
+        delegate* unmanaged[Stdcall]<nint, uint, nuint, nint, nuint, nuint, nint> proc = &MinSizeSubclassProc;
+        SetWindowSubclass(WindowHandle, (nint)proc, 1, 0);
+    }
+
+    // Static + UnmanagedCallersOnly (not an instance delegate) so the callback
+    // is a plain function pointer that survives NativeAOT without a kept-alive
+    // delegate. The single main window needs no per-instance state here.
+    [System.Runtime.InteropServices.UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvStdcall) })]
+    private static unsafe nint MinSizeSubclassProc(nint hWnd, uint uMsg, nuint wParam, nint lParam, nuint uIdSubclass, nuint dwRefData)
+    {
+        if (uMsg == WM_GETMINMAXINFO && lParam != 0)
+        {
+            uint dpi = GetDpiForWindow(hWnd);
+            double scale = dpi == 0 ? 1.0 : dpi / 96.0;
+            MINMAXINFO* mmi = (MINMAXINFO*)lParam;
+            mmi->ptMinTrackSize.X = (int)(MinWidthDip * scale);
+            mmi->ptMinTrackSize.Y = (int)(MinHeightDip * scale);
+        }
+        return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+    }
 
     // AppWindow.Resize takes physical pixels; size in DIPs so the window is the
     // same effective width on any display scaling (otherwise a 150% display

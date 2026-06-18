@@ -8,6 +8,41 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+- Save now refuses a backup whose source folder contains the destination, or
+  sits inside it, and explains which folder overlaps. Without the guard, such a
+  setup could make Robocopy copy the backup into itself on every run, nesting
+  `DEST\Sub\DEST\Sub\...` until the paths could pass Windows' 260-character limit
+  and the folder could no longer be opened or deleted. Destinations that merely
+  share a drive root with a source (e.g. `C:\Users\you\Documents` to `C:\Backup`)
+  are unaffected.
+- The backup progress bar now advances within each folder as bytes are copied,
+  rather than only stepping once per folder. GUARD measures the included folders
+  up front and a Run or Preview reads per-file byte counts from Robocopy to move
+  the bar smoothly, falling back to per-folder steps if a very large tree cannot
+  be measured in time. The extra per-file detail is added to interactive runs
+  only; scheduled and unattended runs keep their compact log.
+
+### Changed
+- Reworked the main window from a two-tab Pivot to a left navigation pane
+  (NavigationView) with File Backup and App Management pages and Help and About
+  as footer items (Help keeps its F1 shortcut). When the window is made narrow
+  the pane collapses to a compact icon rail so the page keeps its width, and a
+  toggle expands it again.
+- Grouped each page's settings into titled cards with a pinned action bar along
+  the bottom, so the primary actions (Save Settings, Run Now, Export, and so on)
+  stay in view without scrolling. The advanced sections - Exclusions, Schedule
+  and Output details - are collapsible expanders.
+- Page content now fills the window width, left-anchored beside the navigation,
+  and the folder and app lists' first column grows (up to a sensible cap) as the
+  window widens so longer paths and names show. The window also has a minimum
+  size, so the action bars and the App Management toolbar never clip.
+- The Add Folder and Add Exclusion dialogs attach their helper text to the input
+  field as screen-reader help text (spoken when focus lands on the field), and
+  the visible caption is no longer read a second time as an out-of-context
+  paragraph when the dialog opens.
+- Status-bar messages too long to fit now show in full on hover.
+
 ## [0.4.1] - 2026-06-16
 
 ### Added

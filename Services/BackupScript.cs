@@ -18,13 +18,20 @@ public static class BackupScript
         int keep = Math.Clamp(cfg.VersionsToKeep, 1, 365);
         string exDirs = JoinTokens(cfg.EffectiveExcludeDirs());
         string exFiles = JoinTokens(cfg.EffectiveExcludeFiles());
-        var opts = new StringBuilder();
         // /XJ is MANDATORY: skips junction points. Without it the hidden
         // My Music / My Pictures / My Videos junctions in Documents cause
         // failed-directory errors on every run.
-        opts.Append(mirror).Append(" /R:2 /W:5 /MT:16 /NP /NFL /NDL /XJ");
-        if (exDirs.Length > 0) opts.Append(" /XD ").Append(exDirs);
-        if (exFiles.Length > 0) opts.Append(" /XF ").Append(exFiles);
+        string optsCommon = mirror + " /R:2 /W:5 /MT:16 /NP /NDL /XJ";
+        string optsTail = "";
+        if (exDirs.Length > 0) optsTail += " /XD " + exDirs;
+        if (exFiles.Length > 0) optsTail += " /XF " + exFiles;
+        // The two listing modes differ only by the file-list flag (set in the
+        // script via GUARD_UI). Unattended runs use /NFL for a compact log. UI
+        // runs drop /NFL and add /BYTES so robocopy prints one line per copied
+        // file with a raw byte count, which the app sums for within-folder
+        // progress; the cost is a longer log on interactive runs only.
+        string optsCompact = optsCommon + " /NFL" + optsTail;
+        string optsUi = optsCommon + " /BYTES" + optsTail;
 
         var sb = new StringBuilder();
         sb.AppendLine("@echo off");
@@ -71,7 +78,10 @@ public static class BackupScript
         sb.AppendLine("if not errorlevel 1 exit /b 0");
         sb.AppendLine(":checked");
         sb.AppendLine();
-        sb.AppendLine("set \"OPTS=" + opts + "\"");
+        sb.AppendLine("set \"OPTS=" + optsCompact + "\"");
+        // UI runs (launched by GUARD.exe, which sets GUARD_UI) stream per-file
+        // byte lines so the app can show within-folder progress.
+        sb.AppendLine("if defined GUARD_UI set \"OPTS=" + optsUi + "\"");
         sb.AppendLine();
         sb.AppendLine("if not exist \"%LOGDIR%\" md \"%LOGDIR%\"");
         sb.AppendLine();
