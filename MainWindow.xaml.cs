@@ -24,11 +24,11 @@ public sealed partial class MainWindow : Window
 {
     private Settings _cfg = new();
 
-    // Cancellation for the two long-running jobs. The Stop buttons only ever
-    // call Cancel(); the kill of the underlying process tree hangs off the
-    // token (a Register callback), so cancel-vs-natural-exit races collapse to
-    // a harmless Kill-after-exit that the registration swallows. Both fields
-    // are created, cancelled and disposed on the UI thread only.
+    // Cancellation for the two long-running jobs. The Stop buttons only call
+    // Cancel(); the process-tree kill hangs off the token (a Register callback),
+    // so cancel-vs-natural-exit races collapse to a harmless Kill-after-exit the
+    // registration swallows. Both fields are created, cancelled and disposed on
+    // the UI thread only.
     private CancellationTokenSource? _runCts;
     private CancellationTokenSource? _reinstallCts;
     private bool _backupRunning;
@@ -38,11 +38,11 @@ public sealed partial class MainWindow : Window
 
     // Byte-weighted backup progress. When a pre-run scan of the included folders
     // succeeds (_progByBytes), the bar tracks bytes copied / total source bytes:
-    // _progOffsets[i] is the cumulative byte total BEFORE folder i, _progSizes[i]
-    // its size, so each @@PROGRESS@@ marker snaps the bar to the folder boundary
-    // (this accounts for skipped files) and robocopy's per-file byte lines move
-    // it smoothly within the current folder. If the scan fails or is empty the
-    // flag stays false and the bar falls back to the per-folder count.
+    // _progOffsets[i] is the cumulative bytes BEFORE folder i, _progSizes[i] its
+    // size, so each @@PROGRESS@@ marker snaps the bar to the folder boundary
+    // (accounting for skipped files) and robocopy's per-file byte lines move it
+    // smoothly within the folder. If the scan fails or is empty the flag stays
+    // false and the bar falls back to the per-folder count.
     private bool _progByBytes;
     private long[]? _progSizes;
     private long[]? _progOffsets;
@@ -50,7 +50,7 @@ public sealed partial class MainWindow : Window
     private long _curBase, _curSize, _curCopied, _curLastPush, _curPushStep;
 
     // Per-run robocopy summary accumulation; recreated by RunScript so a stale
-    // parser from a previous run can never leak counts into the next one.
+    // parser can't leak counts into the next run.
     private RobocopySummaryParser? _summaryParser;
     private bool _runIsPreview;
 
@@ -58,9 +58,9 @@ public sealed partial class MainWindow : Window
     // SetFileBusy for why announcing earlier loses the speech.
     private string? _runDoneAnnounce;
 
-    // Save reentrancy guard (the save is now async and non-blocking, so the
-    // button can be pressed again mid-save) and the staleness counter for the
-    // background space/size status check.
+    // Save reentrancy guard (the save is async, so the button can be pressed
+    // again mid-save) and the staleness counter for the background space/size
+    // status check.
     private bool _saving;
     private int _spaceCheckSeq;
 
@@ -411,14 +411,14 @@ public sealed partial class MainWindow : Window
     }
 
     // One-shot spoken messages (job start, end-of-run summary, cancellations) use
-    // a UIA notification instead of a live region: the notification carries its
-    // text inside the event, so the screen reader speaks exactly that string with
-    // no dependency on when an element's UIA Name catches up - live-region events
-    // on a just-updated TextBlock can be dropped or read stale. It is raised on the
-    // status bar text, which is always present and visible: the per-page progress
-    // labels now live inside collapsed "Output details" expanders, and a collapsed
-    // element is outside the UIA tree, so a notification raised on one is silently
-    // dropped (this is why preview/backup completion went unspoken).
+    // a UIA notification, not a live region: the notification carries its text in
+    // the event, so the screen reader speaks exactly that with no dependency on
+    // when an element's UIA Name catches up (live-region events on a just-updated
+    // TextBlock can be dropped or read stale). Raised on the status bar text,
+    // which is always present and visible: the per-page progress labels now live
+    // inside collapsed "Output details" expanders, and a collapsed element is
+    // outside the UIA tree, so a notification on one is silently dropped (this is
+    // why preview/backup completion went unspoken).
     private void AnnounceNotification(string text)
     {
         try
@@ -434,13 +434,12 @@ public sealed partial class MainWindow : Window
     }
 
     // AnnounceNotification after a settle delay. A job's start and end move
-    // keyboard focus (to and from the Stop button), and a screen reader
-    // cancels whatever it is speaking when it processes a focus event - so a
-    // notification raised too close to the focus change gets cut off (short
-    // messages survived, long summaries read as silence). The delay lets the
-    // focus announcement clear first. The start announcement works at 800ms
-    // because script startup already adds ~1s; the end announcement fires
-    // straight after the focus restore and needs the full two seconds.
+    // keyboard focus (to/from the Stop button), and a screen reader cancels what
+    // it's speaking on a focus event - so a notification raised too close to the
+    // focus change gets cut off (short messages survived, long summaries read as
+    // silence). The delay lets the focus announcement clear first. Start works at
+    // 800ms because script startup already adds ~1s; end fires straight after the
+    // focus restore and needs the full two seconds.
     private async void AnnounceSettled(string text, int delayMs = 800)
     {
         await System.Threading.Tasks.Task.Delay(delayMs);
@@ -499,24 +498,24 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "Pick at least one day for the scheduled backup, or turn the schedule off.");
             return false;
         }
-        // A source that contains the destination (or sits inside it) would make
+        // A source containing the destination (or sitting inside it) would make
         // the backup copy itself and nest without bound, so refuse to write a
         // self-recursive script. Pure path math, no disk I/O, so it stays inline
-        // with the other required-value blocks above. (Unreachable sources and
-        // tight space stay advisory; this one cannot ever produce a good backup.)
+        // with the other required-value blocks. (Unreachable sources and tight
+        // space stay advisory; this one can never produce a good backup.)
         var overlapping = SaveValidation.OverlappingSources(_cfg.Dest, _cfg.Folders);
         if (overlapping.Count > 0)
         {
             await ShowMessageAsync("GUARD", DescribeOverlap(_cfg.Dest, overlapping));
             return false;
         }
-        // The settings and script are written synchronously (fast, and the
-        // ground truth the rest of the app reads), then everything slow runs
-        // off the UI thread so the window never freezes: the scheduled-task
-        // state is applied in one batched PowerShell invocation (each extra
-        // powershell.exe start pays a multi-second module import - this used
-        // to be 3-4 sequential ones and froze the UI for tens of seconds),
-        // and a dead UNC source can make Directory.Exists block for seconds.
+        // Settings and script are written synchronously (fast, and the ground
+        // truth the rest of the app reads), then everything slow runs off the UI
+        // thread so the window never freezes: the scheduled-task state applies in
+        // one batched PowerShell call (each extra powershell.exe start pays a
+        // multi-second module import; this used to be 3-4 sequential ones and
+        // froze the UI for tens of seconds), and a dead UNC source can make
+        // Directory.Exists block for seconds.
         if (_saving) return false;
         _saving = true;
         try
@@ -561,12 +560,11 @@ public sealed partial class MainWindow : Window
         StartSpaceStatusCheck();
     }
 
-    // Background space/size check; appends its findings to the saved-status
-    // line when done. Out of the modal path entirely, the size estimate can
-    // afford a cap long enough to usually finish, so the figure is normally
-    // the full total rather than a lower bound. The sequence counter plus the
-    // dirty re-check drop a stale result if the user edited or saved again
-    // while the walk was still running.
+    // Background space/size check; appends its findings to the saved-status line
+    // when done. Out of the modal path, the size estimate can afford a long-enough
+    // cap to usually finish, so the figure is normally the full total, not a lower
+    // bound. The sequence counter plus the dirty re-check drop a stale result if
+    // the user edited or saved again mid-walk.
     private async void StartSpaceStatusCheck()
     {
         int seq = ++_spaceCheckSeq;
@@ -830,10 +828,9 @@ public sealed partial class MainWindow : Window
         if (text == LblAppCount.Text) return;
         LblAppCount.Text = text;
         // Announce the new count only while the user is typing in the filter box
-        // (where it is the immediate feedback they need); a scan or import already
-        // announces its own summary through the status bar, so speaking the count
-        // there too would double up. Identical counts across keystrokes stay silent
-        // because the text has not changed.
+        // (the immediate feedback they need); a scan or import already announces
+        // its own summary, so speaking the count too would double up. Identical
+        // counts across keystrokes stay silent (text unchanged).
         if (TxtAppFilter.FocusState != FocusState.Unfocused)
             Announce(LblAppCount);
     }
@@ -983,13 +980,12 @@ public sealed partial class MainWindow : Window
                 }
                 else
                 {
-                    // A determinate progress bar (by bytes, from the sizes already
-                    // measured) plus a spoken first line: a large folder - an
-                    // Electron app's profile, say - otherwise copies with no
-                    // feedback between the per-folder lines and looks frozen, with
-                    // no screen-reader cue at all. Per convention only the first
-                    // line is spoken; the bar carries the rest and the summary is
-                    // read by the dialog that follows.
+                    // A determinate progress bar (by bytes, from the measured
+                    // sizes) plus a spoken first line: a large folder (an Electron
+                    // profile, say) otherwise copies with no feedback between
+                    // per-folder lines and looks frozen, with no screen-reader cue.
+                    // Per convention only the first line is spoken; the bar carries
+                    // the rest and the following dialog reads the summary.
                     long totalBytes = 0;
                     foreach (var c in chosen) totalBytes += c.Bytes;
                     double barMax = totalBytes > 0 ? totalBytes : 1;
@@ -1054,11 +1050,11 @@ public sealed partial class MainWindow : Window
         return dir;
     }
 
-    // Export status is shown in the status bar's progress slot, never the main
+    // Export status shows in the status bar's progress slot, never the main
     // status line, so reading the bar never says the same thing twice (the main
-    // line keeps the persistent inventory status, exactly as it does during a
-    // backup or reinstall). The slot is not a live region; spoken cues are
-    // raised separately via AnnounceNotification / AnnounceSettled.
+    // line keeps the inventory status, as during a backup or reinstall). The slot
+    // is not a live region; spoken cues are raised separately via
+    // AnnounceNotification / AnnounceSettled.
     private void SetExportProgress(string text, bool indeterminate)
     {
         ShowStatusBarProgress(true);
@@ -1228,12 +1224,12 @@ public sealed partial class MainWindow : Window
     // =====================================================================
     //  REINSTALL
     // =====================================================================
-    // Runs the winget install phase and then, when a restore set is given, the
-    // settings-restore phase - as one cancellable job under the run-feedback
-    // focus discipline. Launched from the Import List dialog (see OnImportApps),
-    // not a tab button, so it acts on the saved list rather than the installed
-    // apps. launcherButton is the button that opened that dialog, so focus can
-    // return there when the job ends. restore is null for an apps-only run.
+    // Runs the winget install phase, then (when a restore set is given) the
+    // settings-restore phase, as one cancellable job under the run-feedback focus
+    // discipline. Launched from the Import List dialog (see OnImportApps), not a
+    // tab button, so it acts on the saved list, not the installed apps.
+    // launcherButton is the button that opened that dialog, so focus returns there
+    // when the job ends. restore is null for an apps-only run.
     private async System.Threading.Tasks.Task ExecuteReinstall(
         List<AppEntry> targets, List<AppSettingsRestoreCandidate>? restore, Control launcherButton)
     {
@@ -1497,15 +1493,15 @@ public sealed partial class MainWindow : Window
     private void OnStopBackup(object sender, RoutedEventArgs e) => _runCts?.Cancel();
 
     // Lock out the actions that conflict with a running backup. Save Settings is
-    // included because it rewrites guard-backup.cmd, and cmd.exe reads batch
-    // files incrementally, so rewriting one mid-run corrupts the run. The Stop
-    // button is the inverse: only operable while something is running.
-    // The button that launched the current backup run, so focus can return to
-    // it when the run ends. Focus is managed explicitly around the enable /
-    // disable flips: disabling a focused button lets WinUI throw focus at an
-    // arbitrary neighbour (it landed on Open Last Log), and the screen
-    // reader's announcement of that surprise focus cancels whatever was being
-    // spoken - which ate the end-of-run summary.
+    // included because it rewrites guard-backup.cmd, and cmd.exe reads batch files
+    // incrementally, so rewriting one mid-run corrupts the run. The Stop button is
+    // the inverse: only operable while something is running.
+    // _fileRunLauncher is the button that launched the run, so focus can return
+    // there when it ends. Focus is managed explicitly around the enable/disable
+    // flips: disabling a focused button lets WinUI throw focus at an arbitrary
+    // neighbour (it landed on Open Last Log), and the screen reader announcing
+    // that surprise focus cancels whatever was being spoken - which ate the
+    // end-of-run summary.
     private Control? _fileRunLauncher;
 
     private void SetFileBusy(bool busy)
@@ -1601,13 +1597,12 @@ public sealed partial class MainWindow : Window
             return;
         }
         // Robocopy's per-file lines (the UI build drops /NFL and adds /BYTES) start
-        // with a tab and end "<bytes>\t<path>". On a large backup there are tens of
-        // thousands of them, so they are consumed for progress ONLY and never echoed
-        // to the output box or fed to the summary parser: each AppendOut forces a
-        // TextBox relayout, and echoing every line froze the UI. The full per-file
-        // list still goes to the log file via robocopy's /LOG+ (Open Last Log). This
-        // runs for every GUARD_UI run, even when byte-progress is off, because the
-        // script emits these lines whenever GUARD_UI is set.
+        // with a tab and end "<bytes>\t<path>". A large backup has tens of thousands,
+        // so they feed progress ONLY, never echoed to the output box or the summary
+        // parser: each AppendOut forces a TextBox relayout, and echoing every line
+        // froze the UI. The full list still reaches the log via robocopy's /LOG+
+        // (Open Last Log). Runs for every GUARD_UI run, even when byte-progress is
+        // off, since the script emits these whenever GUARD_UI is set.
         if (data.Length > 0 && data[0] == '\t')
         {
             int lastTab = data.LastIndexOf('\t');
@@ -1719,12 +1714,11 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    // The bar's progress area shows live progress while a job runs; when the
-    // job ends only the progress bar hides, and the area keeps the final
-    // outcome message (summary / cancelled / done counts) until the next job,
-    // so the read-status-bar hotkey reports how the last run ended from
-    // anywhere in the app. The area only collapses entirely when there is no
-    // outcome to show (before any job, or after a launch failure).
+    // The bar's progress area shows live progress while a job runs; when it ends
+    // only the progress bar hides, and the area keeps the final outcome (summary /
+    // cancelled / done counts) until the next job, so the read-status-bar hotkey
+    // reports how the last run ended from anywhere. The area fully collapses only
+    // when there's no outcome to show (before any job, or after a launch failure).
     private void ShowStatusBarProgress(bool show)
     {
         DispatcherQueue.TryEnqueue(() =>
@@ -1747,12 +1741,11 @@ public sealed partial class MainWindow : Window
     }
 
     // Keep the output console scrolled to the newest line. Select(end, 0) only
-    // scrolls a WinUI 3 TextBox while it has focus, so drive the ScrollViewer
-    // inside the TextBox template directly. ChangeView (animation disabled) moves
-    // the viewport without taking keyboard focus and without raising any focus or
-    // live-region automation event, so a screen reader's reading position is not
-    // disturbed beyond the text change itself. UpdateLayout first so
-    // ScrollableHeight reflects the line just appended.
+    // scrolls a WinUI 3 TextBox while focused, so drive the template's ScrollViewer
+    // directly. ChangeView (animation off) moves the viewport without taking focus
+    // or raising any focus/live-region event, so a screen reader's reading position
+    // isn't disturbed beyond the text change. UpdateLayout first so ScrollableHeight
+    // reflects the just-appended line.
     private static void ScrollToEnd(TextBox box)
     {
         box.UpdateLayout();

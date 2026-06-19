@@ -2,9 +2,9 @@ using System.ComponentModel;
 
 namespace GuardWui3.Models;
 
-// One installed-application row (App Management tab). Source is "winget" or
-// "msstore" (a package id is known, so it can be reinstalled automatically) or
-// "manual" (in Add/Remove Programs but not in any winget source).
+// One installed-application row (App Management tab). Source "winget"/"msstore"
+// means a package id is known (auto-reinstallable); "manual" means in Add/Remove
+// Programs but in no winget source.
 public sealed partial class AppEntry : INotifyPropertyChanged
 {
     private bool _include = true;

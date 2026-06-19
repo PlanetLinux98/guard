@@ -25,11 +25,11 @@ public static class BackupScript
         string optsTail = "";
         if (exDirs.Length > 0) optsTail += " /XD " + exDirs;
         if (exFiles.Length > 0) optsTail += " /XF " + exFiles;
-        // The two listing modes differ only by the file-list flag (set in the
-        // script via GUARD_UI). Unattended runs use /NFL for a compact log. UI
-        // runs drop /NFL and add /BYTES so robocopy prints one line per copied
-        // file with a raw byte count, which the app sums for within-folder
-        // progress; the cost is a longer log on interactive runs only.
+        // The two listing modes differ only by the file-list flag (set via
+        // GUARD_UI). Unattended runs use /NFL for a compact log. UI runs drop
+        // /NFL and add /BYTES so robocopy prints one line per copied file with a
+        // raw byte count, which the app sums for within-folder progress; cost is
+        // a longer log on interactive runs only.
         string optsCompact = optsCommon + " /NFL" + optsTail;
         string optsUi = optsCommon + " /BYTES" + optsTail;
 
@@ -64,13 +64,13 @@ public static class BackupScript
         sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"ONCONNECT=1\"");
         sb.AppendLine();
         // On-connect gate: the periodic task fires this every few minutes, so it
-        // must cost nothing when there is nothing to do. Exit silently (and before
-        // the log header, so the last real backup log is never overwritten) when
-        // the destination is absent or the stamp already records a successful run
-        // today. The stamp holds %DATE% verbatim; findstr /x compares it the same
-        // way it was written, so locale date formats are irrelevant. A failed run
-        // does not update the stamp (see the HADERR branch), so the next check
-        // retries instead of skipping the rest of the day.
+        // must cost nothing when there's nothing to do. Exit silently (before the
+        // log header, so the last real backup log is never overwritten) when the
+        // destination is absent or the stamp already records a successful run
+        // today. The stamp holds %DATE% verbatim; findstr /x compares it as
+        // written, so locale date formats are irrelevant. A failed run doesn't
+        // update the stamp (see the HADERR branch), so the next check retries
+        // instead of skipping the day.
         sb.AppendLine("set \"OCSTAMP=%~dp0onconnect-stamp.txt\"");
         sb.AppendLine("if not defined ONCONNECT goto :checked");
         sb.AppendLine("if not exist \"%DEST%\\\" exit /b 0");
@@ -148,10 +148,10 @@ public static class BackupScript
         sb.AppendLine("   >>\"%LOG%\" echo FINISHED OK   %date% %time%");
         sb.AppendLine("   echo.");
         sb.AppendLine("   echo Backup finished successfully.");
-        // Stamp only clean on-connect runs (an error should retry on the next
-        // check, and the DRY guard is belt-and-braces; the task never passes
-        // "test"). %DATE% expands when this block executes, i.e. at the finish,
-        // so a run crossing midnight stamps the new day as already covered.
+        // Stamp only clean on-connect runs (an error should retry next check; the
+        // DRY guard is belt-and-braces, the task never passes "test"). %DATE%
+        // expands at the finish, so a run crossing midnight stamps the new day as
+        // covered.
         sb.AppendLine("   if defined ONCONNECT if not defined DRY >\"%OCSTAMP%\" echo %DATE%");
         sb.AppendLine(")");
         if (cfg.Versioned)

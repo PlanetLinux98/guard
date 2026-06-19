@@ -16,17 +16,17 @@ public sealed class AppSettingsRestoreStats
     public int SkippedFiles;   // individual files that could not be copied
 }
 
-// Puts the exported settings folders back where they came from. The export side
-// records every copied folder in app-settings-manifest.json with its rootAnchor
-// (%APPDATA% etc.); restore reads that manifest, re-anchors each target to the
-// CURRENT profile, and - after the user confirms - copies the folder back. An
-// existing target is renamed aside (never deleted) before being replaced, so a
-// restore is always reversible.
+// Puts the exported settings folders back where they came from. Export records
+// every copied folder in app-settings-manifest.json with its rootAnchor
+// (%APPDATA% etc.); restore reads it, re-anchors each target to the CURRENT
+// profile, and (after the user confirms) copies the folder back. An existing
+// target is renamed aside (never deleted) before replacing, so a restore is
+// always reversible.
 public static class AppSettingsRestore
 {
-    // Reads the manifest sitting in the AppSettings folder beside an imported
-    // app-list file, or null when the import carried no settings bundle. The
-    // folder/file names match what AppSettingsExport wrote.
+    // Reads the manifest in the AppSettings folder beside an imported app-list
+    // file, or null when the import carried no settings bundle. Folder/file names
+    // match what AppSettingsExport wrote.
     public static AppSettingsManifest? TryLoadBundle(string listDir)
     {
         if (string.IsNullOrEmpty(listDir)) return null;
@@ -43,9 +43,9 @@ public static class AppSettingsRestore
     }
 
     // Turns the manifest entries into confirmable rows. Each entry's copied
-    // folder must still exist on disk under listDir (the AppSettings bundle);
-    // entries whose source is missing are dropped rather than offered. Targets
-    // are resolved by expanding the rootAnchor against this machine's profile.
+    // folder must still exist under listDir (the AppSettings bundle); entries
+    // whose source is missing are dropped. Targets resolve by expanding the
+    // rootAnchor against this machine's profile.
     public static List<AppSettingsRestoreCandidate> BuildCandidates(
         AppSettingsManifest manifest, string listDir)
     {
@@ -60,9 +60,9 @@ public static class AppSettingsRestore
             if (!Directory.Exists(source)) continue;
 
             string expandedRoot = Environment.ExpandEnvironmentVariables(e.RootAnchor);
-            // A rootAnchor that still contains a % failed to expand (the variable
-            // is not set on this machine); without a real root the target cannot
-            // be placed, so skip it rather than write under a literal "%APPDATA%".
+            // A rootAnchor still containing % failed to expand (variable not set
+            // here); without a real root, skip rather than write under a literal
+            // "%APPDATA%".
             if (string.IsNullOrEmpty(expandedRoot) || expandedRoot.Contains('%')) continue;
             string target = Path.Combine(expandedRoot, e.Folder);
 
@@ -85,10 +85,10 @@ public static class AppSettingsRestore
 
     // Restores the confirmed folders. An existing target is renamed to
     // <name>.guard-old-<timestamp> first; if that rename fails (a file inside is
-    // locked because the app is running) the target is left untouched and the
-    // folder is counted as skipped, never half-overwritten. progress receives
-    // one line per folder; the walk honours the cancellation token between
-    // folders so Stop Reinstall halts it cleanly.
+    // locked by the running app) the target is left untouched and counted
+    // skipped, never half-overwritten. progress gets one line per folder; the
+    // walk honours the cancellation token between folders so Stop Reinstall halts
+    // cleanly.
     public static AppSettingsRestoreStats RestoreCandidates(
         List<AppSettingsRestoreCandidate> picked, Action<string>? progress, CancellationToken ct)
     {
@@ -103,9 +103,9 @@ public static class AppSettingsRestore
             {
                 if (Directory.Exists(c.TargetPath))
                 {
-                    // Move the live folder aside before replacing it. Directory.Move
-                    // throws if a file inside is open, which is exactly the locked-
-                    // app case; leave the existing settings intact and skip.
+                    // Move the live folder aside before replacing. Directory.Move
+                    // throws if a file inside is open (the locked-app case); leave
+                    // existing settings intact and skip.
                     string aside = MakeAsidePath(c.TargetPath);
                     try { Directory.Move(c.TargetPath, aside); }
                     catch { stats.SkippedFolders++; continue; }

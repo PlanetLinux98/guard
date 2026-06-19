@@ -10,14 +10,13 @@ public static class ScheduledTasks
 {
     public sealed record ApplyResult(string? Error, string? NextRun);
 
-    // Applies the complete scheduled-task state for a save in ONE PowerShell
-    // invocation: register-or-remove the timed task, drop the legacy pre-0.3
-    // name, register-or-remove the on-connect task, and query the next run.
-    // Batching matters: each powershell.exe start pays a multi-second
-    // ScheduledTasks-module import, and the per-operation methods below cost
-    // that 3-4 times per save. Errors are routed to stdout behind ERRFILE/
-    // ERRCONN markers (stderr would mix PowerShell's own noise in), the next
-    // run behind NEXT.
+    // Applies the whole scheduled-task state for a save in ONE PowerShell call:
+    // register-or-remove the timed task, drop the legacy pre-0.3 name,
+    // register-or-remove the on-connect task, query the next run. Batching
+    // matters: each powershell.exe start pays a multi-second ScheduledTasks-module
+    // import, which the per-operation methods below cost 3-4x per save. Errors
+    // route to stdout behind ERRFILE/ERRCONN markers (stderr would mix in
+    // PowerShell's noise), the next run behind NEXT.
     public static ApplyResult ApplyAll(Settings cfg)
     {
         var sb = new StringBuilder();
@@ -85,11 +84,10 @@ public static class ScheduledTasks
         return err;
     }
 
-    // All seven days (or an empty list, defensively) -> a plain daily trigger;
-    // any subset -> a weekly trigger limited to those days. The empty fallback
-    // matters because the manual "Create/Update Task" button can reach here with
-    // no days selected (e.g. the schedule is off); a -DaysOfWeek with no days is
-    // invalid, so we never emit one.
+    // All seven days (or empty, defensively) -> daily trigger; any subset ->
+    // weekly trigger on those days. The empty fallback matters: the manual
+    // "Create/Update Task" button can reach here with no days selected (schedule
+    // off), and -DaysOfWeek with no days is invalid, so we never emit one.
     private static string TriggerArgs(Settings cfg)
     {
         var days = cfg.ScheduleDays.Distinct().ToList();
@@ -98,35 +96,32 @@ public static class ScheduledTasks
         return "-Weekly -DaysOfWeek " + string.Join(",", days) + " -At " + cfg.ScheduleTime;
     }
 
-    // "Run when the destination becomes available" detection. Honest options:
+    // "Run when the destination becomes available" detection. Options weighed:
     //
-    //  1. Event-triggered task on device arrival (DriverFrameworks-UserMode
-    //     event 2003, or WPD/PnP events). Rejected: the operational log that
-    //     carries those events is disabled by default, the event IDs and
-    //     payloads shift between Windows versions, the subscription keys off
-    //     device instance IDs rather than the drive letter the user typed, and
-    //     a network share becoming reachable raises no device event at all.
+    //  1. Event-triggered task on device arrival (DriverFrameworks-UserMode event
+    //     2003, or WPD/PnP events). Rejected: its operational log is disabled by
+    //     default, event IDs/payloads shift between Windows versions, the
+    //     subscription keys off device instance IDs not the drive letter the user
+    //     typed, and a network share becoming reachable raises no device event.
     //
     //  2. A resident watcher (service/tray app). Rejected: GUARD is a portable
     //     generator; backups must work with the app closed and nothing installed.
     //
-    //  3. (chosen) A second scheduled task that runs the script with an
-    //     "onconnect" argument every 15 minutes and at logon. The check is a
-    //     single `if exist "%DEST%\"` plus a date-stamp comparison, so when the
-    //     destination is absent or today's backup already succeeded it exits in
-    //     milliseconds with no log churn. This is gentle Task-Scheduler-level
-    //     polling, covers external drives and network shares identically, and
-    //     keys off the same destination path the rest of GUARD uses.
+    //  3. (chosen) A second scheduled task running the script with "onconnect"
+    //     every 15 minutes and at logon. The check is one `if exist "%DEST%\"`
+    //     plus a date-stamp compare, so an absent destination or already-done
+    //     backup exits in milliseconds with no log churn. Gentle Task-Scheduler
+    //     polling, covers drives and shares identically, keys off GUARD's usual
+    //     dest path.
     //
-    // The 15-minute repetition rides on a -Once trigger, the standard Windows
-    // PowerShell 5.1 idiom (5.1 has no -RepetitionInterval on -Daily, and
-    // requires an explicit -RepetitionDuration; 10 years is effectively
-    // indefinite). The -AtLogOn trigger catches the common "drive was already
-    // plugged in when the PC started" case without waiting out the interval.
-    // It is scoped to the current user (-User ...GetCurrent().Name): a bare
-    // -AtLogOn is an "any user" logon trigger, which Task Scheduler only lets
-    // an administrator register, so saving without elevation failed with
-    // "Access is denied". Per-user registers fine non-elevated.
+    // The 15-minute repetition rides a -Once trigger, the PowerShell 5.1 idiom
+    // (5.1 has no -RepetitionInterval on -Daily and needs an explicit
+    // -RepetitionDuration; 10 years is effectively indefinite). The -AtLogOn
+    // trigger catches "drive was already plugged in at startup" without waiting
+    // out the interval. Scoped to the current user (-User ...GetCurrent().Name):
+    // a bare -AtLogOn is an "any user" trigger, which only an admin can register,
+    // so saving non-elevated failed with "Access is denied". Per-user registers
+    // fine non-elevated.
     public static string? UpdateOnConnectTask()
     {
         string arg = "/c \"" + GuardPaths.ScriptPath + "\" onconnect";
@@ -146,9 +141,9 @@ public static class ScheduledTasks
     }
 
     // Removes the current and legacy schedule task names, so disabling the
-    // schedule reliably clears the timed backup task, including one registered
-    // under the old name by a pre-0.3 build. Deliberately leaves the on-connect
-    // task alone: it is an independent trigger with its own setting.
+    // schedule reliably clears the timed task, including one a pre-0.3 build
+    // registered under the old name. Leaves the on-connect task alone:
+    // independent trigger with its own setting.
     public static void RemoveScheduleTasks()
     {
         RemoveTask(GuardPaths.FileTaskName);

@@ -3,10 +3,9 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace GuardWui3.Views;
 
-// Wraps the window status bar content so UIA exposes a real StatusBar element.
-// Panels (Border/Grid) never get automation peers, so without this wrapper the
-// bar is just loose text in the tree and a screen reader's read-status-bar
-// command (NVDA+End) cannot find it.
+// Wraps status bar content so UIA exposes a real StatusBar element. Panels
+// (Border/Grid) get no automation peer, so without this the bar is loose text
+// that a screen reader's read-status-bar command (NVDA+End) cannot find.
 public sealed partial class StatusBarHost : ContentControl
 {
     public StatusBarHost()

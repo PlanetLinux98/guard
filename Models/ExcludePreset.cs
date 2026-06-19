@@ -1,8 +1,8 @@
 namespace GuardWui3.Models;
 
-// Catalog of the curated one-tick exclusion sets offered as checkboxes above
-// the custom-exclusions list. The ids are persisted in the ini
-// (General.ExcludePresets), so they must stay stable across versions.
+// Curated one-tick exclusion sets shown as checkboxes above the custom list.
+// Ids are persisted in the ini (General.ExcludePresets); keep them stable
+// across versions.
 public sealed class ExcludePreset
 {
     public string Id { get; }

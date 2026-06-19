@@ -55,20 +55,19 @@
                         IsPaneToggleButtonVisible="True"
                         SelectionChanged="OnNavSelectionChanged"
                         ItemInvoked="OnNavItemInvoked"><!--
-             PaneDisplayMode=Auto: the pane is expanded (full labels) at normal and
-             wide widths and collapses to the compact icon rail once the control is
-             narrower than ExpandedModeThresholdWidth (980), reclaiming ~160 DIP so
-             the bottom action bar and the App Management toolbar still fit when the
-             window is dragged small (down to the 860 DIP minimum). The toggle button
-             is shown so the rail can be expanded on demand; CompactModeThresholdWidth
-             is kept low (500) so it stays a rail rather than dropping to the hidden
-             "minimal" mode within the supported size range.
+             PaneDisplayMode=Auto: the pane is expanded (full labels) at normal/wide
+             widths and collapses to the compact icon rail once narrower than
+             ExpandedModeThresholdWidth (980), reclaiming ~160 DIP so the bottom
+             action bar and App Management toolbar still fit down to the 860 DIP
+             minimum. The toggle button lets the rail expand on demand;
+             CompactModeThresholdWidth is kept low (500) so it stays a rail rather
+             than dropping to the hidden "minimal" mode in range.
 
              The earlier gap-on-left/clip-on-right glitch on the Expanded<->Compact
              transition came from the old Stretch+MaxWidth content centering colliding
              with the inset recompute (and from hiding the toggle while still allowing
-             collapse). With the content now filling the width responsively and the
-             toggle present, the transition is clean in both directions. -->
+             collapse). With content now filling the width responsively and the toggle
+             present, the transition is clean both ways. -->
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="NavFile" Content="File Backup" Tag="file" IsSelected="True">
                     <NavigationViewItem.Icon>
@@ -110,10 +109,10 @@
                     </Grid.RowDefinitions>
 
                     <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <!-- Content fills the window width (no max-width cap): the cards
-                             and the lists stretch, so widening or maximizing reveals more
-                             of long paths and the app columns rather than just adding empty
-                             space. The list grids use a star primary column for this. -->
+                        <!-- Content fills the window width (no max-width cap): cards and
+                             lists stretch, so widening reveals more of long paths and the
+                             app columns rather than empty space. The list grids use a star
+                             primary column for this. -->
                         <StackPanel HorizontalAlignment="Stretch" Margin="16" Spacing="12">
 
                             <!-- Destination -->
@@ -206,13 +205,13 @@
 
                             <!-- Exclusions. Expanded by default: a collapsed Expander
                                  de-realizes its content, so the Add/Remove Exclusion access
-                                 keys and keyboard focus would not reach the controls inside
-                                 while collapsed. The user can still collapse it to declutter,
-                                 accepting that its access keys sleep until it is reopened.
-                                 Presets cover the common cases with no wildcard typing; anything
-                                 else goes through the Add Exclusion builder dialog into the
-                                 custom list (checkbox rows, same screen-reader idiom as the
-                                 folder list). Tooltips carry each preset's pattern list. -->
+                                 keys and focus wouldn't reach the controls inside while
+                                 collapsed (collapsing to declutter just sleeps its access
+                                 keys until reopened). Presets cover the common cases with no
+                                 wildcard typing; anything else goes through the Add Exclusion
+                                 builder dialog into the custom list (checkbox rows, same
+                                 screen-reader idiom as the folder list). Tooltips carry each
+                                 preset's patterns. -->
                             <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                       IsExpanded="True" Header="Exclusions">
                                 <StackPanel Spacing="6">
@@ -279,9 +278,7 @@
                                     <!-- Mode. RadioButtons (the container) gives arrow-key
                                          selection-follows-focus and a single tab stop. The
                                          short word is the visible label; the description sits
-                                         on a second line, and both lines are inside the radio's
-                                         content so the spoken name still carries the full text
-                                         (so the accessible name matches what is shown). -->
+                                         on a second line, both inside the radio's content. -->
                                     <StackPanel Grid.Column="0" Spacing="6">
                                         <TextBlock Text="Mode" Style="{StaticResource CardTitle}" />
                                         <!-- The two-line content (bold word + caption) stops the
@@ -333,10 +330,10 @@
                             </Border>
 
                             <!-- Schedule. Expanded by default: a collapsed Expander de-realizes
-                                 its content, so Alt+Y / Alt+W and keyboard focus would not reach
-                                 the schedule controls while collapsed. Save Settings is the single
+                                 its content, so Alt+Y / Alt+W and focus wouldn't reach the
+                                 schedule controls while collapsed. Save Settings is the single
                                  source of truth: ticking "Run a scheduled backup" and saving
-                                 registers the task; unticking and saving removes it. The
+                                 registers the task, unticking and saving removes it. The
                                  day/time controls grey out while that box is off. -->
                             <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                       IsExpanded="True" Header="Schedule">

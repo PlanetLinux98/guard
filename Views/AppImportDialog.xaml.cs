@@ -6,12 +6,11 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace GuardWui3.Views;
 
-// Shown when the user imports a saved app list. The imported apps live here, in
-// their own tickable list, rather than replacing the installed-apps list behind
-// the tab - so "what is on this PC now" (for Export) and "what was saved" (to
-// reinstall) never get conflated. This dialog is selection only: the chosen
-// action closes it and the actual reinstall runs on the main window, which
-// already has the progress, output console and Stop button.
+// Shown when the user imports a saved app list. Imported apps get their own
+// tickable list rather than replacing the installed-apps list, so "what's on
+// this PC now" (Export) and "what was saved" (reinstall) never conflate.
+// Selection only: the chosen action closes the dialog and the reinstall runs on
+// the main window, which has the progress, output console and Stop button.
 //
 //   Primary  ("Reinstall Selected")            -> reinstall the ticked apps
 //   Secondary("Reinstall & Restore Settings")  -> reinstall, then restore settings

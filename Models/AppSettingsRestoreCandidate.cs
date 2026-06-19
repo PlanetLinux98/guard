@@ -4,14 +4,13 @@ using System.Globalization;
 
 namespace GuardWui3.Models;
 
-// One settings folder offered in the Restore App Settings confirmation dialog.
-// Built from a manifest entry written by the export side: the source is the
-// copied folder under the imported list's AppSettings folder, and the target is
-// resolved by expanding the entry's rootAnchor (%APPDATA% etc.) against the
-// CURRENT user profile, so a restore lands correctly even if the Windows
-// username changed. The restore overwrites real user data, so each row is a
-// real CheckBox the user confirms - and TargetExists drives the per-row
-// "replaces existing" warning before anything is touched.
+// One settings folder in the Restore App Settings confirmation dialog. Built
+// from an export-side manifest entry: source is the copied folder under the
+// imported list's AppSettings; target resolves by expanding the entry's
+// rootAnchor (%APPDATA% etc.) against the CURRENT profile, so a restore lands
+// right even if the username changed. Restore overwrites real user data, so each
+// row is a CheckBox the user confirms; TargetExists drives the per-row "replaces
+// existing" warning.
 public sealed partial class AppSettingsRestoreCandidate : INotifyPropertyChanged
 {
     private bool _include = true;
@@ -30,21 +29,21 @@ public sealed partial class AppSettingsRestoreCandidate : INotifyPropertyChanged
 
     public long Bytes { get; set; }                // recorded by the export, not re-measured
     public int Files { get; set; }
-    // True when TargetPath already exists, so restoring it replaces a real
-    // folder; the existing one is renamed aside first, never deleted outright.
+    // True when TargetPath exists, so restoring replaces a real folder; the
+    // existing one is renamed aside first, never deleted.
     public bool TargetExists { get; set; }
 
-    // Anchor form for display (e.g. %APPDATA%\Foo): compact and free of the
-    // user name, unlike the fully expanded TargetPath (which the caption carries
-    // so a screen reader still reads where the data actually lands).
+    // Anchor form for display (e.g. %APPDATA%\Foo): compact and username-free,
+    // unlike the expanded TargetPath the caption carries so the screen reader
+    // still reads where the data lands.
     public string DisplayPath => RootAnchor + "\\" + FolderName;
     public string MatchedAppsLabel => string.Join(", ", MatchedApps);
     public string SizeLabel => FormatBytes(Bytes);
     public string StatusLabel => TargetExists ? "Replaces existing" : "New";
 
     // Spoken name for the row's checkbox (the role announces checked state). The
-    // existing-folder reassurance is spelled out here so the consequence is clear
-    // without the user having to read the dialog's intro text.
+    // existing-folder reassurance is spelled out so the consequence is clear
+    // without reading the dialog intro.
     public string Caption =>
         $"Settings folder, {DisplayPath}, {SizeLabel}, " +
         (TargetExists

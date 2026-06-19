@@ -16,9 +16,8 @@ public sealed partial class FolderDialog : ContentDialog
         InitializeComponent();
     }
 
-    // Switches the dialog into edit mode for an existing pair: same fields and
-    // OK button as Add, but pre-populated and retitled so it is clear which
-    // operation is underway.
+    // Edit mode for an existing pair: same fields and OK button as Add, but
+    // pre-populated and retitled so the operation is clear.
     public void LoadFolder(FolderPair pair)
     {
         Title = "Edit Folder";

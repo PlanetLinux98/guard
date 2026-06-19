@@ -4,20 +4,17 @@ using System.Globalization;
 
 namespace GuardWui3.Services;
 
-// Accumulates robocopy's per-folder summary tables from the stdout stream the
-// app already captures (/TEE), one block per folder pair. Stream parsing is
-// used instead of re-reading the appended log file after exit: the data is in
-// hand line-by-line, needs no second I/O pass, and the log mixes the current
-// run's folders with header banners that would need the same parsing anyway.
+// Accumulates robocopy's per-folder summary tables from the captured stdout
+// stream (/TEE), one block per folder pair. Parsing the stream rather than
+// re-reading the appended log avoids a second I/O pass; the log would need the
+// same parsing anyway (it mixes runs with header banners).
 //
-// Locale strategy: localized Windows translates the row labels ("Files :" is
-// "Fichiers :" on French Windows), so rows are identified by POSITION, not by
-// English words: after a long dashed line comes a header line of column words,
-// then the rows are always Dirs, Files, Bytes in that order. Only the table
-// SHAPE is matched (a label, a colon, six value cells). Limitation: a locale
-// that reorders or drops rows/columns would mis-map or fail the shape check;
-// in that case parsing degrades silently and the caller falls back to the
-// plain completion message.
+// Locale strategy: localized Windows translates the row labels ("Files :" ->
+// "Fichiers :"), so rows are identified by POSITION, not English words: a dashed
+// rule, then a header line of column words, then rows always Dirs, Files, Bytes.
+// Only the table SHAPE is matched (label, colon, six value cells). A locale that
+// reorders or drops rows/columns would mis-map or fail the shape check; parsing
+// then degrades silently and the caller falls back to the plain completion message.
 public sealed class RobocopySummaryParser
 {
     private enum State { Idle, SeenRule, SeenHeader, SeenDirs, SeenFiles }

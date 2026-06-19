@@ -27,13 +27,12 @@ public static class ProcessRunner
         return o;
     }
 
-    // Runs `winget install` for one id, streaming combined output via onLine.
-    // Returns the process exit code. Cancelling the token kills the whole winget
-    // process tree, which makes WaitForExit return; killing via the token inside
-    // this method (rather than handing the Process out to the caller) keeps the
-    // kill within the process's using scope, so a cancel can never race against
-    // disposal. Kill throws if the process already exited on its own - that race
-    // is benign, so it is swallowed.
+    // Runs `winget install` for one id, streaming combined output via onLine;
+    // returns the exit code. Cancelling the token kills the whole winget process
+    // tree, making WaitForExit return. Killing inside this method (not handing
+    // the Process to the caller) keeps the kill within the using scope, so a
+    // cancel can't race disposal. Kill throws if the process already exited -
+    // benign, so swallowed.
     public static int RunWingetInstall(string id, Action<string> onLine, CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo("winget",
@@ -99,9 +98,9 @@ public static class ProcessRunner
         return outp;
     }
 
-    // Run a PowerShell script ELEVATED (UAC prompt). Output cannot cross the
+    // Run a PowerShell script ELEVATED (UAC prompt). Output can't cross the
     // elevation boundary, so the script goes to a temp .ps1 and only the exit
-    // code is checked. Returns true on success, false on failure/cancellation.
+    // code is checked. True on success, false on failure/cancellation.
     public static bool RunPowerShellElevated(string script, out string? error)
     {
         error = null;

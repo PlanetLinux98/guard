@@ -16,9 +16,9 @@ public sealed class AppSettingsCopyStats
     public int SkippedFiles;
 }
 
-// Finds and copies per-user settings folders for selected apps. There is no
-// reliable general mapping from an installed app to its config folder, so this
-// is a name-matching heuristic over the three common per-user config roots; the
+// Finds and copies per-user settings folders for selected apps. No reliable
+// general mapping exists from an installed app to its config folder, so this is
+// a name-matching heuristic over the three common per-user config roots; the
 // caller must show the results for confirmation before CopyCandidates runs.
 public static class AppSettingsExport
 {
@@ -128,11 +128,10 @@ public static class AppSettingsExport
         return ordered;
     }
 
-    // Size pre-scan for the confirmation list. Runs in the background after
-    // the dialog opens (rows show "Calculating..." meanwhile), so the caps can
-    // be generous; they remain only so one pathological tree cannot spin the
-    // scan forever. When a cap is hit the result is marked partial and shown
-    // as a floor ("at least ...").
+    // Size pre-scan for the confirmation list. Runs in the background after the
+    // dialog opens (rows show "Calculating..." meanwhile), so caps can be
+    // generous; they exist only so one pathological tree can't spin the scan
+    // forever. A hit cap marks the result partial, shown as a floor ("at least ...").
     public static void MeasureCandidate(AppSettingsCandidate c, int maxFiles = 200_000, int maxMs = 15_000)
     {
         long bytes = 0; int files = 0; bool partial = false;
@@ -166,10 +165,10 @@ public static class AppSettingsExport
     }
 
     // Throttled cumulative-byte reporter for the copy progress bar. A big folder
-    // (an Electron app's profile, say) otherwise copies with no feedback between
-    // the per-folder lines and looks frozen; reporting running bytes lets the
-    // caller advance a determinate bar smoothly. Throttled to every few MB so the
-    // UI dispatcher is not flooded.
+    // (an Electron profile, say) otherwise copies with no feedback between
+    // per-folder lines and looks frozen; running bytes let the caller advance a
+    // determinate bar smoothly. Throttled to every few MB so the UI dispatcher
+    // isn't flooded.
     private sealed class CopyProgress
     {
         public Action<long>? OnBytes;

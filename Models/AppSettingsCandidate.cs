@@ -4,10 +4,9 @@ using System.Globalization;
 
 namespace GuardWui3.Models;
 
-// One candidate settings folder offered in the Export App Settings confirmation
-// dialog. The folder-to-app matching is heuristic (folder names compared against
-// app names and publishers), so each row is a real CheckBox the user confirms or
-// unticks before anything is copied.
+// One candidate settings folder in the Export App Settings confirmation dialog.
+// Folder-to-app matching is heuristic (folder names vs app names/publishers), so
+// each row is a CheckBox the user confirms before anything is copied.
 public sealed partial class AppSettingsCandidate : INotifyPropertyChanged
 {
     private bool _include = true;
@@ -25,14 +24,13 @@ public sealed partial class AppSettingsCandidate : INotifyPropertyChanged
 
     public long Bytes { get; set; }
     public int Files { get; set; }
-    // True when the size pre-scan hit its time/file cap, so Bytes is a floor,
-    // not a total; surfaced as "at least" so the user is never misled.
+    // True when the size pre-scan hit its time/file cap, so Bytes is a floor;
+    // surfaced as "at least" so the user is never misled.
     public bool SizePartial { get; set; }
 
-    // Sizes are measured in the background after the dialog opens, so the row
-    // shows "Calculating..." until its measurement lands. Measured flips (and
-    // the bound labels refresh) via NotifyMeasured, which the dialog calls on
-    // the UI thread.
+    // Sizes are measured in the background after the dialog opens; the row shows
+    // "Calculating..." until then. NotifyMeasured (called on the UI thread) flips
+    // Measured and refreshes the bound labels.
     public bool Measured { get; private set; }
     public void NotifyMeasured()
     {

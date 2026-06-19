@@ -7,11 +7,9 @@ namespace GuardWui3.Services;
 // Every path derives from the exe folder, so the whole folder stays portable.
 public static class GuardPaths
 {
-    // Resolve from the real executable, not AppContext.BaseDirectory: the
-    // shipping single-file build self-extracts its native libraries, which makes
-    // BaseDirectory point at a temp extraction cache instead of the exe folder.
-    // Environment.ProcessPath is the apphost exe itself, so working files land
-    // next to it (the GUARD folder) as the portable design intends.
+    // Resolve from the real exe, not AppContext.BaseDirectory: the single-file
+    // build self-extracts native libs, pointing BaseDirectory at a temp cache.
+    // ProcessPath is the apphost exe, so working files land next to it (portable).
     public static readonly string BaseDir =
         Path.GetDirectoryName(Environment.ProcessPath)!.TrimEnd('\\');
     public static string IniPath => Path.Combine(BaseDir, "backup-settings.ini");
@@ -26,11 +24,11 @@ public static class GuardPaths
     // Second task: periodic check that backs up when the destination appears.
     public const string OnConnectTaskName = "GUARD On-Connect Backup";
     public const string AppListFileName = "app-list.json";
-    // MinVer derives the version from the latest vX.Y.Z git tag at build time, so
-    // releases never need a hand-edited constant. The informational version is the
-    // full semver (a dev build between tags carries a pre-release label like
-    // 0.3.0-alpha.0.5); the "+<sha>" build metadata is stripped because the About
-    // dialog is aimed at end users, who match builds by release tag, not commit.
+    // MinVer derives the version from the latest vX.Y.Z git tag at build, so no
+    // hand-edited constant. Informational version is the full semver (dev builds
+    // carry a pre-release label like 0.3.0-alpha.0.5); the "+<sha>" build metadata
+    // is stripped since the About dialog targets end users, who match by release
+    // tag, not commit.
     public static string AppVersion { get; } = ComputeAppVersion();
 
     private static string ComputeAppVersion()

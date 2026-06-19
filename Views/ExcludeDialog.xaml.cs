@@ -5,8 +5,8 @@ using Microsoft.UI.Xaml.Controls;
 namespace GuardWui3.Views;
 
 // Builder for one custom exclusion: the radio choice shapes the input so the
-// user never has to know robocopy's /XD-vs-/XF split or wildcard syntax for
-// the common cases (a typed extension becomes *.ext automatically).
+// user needn't know robocopy's /XD-vs-/XF split or wildcard syntax (a typed
+// extension becomes *.ext automatically).
 public sealed partial class ExcludeDialog : ContentDialog
 {
     public bool IsFolder => RbFolder.IsChecked == true;
@@ -45,8 +45,8 @@ public sealed partial class ExcludeDialog : ContentDialog
                 + "(for example Thumbs.db or report-*.pdf). Wildcards: "
                 + "* matches any text, ? matches one character.";
         }
-        // Visible caption for sighted users; the same text on the field as UIA
-        // HelpText so a screen reader speaks it when focus lands on the field.
+        // Visible caption for sighted users; same text set as UIA HelpText so a
+        // screen reader speaks it on focus.
         LblHint.Text = hint;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(TxtValue, hint);
     }

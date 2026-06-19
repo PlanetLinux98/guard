@@ -1,7 +1,6 @@
 namespace GuardWui3.Models;
 
-// One user-defined exclusion in the custom list. Entries are added and removed
-// whole (no per-entry enable flag); every listed entry applies.
+// One user-defined exclusion. Added/removed whole; no per-entry enable flag.
 public sealed class ExcludeItem
 {
     public bool IsFolder { get; set; }   // true = robocopy /XD token, false = /XF

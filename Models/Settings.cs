@@ -8,35 +8,32 @@ public sealed class Settings
 {
     public string Dest = "";                       // any folder: local drive, external disk, or network share
     public string Mode = "Additive";               // Additive | Mirror
-    // Versioned mode: each run copies into Dest\YYYY-MM-DD\ and the generated
-    // script prunes the oldest dated folders beyond VersionsToKeep. Off by
-    // default so the script stays identical to the classic single-copy layout
-    // unless the user opts in (see NOTES.md for the design assessment).
+    // Versioned mode: each run copies into Dest\YYYY-MM-DD\ and the script prunes
+    // oldest dated folders beyond VersionsToKeep. Off by default so the script
+    // matches the classic single-copy layout unless opted in (see NOTES.md).
     public bool Versioned = false;
     public int VersionsToKeep = 5;
-    // Exclusions: ticked preset ids (see ExcludePreset.All) plus user-defined
-    // custom entries. A fresh install starts with the system-clutter and
-    // developer presets on, covering what the old free-text defaults excluded.
+    // Exclusions: ticked preset ids (see ExcludePreset.All) plus custom entries.
+    // Fresh install starts with the system-clutter and developer presets on
+    // (matching the old free-text defaults).
     public List<string> ExcludePresets = new() { "system", "dev" };
     public ObservableCollection<ExcludeItem> Excludes = new();
-    // Off by default: a fresh install should not register a scheduled task until
-    // the user explicitly opts in.
+    // Off by default: don't register a scheduled task until the user opts in.
     public bool ScheduleEnabled = false;
     public string ScheduleTime = "02:00";
-    // Which weekdays the scheduled backup runs on. All seven == daily, one ==
-    // weekly, any mix == custom. Defaults to all seven so that enabling the
-    // schedule (and any legacy ini without a Days key) behaves like a daily run.
+    // Weekdays the backup runs. All seven == daily, one == weekly, mix == custom.
+    // Defaults to all seven so enabling the schedule (and any legacy ini with no
+    // Days key) acts daily.
     public List<DayOfWeek> ScheduleDays = AllDays();
-    // Independent of the day/time schedule: when on, a second scheduled task
-    // periodically checks for the destination and backs up once per day when it
-    // appears (external drive plugged in, network share reachable). Off by
-    // default for the same opt-in reason as ScheduleEnabled.
+    // Independent of the day/time schedule: a second task periodically checks for
+    // the destination and backs up once/day when it appears (drive plugged in,
+    // share reachable). Off by default, same opt-in reason as ScheduleEnabled.
     public bool TriggerOnConnect = false;
     public ObservableCollection<FolderPair> Folders = new();
 
-    // App Management tab: where the exported app-list.json is written, and
-    // whether Export also copies the ticked apps' settings folders alongside
-    // the list (off by default; the settings copy adds a confirmation step).
+    // App Management tab: where exported app-list.json is written, and whether
+    // Export also copies ticked apps' settings folders (off by default; adds a
+    // confirmation step).
     public string AppListDest = "";
     public bool ExportAppSettings = false;
 

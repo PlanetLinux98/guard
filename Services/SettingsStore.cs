@@ -89,10 +89,10 @@ public static class SettingsStore
     }
 
     // Fold a pre-preset ini's free-text exclude lines into the preset/custom
-    // model: a preset is ticked when any of its patterns appears among the
-    // legacy lines (which can pull in the preset's sibling patterns, but the
-    // result is visible in the UI before the next save), the absorbed lines
-    // are dropped, and whatever is left becomes custom entries.
+    // model: a preset is ticked when any of its patterns appears among the legacy
+    // lines (this can pull in sibling patterns, but the result shows in the UI
+    // before the next save), absorbed lines are dropped, and the rest become
+    // custom entries.
     private static void MigrateLegacyExcludes(Settings cfg, string legacyDirs, string legacyFiles)
     {
         var dirs = SplitLines(legacyDirs);

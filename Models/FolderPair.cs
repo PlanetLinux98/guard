@@ -24,11 +24,9 @@ public sealed partial class FolderPair : INotifyPropertyChanged
         set { if (_source != value) { _source = value; OnChanged(nameof(Source)); OnChanged(nameof(DisplaySource)); OnChanged(nameof(Caption)); } }
     }
 
-    // The list shows (and first-letter navigation matches, and the screen reader
-    // speaks) the resolved path, so a default like %USERPROFILE%\Documents reads
-    // as the actual folder rather than the variable. Source itself stays raw so
-    // the generated backup script remains portable. Paths with no variable (e.g.
-    // a browse-picked folder) pass through unchanged.
+    // List display, first-letter nav, and the screen reader all use the resolved
+    // path, so %USERPROFILE%\Documents reads as the real folder. Source stays raw
+    // to keep the generated script portable; paths with no variable pass through.
     public string DisplaySource => Environment.ExpandEnvironmentVariables(Source);
 
     private string _subFolder;               // name under the destination root
@@ -45,8 +43,7 @@ public sealed partial class FolderPair : INotifyPropertyChanged
         _subFolder = subFolder;
     }
 
-    // Spoken name for the row's checkbox. The checked/unchecked state is
-    // announced by the checkbox role itself, so it is NOT included here.
+    // Spoken name for the row's checkbox (the role announces checked state).
     public string Caption => $"Source folder, {DisplaySource}, destination subfolder, {SubFolder}";
 
     public override string ToString() => Caption;

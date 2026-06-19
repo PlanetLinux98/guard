@@ -11,15 +11,13 @@ using Windows.UI.Core;
 namespace GuardWui3;
 
 // Win32-style type-ahead (first-letter navigation) for the CheckBox-row
-// ItemsControls. ItemsControl has no built-in text search - that is a
-// ListView/ListBox (Selector) feature, and ListView was deliberately rejected
-// here for screen-reader reasons - so we drive it from a list-level KeyDown
-// handler. That is the same code-behind wiring the lists already use for focus
-// memory, which keeps the logic out of the DataTemplate and safe under
-// NativeAOT trimming. Focusing a row moves focus within the list, so it does
-// not trip the GettingFocus re-entry redirect (that only fires on entry from
-// outside), and the CheckBox announces its own state to a screen reader as
-// usual.
+// ItemsControls. ItemsControl has no built-in text search (a ListView/ListBox
+// feature, and ListView was rejected here for screen-reader reasons), so a
+// list-level KeyDown handler drives it - the same code-behind wiring the lists
+// use for focus memory, keeping logic out of the DataTemplate and safe under AOT
+// trimming. Focusing a row moves focus within the list, so it doesn't trip the
+// GettingFocus re-entry redirect (that only fires on entry from outside), and
+// the CheckBox announces its own state as usual.
 public sealed class ListTypeAhead
 {
     private readonly ItemsControl _list;

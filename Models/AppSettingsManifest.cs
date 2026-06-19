@@ -2,10 +2,9 @@ using System.Text.Json.Serialization;
 
 namespace GuardWui3.Models;
 
-// Machine-readable record of one copied settings folder. RootAnchor keeps the
-// environment-variable form (%APPDATA% etc.) rather than the literal user path,
-// so a restore on a fresh Windows install re-anchors to the NEW profile's
-// folders regardless of the username.
+// Record of one copied settings folder. RootAnchor keeps the env-var form
+// (%APPDATA% etc.), not the literal path, so a restore on a fresh install
+// re-anchors to the new profile regardless of username.
 public sealed class AppSettingsManifestEntry
 {
     [JsonPropertyName("apps")] public string[]? Apps { get; set; }

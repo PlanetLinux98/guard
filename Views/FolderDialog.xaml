@@ -20,11 +20,10 @@
             <Button Grid.Column="1" Content="Browse..." AccessKey="B" VerticalAlignment="Bottom"
                     AutomationProperties.Name="Browse for source folder" Click="OnBrowse" />
         </Grid>
-        <!-- The helper text is attached to the field as UIA HelpText so a screen
-             reader speaks it when focus lands here (where it is useful), plus a
-             visible wrapping caption below for sighted users. The caption is
-             AccessibilityView=Raw so it is not read again as an orphan paragraph
-             out of context when the dialog first opens. -->
+        <!-- Helper text attached to the field as UIA HelpText (spoken on focus)
+             plus a visible caption below for sighted users. The caption is
+             AccessibilityView=Raw so it isn't read again as an orphan paragraph
+             when the dialog opens. -->
         <TextBox x:Name="TxtSub" Header="Destination subfolder:" AccessKey="U"
                  AutomationProperties.Name="Destination subfolder name"
                  AutomationProperties.HelpText="The folder name created under the backup destination root, where this source's files are copied." />

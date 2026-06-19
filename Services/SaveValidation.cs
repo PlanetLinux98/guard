@@ -15,17 +15,16 @@ namespace GuardWui3.Services;
 public static class SaveValidation
 {
     // How long the size estimate may run before degrading to a partial figure.
-    // The estimate feeds a background status-line update rather than a modal
-    // dialog, so the cap only needs to bound runaway walks of enormous trees,
-    // not protect perceived save latency; two minutes lets it normally finish
-    // and report the complete total.
+    // It feeds a background status line, not a modal dialog, so the cap only
+    // bounds runaway walks of enormous trees, not save latency; two minutes
+    // normally finishes with the complete total.
     public static readonly TimeSpan EstimateCap = TimeSpan.FromMinutes(2);
 
     public sealed record EstimateResult(long Bytes, bool Complete);
 
-    // Included sources that do not currently resolve to a reachable directory.
-    // Wording elsewhere says "not currently reachable" rather than "missing":
-    // an offline network source or unplugged drive is a legitimate state.
+    // Included sources that don't currently resolve to a reachable directory.
+    // Wording elsewhere says "not currently reachable" not "missing": an offline
+    // share or unplugged drive is a legitimate state.
     public static List<string> UnreachableSources(IEnumerable<FolderPair> folders)
     {
         var missing = new List<string>();
@@ -42,15 +41,14 @@ public static class SaveValidation
     }
 
     // The one overlap that must BLOCK a save (everything else here is advisory):
-    // a source tree that contains the destination, or sits inside it, makes the
-    // generated script copy the backup back into itself. Robocopy walks the
-    // source recursively and re-copies the destination it just wrote, so every
-    // run nests one level deeper (DEST\Sub\DEST\Sub\...) until the paths pass
-    // MAX_PATH and the tree can no longer be read or even deleted from Explorer.
-    // Returns the raw Source strings of the included pairs that overlap DEST, in
-    // list order, for the caller to name. Sharing a drive root is NOT overlap:
-    // C:\ is a common ancestor of two separate folders, not one containing the
-    // other, so C:\Users\me\Documents -> C:\Backup is allowed.
+    // a source tree containing the destination, or sitting inside it, makes the
+    // script copy the backup into itself. Robocopy walks the source recursively
+    // and re-copies the destination it just wrote, so every run nests one level
+    // deeper (DEST\Sub\DEST\Sub\...) until paths pass MAX_PATH and the tree can't
+    // be read or deleted. Returns the raw Source strings of included pairs
+    // overlapping DEST, in list order. Sharing a drive root is NOT overlap: C:\
+    // is a common ancestor, not containment, so C:\Users\me\Documents -> C:\Backup
+    // is allowed.
     public static List<string> OverlappingSources(string dest, IEnumerable<FolderPair> folders)
     {
         var bad = new List<string>();
@@ -106,7 +104,7 @@ public static class SaveValidation
 
     // Sums the included source trees on a worker thread under a hard time cap.
     // If the cap hits, the partial total is returned flagged incomplete so the
-    // caller can label it honestly instead of overstating certainty.
+    // caller can label it honestly.
     public static Task<EstimateResult> EstimateBackupSizeAsync(IEnumerable<FolderPair> folders, TimeSpan cap)
     {
         var sources = new List<string>();
@@ -142,16 +140,16 @@ public static class SaveValidation
     }
 
     // Shorter cap than the status-line estimate: this runs at the start of a
-    // backup and adds startup latency before the copy begins, so bound it tighter
-    // and fall back to per-folder progress if a giant tree does not finish in time.
+    // backup and adds startup latency, so bound it tighter and fall back to
+    // per-folder progress if a giant tree doesn't finish in time.
     public static readonly TimeSpan RunSizeCap = TimeSpan.FromSeconds(60);
 
-    // Per-included-folder byte totals, in the SAME order the generated script
-    // processes them (its loop and this one both walk `folders where Include`), so
-    // the result indexes line up with the script's @@PROGRESS@@ markers. One entry
-    // per included folder, 0 for a missing/unreadable source (still emitted, to
-    // keep the index alignment). Returns null if cancelled or the cap is hit (a
-    // partial set would give wrong offsets), so the caller cleanly falls back.
+    // Per-included-folder byte totals, in the SAME order the script processes
+    // them (both walk `folders where Include`), so indexes line up with the
+    // script's @@PROGRESS@@ markers. One entry per included folder, 0 for a
+    // missing/unreadable source (still emitted, to keep alignment). Returns null
+    // if cancelled or the cap is hit (a partial set would give wrong offsets), so
+    // the caller falls back.
     public static Task<List<long>?> MeasureIncludedFolderSizesAsync(
         IEnumerable<FolderPair> folders, TimeSpan cap, CancellationToken ct)
     {
