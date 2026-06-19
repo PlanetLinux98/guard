@@ -237,7 +237,9 @@ run whether or not GUARD is open. The PC does need to be on at the scheduled tim
   change takes effect until you save. The save runs in the background and confirms inline in the status bar; it also reports the
   destination's free space, a rough size for a first full backup, and any
   included source folders that are not currently reachable (those are simply
-  skipped at run time). A dialog appears if there is a problem saving.
+  skipped at run time). A dialog appears if there is a problem saving. If you
+  close GUARD with changes you have not saved, it asks whether to save them
+  first, with Save, Don't Save, and Cancel.
 - **Run Now** (Alt+N) saves your settings and runs the backup immediately, with
   progress in the status bar and output box.
 - **Preview** (Alt+P) saves your settings and does a dry run: the output box

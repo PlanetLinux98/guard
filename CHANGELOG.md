@@ -9,6 +9,13 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- Closing GUARD with unsaved backup settings now prompts before exiting, with
+  Save (Alt+S), Don't Save (Alt+N), and Cancel (Alt+C) - the familiar
+  Notepad-style choice. Save writes the settings and then closes (staying open if
+  a required value is missing so it can be fixed), Don't Save discards the edits
+  and closes, and Cancel returns to the window. The existing warning about closing
+  while a backup or reinstall is still running follows after, so both can apply to
+  one close.
 - Save now refuses a backup whose source folder contains the destination, or
   sits inside it, and explains which folder overlaps. Without the guard, such a
   setup could make Robocopy copy the backup into itself on every run, nesting
