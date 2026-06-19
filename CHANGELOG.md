@@ -49,6 +49,16 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   the visible caption is no longer read a second time as an out-of-context
   paragraph when the dialog opens.
 - Status-bar messages too long to fit now show in full on hover.
+- Slimmed the shipped folder so the portable app is no longer buried among dozens
+  of unrelated files. The publish step now also strips the rest of the Windows AI
+  / Copilot Runtime stack that Windows App SDK bundles but GUARD never calls (the
+  on-device imaging, vision, semantic-search, Windows ML and content-safety
+  projections and their workload manifests, on top of the ONNX/DirectML binaries
+  already removed), and drops the WinUI framework's ~80 non-English localized
+  resource folders (GUARD is English-only; the English ones are kept). The folder
+  next to `GUARD.exe` goes from ~89 directories to 3, and the release zip is ~24
+  MB (was ~28). No change for users beyond a tidier folder; reversible from the
+  build script if a future feature or translation needs those components.
 
 ## [0.4.1] - 2026-06-16
 

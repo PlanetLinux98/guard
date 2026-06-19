@@ -71,20 +71,36 @@
     <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- Trim the publish output. GUARD never touches the Windows Copilot Runtime
-       on-device AI stack (LanguageModel/Phi Silica, ImageScaler, TextRecognizer,
-       ObjectDetector, custom ONNX inference) that Windows App SDK drags in, nor
-       does a shipped portable build need the managed-debugger / crash-dump
-       diagnostics. Stripping both groups cuts ~45 MB of uncompressed payload
-       (~20 MB off the compressed single file) with no loss of functionality.
-       Reversible: delete this target and the files return on the next publish.
-       If a future feature needs the AI APIs, remove the ONNX/DirectML names
-       below (the App SDK will repackage them automatically). -->
-  <!-- Semicolon-delimited (leading+trailing ';' so Contains() can match exact
-       filenames). The versioned DAC mscordaccore_<arch>_<ver>.dll is matched by
-       prefix below rather than listed here. -->
+  <!-- Trim the publish output of payload GUARD never uses, cutting both on-disk
+       size and (more visibly, for a portable app) the number of loose files and
+       folders shown next to GUARD.exe. Three groups go:
+
+       1. The Windows Copilot Runtime / Windows AI Foundation stack that Windows
+          App SDK drags in (LanguageModel/Phi Silica, content safety/moderation,
+          imaging + image creation, vision, semantic search, Windows ML, and the
+          NPU workload manifests). GUARD calls none of these. This is both the
+          heavy native binaries (onnxruntime/DirectML/Tensors, NPUDetect,
+          PerceptiveStreaming) and their many .winmd / *.Projection.dll companions
+          and workloads*.json manifests, matched by feature substring in the
+          target below.
+       2. The managed-debugger / crash-dump diagnostics (mscordbi, the versioned
+          mscordaccore[_ver], DiaSymReader, createdump) a shipped portable build
+          never needs.
+       3. The WinUI framework's localized resource folders (the ~80 per-culture
+          *.dll.mui). GUARD ships English-only (it has no x:Uid/.resw localization
+          of its own), so these localize only built-in WinUI control strings; the
+          English cultures are kept and every other culture falls back to the
+          embedded English. This alone collapses ~80 of the folder's directories.
+
+       Reversible: delete this target (or a single clause) and the files return on
+       the next publish. If a future feature needs the AI APIs, drop the matching
+       clause and the App SDK repackages them; to localize GUARD into a language,
+       keep that culture's .mui (clause 3). -->
+  <!-- Semicolon-delimited exact filenames (leading+trailing ';' so Contains()
+       matches a whole name). Substring-matched families (the AI stack, the
+       versioned DAC) are handled by the target's conditions, not listed here. -->
   <PropertyGroup>
-    <GuardExcludedFiles>;onnxruntime.dll;DirectML.dll;Microsoft.ML.OnnxRuntime.dll;onnxruntime_providers_shared.dll;System.Numerics.Tensors.dll;mscordbi.dll;mscordaccore.dll;Microsoft.DiaSymReader.Native.amd64.dll;createdump.exe;</GuardExcludedFiles>
+    <GuardExcludedFiles>;onnxruntime.dll;DirectML.dll;Microsoft.ML.OnnxRuntime.dll;onnxruntime_providers_shared.dll;System.Numerics.Tensors.dll;NPUDetect.dll;PerceptiveStreaming.dll;mscordbi.dll;mscordaccore.dll;Microsoft.DiaSymReader.Native.amd64.dll;createdump.exe;</GuardExcludedFiles>
   </PropertyGroup>
 
   <Target Name="TrimGuardPublishPayload"
@@ -98,6 +114,45 @@
       <FilesToBundle Remove="@(FilesToBundle)"
         Condition="$(GuardExcludedFiles.Contains(';%(Filename)%(Extension);'))
                 or $([System.String]::Copy('%(Filename)').StartsWith('mscordaccore_'))" />
+
+      <!-- The rest of the Windows AI / Copilot Runtime stack: the .winmd metadata,
+           CsWinRT *.Projection.dll, and workloads*.json manifests that accompany
+           the native AI binaries listed above. Matched by feature substring in the
+           filename: "Microsoft.Windows.AI" prefix plus ".AI." catch the AI
+           namespace and its Internal.AI variants; the rest catch the imaging,
+           image-creation, vision, semantic-search and workload families. None of
+           these substrings collide with a file GUARD needs (Storage, windowing,
+           notifications, etc. keep their own .winmd). -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(Filename)').StartsWith('Microsoft.Windows.AI'))
+                or $([System.String]::Copy('%(Filename)').Contains('.AI.'))
+                or $([System.String]::Copy('%(Filename)').Contains('Imaging'))
+                or $([System.String]::Copy('%(Filename)').Contains('ImageCreation'))
+                or $([System.String]::Copy('%(Filename)').Contains('Vision'))
+                or $([System.String]::Copy('%(Filename)').Contains('SemanticSearch'))
+                or $([System.String]::Copy('%(Filename)').Contains('Workloads'))
+                or $([System.String]::Copy('%(Filename)').StartsWith('workloads'))" />
+      <FilesToBundle Remove="@(FilesToBundle)"
+        Condition="$([System.String]::Copy('%(Filename)').StartsWith('Microsoft.Windows.AI'))
+                or $([System.String]::Copy('%(Filename)').Contains('.AI.'))
+                or $([System.String]::Copy('%(Filename)').Contains('Imaging'))
+                or $([System.String]::Copy('%(Filename)').Contains('ImageCreation'))
+                or $([System.String]::Copy('%(Filename)').Contains('Vision'))
+                or $([System.String]::Copy('%(Filename)').Contains('SemanticSearch'))
+                or $([System.String]::Copy('%(Filename)').Contains('Workloads'))
+                or $([System.String]::Copy('%(Filename)').StartsWith('workloads'))" />
+
+      <!-- Drop the WinUI framework's localized resource folders: every per-culture
+           *.dll.mui except the English ones. GUARD ships English-only, so these
+           localize only built-in WinUI control strings, which fall back to the
+           embedded English when absent. The culture is the file's publish
+           subfolder; check both RelativePath and DestinationSubDirectory so the
+           match holds regardless of which the SDK populates (the English cultures
+           - en-US, en-GB - start with 'en' in whichever one carries the path). -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(Extension)' == '.mui'
+                and !$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('en'))
+                and !$([System.String]::Copy('%(ResolvedFileToPublish.DestinationSubDirectory)').StartsWith('en'))" />
 
       <!-- Drop our own loose source build inputs (the .xaml files and app.manifest)
            from the shipped output. The .xaml compile to XBF embedded in GUARD.pri
