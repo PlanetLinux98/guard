@@ -1967,25 +1967,105 @@ public sealed partial class MainWindow : Window
         return await ShowDialogAsync(dlg) == ContentDialogResult.Primary;
     }
 
+    // Notepad-style three-way prompt for unsaved File Backup settings on close.
+    // Primary = Save (the default, matching Win32 convention), Secondary = Don't
+    // Save, Close = Cancel; the caller maps each result to save/discard/stay.
+    // The S / N / C mnemonics match Notepad's; they can safely reuse letters the
+    // pages behind use, since a modal dialog is its own access-key scope.
+    private async System.Threading.Tasks.Task<ContentDialogResult> ShowSaveOnCloseAsync()
+    {
+        var dlg = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "GUARD",
+            Content = "You have unsaved changes to your backup settings.\n\nDo you want to save them before closing?",
+            PrimaryButtonText = "Save",
+            SecondaryButtonText = "Don't Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            // AccessKey is not exposed on a ContentDialog's standard buttons (only
+            // their Text and Style are), so attach the secondary/close mnemonics
+            // through the button Style. The primary cannot use this route: because
+            // it is the default button, the dialog's own visual state overwrites
+            // PrimaryButton.Style with the accent style (dropping any Style-based
+            // access key), so its mnemonic is set directly on the realized button
+            // below - AccessKey is a separate property the Style swap leaves alone.
+            SecondaryButtonStyle = AccessKeyButtonStyle("DefaultButtonStyle", "N"),
+            CloseButtonStyle = AccessKeyButtonStyle("DefaultButtonStyle", "C"),
+        };
+        dlg.Opened += (_, _) =>
+        {
+            if (FindDescendantByName(dlg, "PrimaryButton") is { } primary)
+                primary.AccessKey = "S";
+        };
+        return await ShowDialogAsync(dlg);
+    }
+
+    private static Style AccessKeyButtonStyle(string baseStyleKey, string accessKey)
+    {
+        var style = new Style(typeof(Button))
+        {
+            BasedOn = (Style)Application.Current.Resources[baseStyleKey]
+        };
+        style.Setters.Add(new Setter(UIElement.AccessKeyProperty, accessKey));
+        return style;
+    }
+
+    // Depth-first search of a realized control's visual tree for a template part
+    // by name (e.g. a ContentDialog's "PrimaryButton"), used to reach a button the
+    // control does not surface as a settable property.
+    private static FrameworkElement? FindDescendantByName(DependencyObject root, string name)
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement fe && fe.Name == name) return fe;
+            if (FindDescendantByName(child, name) is { } found) return found;
+        }
+        return null;
+    }
+
     // =====================================================================
     //  CLOSE GUARD
     // =====================================================================
     private async void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
         if (_allowClose) return;
-        bool busy = _backupRunning || _reinstalling;
-        if (!busy) return;
 
+        // Two independent reasons to pause a close: unsaved File Backup settings,
+        // and a backup/reinstall still running. If neither applies, let the close
+        // proceed untouched; otherwise cancel it and drive the close ourselves
+        // after the prompts (the second Close() re-enters this handler with
+        // _allowClose set, so it sails straight through).
+        bool busy = _backupRunning || _reinstalling;
+        if (!_dirty && !busy) return;
         args.Cancel = true;
-        string what = _reinstalling ? "An app reinstall is still running." : "A backup is still running.";
-        if (await ShowConfirmAsync("GUARD", what + " Close anyway?"))
+
+        // Unsaved changes first (the common case): Save / Don't Save / Cancel.
+        if (_dirty)
         {
+            var choice = await ShowSaveOnCloseAsync();
+            if (choice == ContentDialogResult.None) return;     // Cancel: stay open
+            // Save: a save that fails validation (e.g. an empty destination)
+            // leaves the settings unsaved, so keep the window open to fix it.
+            // SaveAllAsync surfaces the reason and clears _dirty on success.
+            if (choice == ContentDialogResult.Primary && !await SaveAllAsync())
+                return;
+            // Don't Save falls through and discards the edits.
+        }
+
+        if (busy)
+        {
+            string what = _reinstalling ? "An app reinstall is still running." : "A backup is still running.";
+            if (!await ShowConfirmAsync("GUARD", what + " Close anyway?")) return;
             // Cancel both jobs so no cmd/robocopy/winget tree outlives the
             // window; the kill registrations run synchronously inside Cancel.
             _runCts?.Cancel();
             _reinstallCts?.Cancel();
-            _allowClose = true;
-            Close();
         }
+
+        _allowClose = true;
+        Close();
     }
 }
