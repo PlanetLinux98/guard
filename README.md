@@ -2,9 +2,9 @@
 
 A portable, fully accessible backup and data-protection utility for Windows.
 GUARD backs up your chosen folders to any destination (a local drive, an
-external disk, or a network share) and keeps an inventory of your installed apps
-so they are easy to reinstall, and their settings to restore, after a clean OS
-install. It carries no installer and no dependencies to track down: the shipping
+external disk, or a network share), captures a full bare-metal image of the whole
+PC, and keeps an inventory of your installed apps so they are easy to reinstall,
+and their settings to restore, after a clean OS install. It carries no installer and no dependencies to track down: the shipping
 release is a small `GUARD.zip` you extract to a self-contained `GUARD\` folder,
 then run the `GUARD.exe` inside.
 
@@ -45,6 +45,14 @@ theming. It targets **.NET 10 + Windows App SDK 2.2.0**.
   the ones winget can reinstall, and exports the list (optionally bundled with
   the apps' settings folders) as a dated export. Importing a saved list back
   onto a fresh PC reinstalls the apps and can restore their settings.
+- **System Image** (whole-PC, bare-metal): captures a full image of Windows and
+  all your programs and settings with the built-in `wbadmin` engine, to a local or
+  external disk (keeping several past images) or a network share, on demand or on a
+  Weekly/Monthly/Daily schedule. A Create Recovery Media wizard builds a bootable
+  USB to restore from, and Restore Instructions walk through the offline recovery
+  (including reaching a network share, which the recovery environment addresses by
+  IP address rather than name). Needs a Windows edition that includes `wbadmin`
+  (so not Home), and refuses a destination on the Windows drive itself.
 - **Stop buttons** for both long-running jobs and a persistent status bar
   surfacing progress and the last run's outcome.
 - **Dark / light Mica theming** that follows the Windows setting automatically.
@@ -56,7 +64,6 @@ theming. It targets **.NET 10 + Windows App SDK 2.2.0**.
 - A menu bar and further UX polish.
 - More backup scheduling options (e.g. hourly, monthly).
 - More granular progress reporting and cleaner output text.
-- New capabilities such as full system images.
 
 ## Requirements
 
@@ -122,7 +129,7 @@ shipped artifact, but a working build for anyone without the C++ tools AOT needs
 |---|---|
 | `Models/` | FolderPair, AppEntry, Settings, AppListFile, exclude and app-settings models (+ System.Text.Json source-gen context) |
 | `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, app-settings export/restore, JSON I/O, process helpers |
-| `MainWindow.xaml(.cs)` | Both tabs and all wiring |
+| `MainWindow.xaml(.cs)` | All three pages and all wiring |
 | `Views/` | FolderDialog, AboutDialog, the exclude / app-import / app-settings dialogs, and the status-bar host (ContentDialogs + controls) |
 | `publish-release.cmd` | Build the shipping NativeAOT `GUARD` and stage it into `GUARD.zip` |
 | `publish-aot.cmd` | Quick NativeAOT build, no packaging (see [NativeAOT](#nativeaot)) |
@@ -131,8 +138,8 @@ shipped artifact, but a working build for anyone without the C++ tools AOT needs
 
 ## Usage
 
-GUARD has two tabs, **File Backup** and **App Management**. For a full,
-step-by-step walkthrough of every control and workflow, see the
+GUARD has three pages, **File Backup**, **System Image** and **App Management**.
+For a full, step-by-step walkthrough of every control and workflow, see the
 [User Manual](USER_GUIDE.md) (or press F1 in the app).
 
 ## NativeAOT

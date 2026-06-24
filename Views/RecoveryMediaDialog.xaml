@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="GuardWui3.Views.RecoveryMediaDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Create Recovery Media"
+    PrimaryButtonText="Next"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    AutomationProperties.IsDialog="True"
+    PrimaryButtonClick="OnPrimary"
+    SecondaryButtonClick="OnSecondary"
+    CloseButtonClick="OnClose">
+
+    <Grid Width="460" MinHeight="240">
+        <!-- Step 0: detect -->
+        <StackPanel x:Name="Step0" Spacing="8">
+            <TextBlock Text="Build a bootable Windows USB" FontWeight="SemiBold" />
+            <TextBlock x:Name="DetectText" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- Step 1: ISO -->
+        <StackPanel x:Name="Step1" Spacing="8" Visibility="Collapsed">
+            <TextBlock Text="Choose a Windows installation ISO" FontWeight="SemiBold" />
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="TxtIso" Grid.Column="0" IsReadOnly="True" Header="ISO file:"
+                         AccessKey="I" AutomationProperties.Name="Chosen ISO file"
+                         PlaceholderText="No ISO chosen yet..." />
+                <Button Grid.Column="1" Content="Browse..." AccessKey="B" VerticalAlignment="Bottom"
+                        AutomationProperties.Name="Browse for an ISO file" Click="OnBrowseIso" />
+            </Grid>
+            <Button Content="Get the official ISO from Microsoft" AccessKey="G" HorizontalAlignment="Left"
+                    ToolTipService.ToolTip="Open Microsoft's official download page in your browser"
+                    Click="OnGetIso" />
+            <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="Download the ISO from Microsoft by pressing the button above, then choosing &quot;Download Windows Disk Image (ISO)&quot; on the page that opens in your browser. When it has downloaded, choose the .iso file with the Browse button above." />
+        </StackPanel>
+
+        <!-- Step 2: USB -->
+        <StackPanel x:Name="Step2" Spacing="8" Visibility="Collapsed">
+            <TextBlock Text="Choose the USB drive to use" FontWeight="SemiBold" />
+            <Border BorderThickness="1" Height="140" CornerRadius="4"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                <ListView x:Name="UsbList" SelectionMode="Single"
+                          AutomationProperties.Name="Removable USB drives"
+                          SelectionChanged="OnUsbSelectionChanged" />
+            </Border>
+            <TextBlock x:Name="UsbEmpty" TextWrapping="Wrap" Visibility="Collapsed"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="No removable USB drives found. Insert a USB drive, then press Refresh." />
+            <Button Content="Refresh" AccessKey="R" HorizontalAlignment="Left"
+                    ToolTipService.ToolTip="Rescan for removable USB drives" Click="OnRefreshUsb" />
+            <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="Only removable USB drives are listed. WARNING: the drive you pick will be completely erased." />
+        </StackPanel>
+
+        <!-- Step 3: confirm -->
+        <StackPanel x:Name="Step3" Spacing="8" Visibility="Collapsed">
+            <TextBlock Text="Confirm" FontWeight="SemiBold" />
+            <TextBlock x:Name="ConfirmText" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- Step 4: building -->
+        <StackPanel x:Name="Step4" Spacing="8" Visibility="Collapsed">
+            <TextBlock Text="Building the bootable USB" FontWeight="SemiBold" />
+            <TextBlock TextWrapping="Wrap"
+                       Text="This can take several minutes. Do not remove the drive until it finishes." />
+            <ProgressBar x:Name="BuildBar" IsIndeterminate="True" Minimum="0" Maximum="100"
+                         AutomationProperties.Name="Recovery media build progress" />
+            <TextBlock x:Name="BuildStatus" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+
+        <!-- Step 5: result -->
+        <StackPanel x:Name="Step5" Spacing="8" Visibility="Collapsed">
+            <TextBlock x:Name="ResultHeading" Text="Finished" FontWeight="SemiBold" />
+            <TextBlock x:Name="ResultText" TextWrapping="Wrap" />
+        </StackPanel>
+    </Grid>
+</ContentDialog>

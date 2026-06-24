@@ -69,6 +69,105 @@ public static class ScheduledTasks
         return new ApplyResult(err, next);
     }
 
+    // Registers (or removes) the "GUARD System Image" task. Unlike the backup
+    // tasks this MUST run elevated: the task runs as SYSTEM with highest
+    // privileges so it needs no interactive UAC at fire time, but registering a
+    // SYSTEM/Highest task (and later deleting it) is itself an admin operation.
+    // So one UAC prompt here, and the caller should only invoke this when the
+    // image-schedule state actually changed, to avoid prompting on every save.
+    //
+    // Registration goes through schtasks /Create /XML rather than the
+    // New-ScheduledTask* cmdlets because PowerShell 5.1 has no monthly trigger,
+    // and the XML cleanly carries the SYSTEM principal, the monthly/weekly/daily
+    // calendar trigger, and a Command+Arguments action (no /TR quoting hazard).
+    // The XML is shipped base64-encoded inside the elevated script so no quoting
+    // or here-string fragility can corrupt it.
+    public static ApplyResult ApplySystemImage(Settings cfg)
+    {
+        string script = cfg.ImageScheduleEnabled
+            ? BuildSystemImageRegisterScript(cfg)
+            : "Unregister-ScheduledTask -TaskName '" + GuardPaths.SystemImageTaskName +
+              "' -Confirm:$false -ErrorAction SilentlyContinue; exit 0";
+
+        if (!ProcessRunner.RunPowerShellElevated(script, out var err))
+            return new ApplyResult("System image schedule " + err, null);
+
+        // Querying task info is read-only, so the next run reads back un-elevated.
+        string? next = cfg.ImageScheduleEnabled ? QueryNextRun(GuardPaths.SystemImageTaskName) : null;
+        return new ApplyResult(null, next);
+    }
+
+    private static string BuildSystemImageRegisterScript(Settings cfg)
+    {
+        string xml = BuildSystemImageTaskXml(cfg);
+        string b64 = Convert.ToBase64String(Encoding.Unicode.GetBytes(xml));
+        var sb = new StringBuilder();
+        sb.AppendLine("$ErrorActionPreference = 'Stop'");
+        sb.AppendLine("$b64 = '" + b64 + "'");
+        sb.AppendLine("$xml = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($b64))");
+        sb.AppendLine("$tmp = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'guard_si_' + [Guid]::NewGuid().ToString('N') + '.xml')");
+        sb.AppendLine("[IO.File]::WriteAllText($tmp, $xml, [Text.Encoding]::Unicode)");
+        sb.AppendLine("schtasks /Create /TN '" + GuardPaths.SystemImageTaskName + "' /XML \"$tmp\" /F | Out-Null");
+        sb.AppendLine("$code = $LASTEXITCODE");
+        sb.AppendLine("Remove-Item $tmp -Force -ErrorAction SilentlyContinue");
+        sb.AppendLine("exit $code");
+        return sb.ToString();
+    }
+
+    // Task Scheduler 1.2 XML. UserId S-1-5-18 is the locale-independent SYSTEM
+    // SID; HighestAvailable = run with highest privileges. ExecutionTimeLimit
+    // PT0S removes the default 3-day cap (a full image can be long but should not
+    // be killed). The action splits Command from Arguments so the script path's
+    // spaces need no shell quoting.
+    private static string BuildSystemImageTaskXml(Settings cfg)
+    {
+        string time = NormalizeTime(cfg.ImageScheduleTime);
+        string start = DateTime.Now.ToString("yyyy-MM-dd") + "T" + time + ":00";
+        string trigger = cfg.ImageCadence switch
+        {
+            "Daily" => "<ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>",
+            "Monthly" => "<ScheduleByMonth><DaysOfMonth><Day>" +
+                         Math.Clamp(cfg.ImageMonthlyDay, 1, 28) + "</Day></DaysOfMonth><Months>" +
+                         AllMonthsXml + "</Months></ScheduleByMonth>",
+            _ => "<ScheduleByWeek><DaysOfWeek><" + cfg.ImageWeeklyDay +
+                 "/></DaysOfWeek><WeeksInterval>1</WeeksInterval></ScheduleByWeek>",
+        };
+        string args = XmlEscape("/c \"" + GuardPaths.SystemImageScriptPath + "\" auto");
+        return
+            "<?xml version=\"1.0\" encoding=\"UTF-16\"?>" +
+            "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">" +
+              "<RegistrationInfo><Description>GUARD full system image (wbadmin -allCritical).</Description></RegistrationInfo>" +
+              "<Triggers><CalendarTrigger><StartBoundary>" + start +
+                "</StartBoundary><Enabled>true</Enabled>" + trigger + "</CalendarTrigger></Triggers>" +
+              "<Principals><Principal id=\"Author\"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>" +
+              "<Settings>" +
+                "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" +
+                "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>" +
+                "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>" +
+                "<StartWhenAvailable>true</StartWhenAvailable>" +
+                "<Enabled>true</Enabled>" +
+                "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>" +
+              "</Settings>" +
+              "<Actions Context=\"Author\"><Exec><Command>cmd.exe</Command><Arguments>" + args +
+                "</Arguments></Exec></Actions>" +
+            "</Task>";
+    }
+
+    private const string AllMonthsXml =
+        "<January/><February/><March/><April/><May/><June/>" +
+        "<July/><August/><September/><October/><November/><December/>";
+
+    private static string NormalizeTime(string? t)
+    {
+        if (!string.IsNullOrWhiteSpace(t) && TimeSpan.TryParse(t.Trim(), out var ts)
+            && ts >= TimeSpan.Zero && ts < TimeSpan.FromDays(1))
+            return ts.ToString(@"hh\:mm");
+        return "03:00";
+    }
+
+    private static string XmlEscape(string s) =>
+        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
+
     // Returns a problem message, or null on success.
     public static string? UpdateFileTask(Settings cfg)
     {

@@ -9,6 +9,25 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- New System Image page (second in the navigation) creates full bare-metal images
+  of the whole PC using the built-in Windows `wbadmin` tool, so a machine can be
+  recovered after a disk failure. Images go to a local or external disk (which
+  keeps several past images automatically) or a network share (which keeps only
+  the latest). Create one on demand (one Administrator prompt) or on a Weekly,
+  Monthly or Daily schedule that runs as SYSTEM with the highest privileges, so it
+  needs no prompt at run time. Imaging self-disables on Windows editions without
+  `wbadmin` (such as Home), and refuses a destination on the Windows drive itself.
+- Create Recovery Media wizard on the System Image page builds a bootable Windows
+  installation USB used to restore an image, with built-in tools only (it detects
+  this PC's architecture and Windows version, formats the chosen removable drive as
+  FAT32, copies the installer, and splits a large `install.wim` so it fits). Only
+  removable USB drives are offered and the drive is confirmed before it is erased.
+  Restore Instructions explains the offline restore through Windows' own System
+  Image Recovery, including how to reach a network share from the recovery
+  environment (which addresses a server by its IP address, not its name, and asks
+  for the share's username and password). When the destination is a network share,
+  GUARD shows the exact IP path to enter, both in Restore Instructions and after an
+  image is created.
 - Closing GUARD with unsaved backup settings now prompts before exiting, with
   Save (Alt+S), Don't Save (Alt+N), and Cancel (Alt+C) - the familiar
   Notepad-style choice. Save writes the settings and then closes (staying open if
