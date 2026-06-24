@@ -16,6 +16,15 @@ public static class GuardPaths
     public static string ScriptPath => Path.Combine(BaseDir, "guard-backup.cmd");
     public static string LogPath => Path.Combine(BaseDir, @"Logs\backup_last.log");
     public static string ManualPath => Path.Combine(BaseDir, "USER_GUIDE.md");
+    // System Image tab: the generated wbadmin script and its own log, kept apart
+    // from the file-backup pair so a system image never clobbers backup_last.log.
+    public static string SystemImageScriptPath => Path.Combine(BaseDir, "guard-system-image.cmd");
+    public static string SystemImageLogPath => Path.Combine(BaseDir, @"Logs\system-image_last.log");
+    // Recovery-media (bootable USB) build log, tailed by the wizard for progress.
+    public static string RecoveryMediaLogPath => Path.Combine(BaseDir, @"Logs\recovery-media_last.log");
+    // Sentinel the wizard writes to ask the elevated build to stop at the next
+    // stage boundary (the elevated process can't be killed by the un-elevated app).
+    public static string RecoveryMediaCancelPath => Path.Combine(BaseDir, @"Logs\recovery-media.cancel");
 
     // Frequency-neutral name (the schedule can be daily, weekly, or custom).
     public const string FileTaskName = "GUARD Backup";
@@ -23,6 +32,9 @@ public static class GuardPaths
     public const string LegacyFileTaskName = "Daily GUARD Backup";
     // Second task: periodic check that backs up when the destination appears.
     public const string OnConnectTaskName = "GUARD On-Connect Backup";
+    // Third task: the scheduled full system image. Runs as SYSTEM with highest
+    // privileges (wbadmin needs admin), so registering it needs an elevated call.
+    public const string SystemImageTaskName = "GUARD System Image";
     public const string AppListFileName = "app-list.json";
     // MinVer derives the version from the latest vX.Y.Z git tag at build, so no
     // hand-edited constant. Informational version is the full semver (dev builds

@@ -79,6 +79,23 @@ public static class SettingsStore
                 case "Schedule.OnConnect": cfg.TriggerOnConnect = val == "1"; break;
                 case "AppList.Dest": cfg.AppListDest = val; break;
                 case "AppList.ExportSettings": cfg.ExportAppSettings = val == "1"; break;
+                case "SystemImage.Target": cfg.ImageTarget = val; break;
+                case "SystemImage.TargetKind":
+                    cfg.ImageTargetKind = val == "NetworkShare" ? "NetworkShare" : "LocalDisk";
+                    break;
+                case "SystemImage.ScheduleEnabled": cfg.ImageScheduleEnabled = val == "1"; break;
+                case "SystemImage.Cadence": cfg.ImageCadence = ParseCadence(val); break;
+                case "SystemImage.Time": cfg.ImageScheduleTime = val; break;
+                case "SystemImage.WeeklyDay":
+                    if (Enum.TryParse<DayOfWeek>(val.Trim(), ignoreCase: true, out var iwd))
+                        cfg.ImageWeeklyDay = iwd;
+                    break;
+                // Clamp to 1..28 so a scheduled monthly image fires every month
+                // (29-31 would skip short months).
+                case "SystemImage.MonthlyDay":
+                    if (int.TryParse(val.Trim(), out var imd))
+                        cfg.ImageMonthlyDay = Math.Clamp(imd, 1, 28);
+                    break;
             }
         }
         if (sawFolders) cfg.Folders = folders;
@@ -161,6 +178,15 @@ public static class SettingsStore
         sb.AppendLine("Days=" + string.Join(",", cfg.ScheduleDays));
         sb.AppendLine("OnConnect=" + (cfg.TriggerOnConnect ? "1" : "0"));
         sb.AppendLine();
+        sb.AppendLine("[SystemImage]");
+        sb.AppendLine("Target=" + cfg.ImageTarget);
+        sb.AppendLine("TargetKind=" + cfg.ImageTargetKind);
+        sb.AppendLine("ScheduleEnabled=" + (cfg.ImageScheduleEnabled ? "1" : "0"));
+        sb.AppendLine("Cadence=" + cfg.ImageCadence);
+        sb.AppendLine("Time=" + cfg.ImageScheduleTime);
+        sb.AppendLine("WeeklyDay=" + cfg.ImageWeeklyDay);
+        sb.AppendLine("MonthlyDay=" + cfg.ImageMonthlyDay);
+        sb.AppendLine();
         sb.AppendLine("[Folders]");
         sb.AppendLine("; index=include|source|subfolder");
         for (int i = 0; i < cfg.Folders.Count; i++)
@@ -186,6 +212,15 @@ public static class SettingsStore
     // Legacy multi-line exclude values were stored with line breaks collapsed
     // to a literal "\n" token; expand them back for migration.
     private static string Unescape(string s) => (s ?? "").Replace("\\n", "\r\n");
+
+    // Accept only the three known cadences; anything else (typo, future value)
+    // falls back to Weekly so the scheduler never sees a bad token.
+    private static string ParseCadence(string val) => (val ?? "").Trim() switch
+    {
+        "Daily" => "Daily",
+        "Monthly" => "Monthly",
+        _ => "Weekly",
+    };
 
     // "Monday,Wednesday,Friday" -> distinct DayOfWeek list, ignoring unknown tokens.
     private static List<DayOfWeek> ParseDays(string val)

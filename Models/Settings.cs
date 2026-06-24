@@ -37,6 +37,20 @@ public sealed class Settings
     public string AppListDest = "";
     public bool ExportAppSettings = false;
 
+    // System Image tab: a full bare-metal image via the built-in wbadmin tool.
+    // ImageTarget is a drive root (E:\) for a local/external disk or a UNC path
+    // for a share; ImageTargetKind picks the retention story - a local disk keeps
+    // multiple versions automatically (wbadmin's circular buffer), a share keeps
+    // only the latest. All off/default until the user opts in, like the schedule.
+    public string ImageTarget = "";
+    public string ImageTargetKind = "LocalDisk";   // LocalDisk | NetworkShare
+    public bool ImageScheduleEnabled = false;
+    public string ImageCadence = "Weekly";          // Weekly | Monthly | Daily
+    // Distinct default from the file backup's 02:00 so the two jobs don't collide.
+    public string ImageScheduleTime = "03:00";
+    public DayOfWeek ImageWeeklyDay = DayOfWeek.Sunday;
+    public int ImageMonthlyDay = 1;                 // 1..28: every month has a 28th
+
     // The robocopy /XD and /XF token lists: ticked presets first, then active
     // custom entries, de-duplicated case-insensitively.
     public List<string> EffectiveExcludeDirs() => EffectiveExcludes(dirs: true);

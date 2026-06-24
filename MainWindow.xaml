@@ -74,6 +74,11 @@
                         <FontIcon Glyph="&#xE8B7;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem x:Name="NavImage" Content="System Image" Tag="image">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE977;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem x:Name="NavApps" Content="App Management" Tag="apps">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE71D;" />
@@ -446,6 +451,186 @@
                             <Button Content="Open Destination" AccessKey="O"
                                     ToolTipService.ToolTip="Open the backup destination folder"
                                     Click="OnOpenDest" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- ============================ SYSTEM IMAGE ============================ -->
+                <Grid x:Name="SystemImagePage" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel HorizontalAlignment="Stretch" Margin="16" Spacing="12">
+
+                            <TextBlock TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="Create a full image of this PC (Windows, programs, settings and all) using the built-in Windows backup engine, so the whole machine can be restored after a disk failure. Restoring is done by booting from Windows installation media; use Create Recovery Media below to build a bootable USB, and Restore Instructions for the steps." />
+
+                            <!-- Destination -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Image destination" Style="{StaticResource CardTitle}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="TxtImageTarget" Grid.Column="0"
+                                                 AutomationProperties.Name="Image destination"
+                                                 PlaceholderText="Choose a drive or share to store images..."
+                                                 AccessKey="D"
+                                                 TextChanged="OnImageDirtyChanged" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                                    VerticalAlignment="Bottom" Margin="8,0,0,0">
+                                            <Button Content="Browse..." AccessKey="B"
+                                                    Click="OnBrowseImageTarget" />
+                                            <Button Content="Test"
+                                                    ToolTipService.ToolTip="Test the image destination"
+                                                    Click="OnTestImageTarget" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <!-- The destination kind is derived from the path, not chosen
+                                         separately, so the two can never disagree: a UNC path is a
+                                         network share, anything else a local/external disk. Both
+                                         captions are AccessibilityView=Raw: the same wording is set
+                                         as the destination field's HelpText (spoken on focus), so a
+                                         screen reader hears the current kind when it lands on the
+                                         field rather than reading these as orphan paragraphs. -->
+                                    <TextBlock Text="A local or external disk (like E:\) keeps several past images automatically and is the most reliable to restore from. A network share (like \\server\share) keeps only the most recent image."
+                                               TextWrapping="Wrap" Margin="0,8,0,0"
+                                               AutomationProperties.AccessibilityView="Raw"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock x:Name="LblImageTargetKind" TextWrapping="Wrap"
+                                               AutomationProperties.AccessibilityView="Raw" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Schedule. Expanded by default for the same reason as the File
+                                 Backup schedule: a collapsed Expander de-realizes its content,
+                                 sleeping the access keys and focus of the controls inside. -->
+                            <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                      IsExpanded="True" Header="Schedule">
+                                <StackPanel Spacing="6">
+                                    <CheckBox x:Name="ChkImageSchedule" Content="Create images on a schedule" IsChecked="False" AccessKey="Y"
+                                              ToolTipService.ToolTip="Registers a scheduled task that runs as SYSTEM with the highest privileges, so it needs no approval prompt at run time. Registering or changing it asks for Administrator approval once."
+                                              Checked="OnImageScheduleEnabledChanged" Unchecked="OnImageScheduleEnabledChanged" />
+                                    <StackPanel x:Name="ImageScheduleConfig">
+                                        <!-- Frequency: one of weekly / monthly / daily. Single-word
+                                             content, so each radio's accessible name derives from its
+                                             text with no explicit Name needed. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,4,0,0">
+                                            <TextBlock Text="How often:" VerticalAlignment="Center" />
+                                            <RadioButtons x:Name="ImageCadenceRadios" AutomationProperties.Name="How often"
+                                                          MaxColumns="3">
+                                                <RadioButton x:Name="RbImageWeekly" Content="Weekly" IsChecked="True"
+                                                             Checked="OnImageCadenceChanged" />
+                                                <RadioButton x:Name="RbImageMonthly" Content="Monthly"
+                                                             Checked="OnImageCadenceChanged" />
+                                                <RadioButton x:Name="RbImageDaily" Content="Daily"
+                                                             Checked="OnImageCadenceChanged" />
+                                            </RadioButtons>
+                                        </StackPanel>
+                                        <!-- Day and time share one row: the cadence-specific day
+                                             control (weekly combo or monthly day, toggled) sits left
+                                             of "at [time]", which uses the empty space on the line.
+                                             On Daily both day controls collapse, leaving just the time. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center" Margin="0,4,0,0">
+                                            <StackPanel x:Name="ImageWeeklyDayRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                <TextBlock Text="On:" VerticalAlignment="Center" />
+                                                <ComboBox x:Name="CmbImageWeeklyDay" VerticalAlignment="Center"
+                                                          AutomationProperties.Name="Day of week"
+                                                          SelectionChanged="OnImageDirtySelection">
+                                                    <ComboBoxItem Content="Monday" />
+                                                    <ComboBoxItem Content="Tuesday" />
+                                                    <ComboBoxItem Content="Wednesday" />
+                                                    <ComboBoxItem Content="Thursday" />
+                                                    <ComboBoxItem Content="Friday" />
+                                                    <ComboBoxItem Content="Saturday" />
+                                                    <ComboBoxItem Content="Sunday" />
+                                                </ComboBox>
+                                            </StackPanel>
+                                            <StackPanel x:Name="ImageMonthlyDayRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                                        Visibility="Collapsed">
+                                                <TextBlock Text="On day:" VerticalAlignment="Center" />
+                                                <NumberBox x:Name="NumImageMonthlyDay" VerticalAlignment="Center"
+                                                           AutomationProperties.Name="Day of month"
+                                                           Minimum="1" Maximum="28" Value="1" SmallChange="1"
+                                                           SpinButtonPlacementMode="Compact" MinWidth="100"
+                                                           ValueChanged="OnImageMonthlyDayChanged" />
+                                                <TextBlock Text="(1 to 28)" VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                <TextBlock Text="at" VerticalAlignment="Center" />
+                                                <TimePicker x:Name="TimeImage" VerticalAlignment="Center"
+                                                            MinuteIncrement="1"
+                                                            AutomationProperties.Name="System image run time"
+                                                            SelectedTimeChanged="OnImageTimeChanged" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <TextBlock x:Name="LblImageNextRun" Text="Next run: (unknown)" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Expander>
+
+                            <!-- BitLocker reminder. Always-correct static note (no per-run probe),
+                                 so it reads as an informative paragraph, not field help. -->
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,0"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="If this PC uses BitLocker drive encryption, keep your BitLocker recovery key safe: a restored image is unencrypted until you turn BitLocker back on." />
+
+                            <!-- Output details. Collapsed and safe to collapse: it holds no
+                                 access-keyed controls, and live progress plus the completion
+                                 announcement are mirrored into the always-visible status bar. -->
+                            <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                      Header="Output details">
+                                <StackPanel Spacing="2">
+                                    <TextBlock x:Name="ImageProgressLabel" Margin="0,0,0,2"
+                                               AutomationProperties.Name="System image progress" />
+                                    <ProgressBar x:Name="ImageProgress" Minimum="0" Maximum="100" Value="0"
+                                                 AutomationProperties.Name="System image progress bar" />
+                                    <TextBlock Text="Output:" Margin="0,8,0,2" />
+                                    <TextBox x:Name="TxtImageOutput" Height="150" IsReadOnly="True" IsSpellCheckEnabled="False"
+                                             AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                             AutomationProperties.Name="System image output" />
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Pinned action bar. Save is primary; a separator splits it from the
+                         recovery-media, restore-help and log openers. Stop Image is always
+                         present, enabled only while an image runs (same discoverability
+                         reasoning as Stop Backup). -->
+                    <Border Grid.Row="1" BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            Padding="16,10">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button x:Name="BtnSaveImage" Content="Save Settings" AccessKey="S" Style="{ThemeResource AccentButtonStyle}"
+                                    ToolTipService.ToolTip="Save settings, regenerate the image script and apply the schedule"
+                                    Click="OnSaveImage" />
+                            <Button x:Name="BtnCreateImage" Content="Create Image Now" AccessKey="N"
+                                    ToolTipService.ToolTip="Create a full system image now (needs Administrator approval)"
+                                    Click="OnCreateImageNow" />
+                            <Button x:Name="BtnStopImage" Content="Stop Image" AccessKey="T" IsEnabled="False"
+                                    ToolTipService.ToolTip="Stop the running system image (needs Administrator approval)"
+                                    Click="OnStopImage" />
+                            <Border Width="1" Margin="4,2" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                            <Button x:Name="BtnRecoveryMedia" Content="Create Recovery Media..." AccessKey="M"
+                                    ToolTipService.ToolTip="Build a bootable Windows installation USB to restore an image from"
+                                    Click="OnCreateRecoveryMedia" />
+                            <Button Content="Restore Instructions" AccessKey="R"
+                                    ToolTipService.ToolTip="Show how to restore this PC from a system image"
+                                    Click="OnRestoreHelp" />
+                            <Button Content="Open Last Log" AccessKey="L"
+                                    ToolTipService.ToolTip="Open the last system image log"
+                                    Click="OnOpenImageLog" />
                         </StackPanel>
                     </Border>
                 </Grid>

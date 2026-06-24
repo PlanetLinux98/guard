@@ -105,6 +105,35 @@ public sealed partial class MainWindow : Window
     private bool _wingetAvailable;
     private bool _allowClose;
 
+    // ---- System Image page (third page; _activePage == 2) ----
+    private bool _imageDirty;
+    private bool _imageRunning;
+    private bool _imageSaving;
+    private bool _imageChecked;            // one-time wbadmin availability probe done
+    private bool _imageAvailable = true;   // wbadmin present (false on Home etc.)
+    private bool _imageStopRequested;
+    private int _imageSpaceSeq;
+    private long _imageLogPos;
+    // wbadmin reports progress per volume; these fold the per-volume percents into
+    // one monotonic overall figure so the bar never falsely reaches 100% when an
+    // early small volume (the EFI partition) finishes before the next one starts.
+    private int _imageTotalVols;
+    private int _imageDoneVols;
+    private double _imageOverall;
+    private string _imageStatusText = "Open this tab to set up full system images.";
+    private Brush? _imageStatusBrush;
+    private string? _imageTaskError;
+    private Control? _imageRunLauncher;
+    // Last-applied schedule signature: registering the SYSTEM task needs a UAC
+    // prompt, so a save only re-applies (prompts) when one of these changed.
+    private string _lastImageScheduleSig = "";
+    // Weekly-day combo index order (Monday..Sunday).
+    private static readonly DayOfWeek[] _imageDayOrder =
+    {
+        DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
+        DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday,
+    };
+
     // The seven schedule-day checkboxes paired with the day each represents.
     private (CheckBox box, DayOfWeek day)[] _dayBoxes = Array.Empty<(CheckBox, DayOfWeek)>();
 
@@ -171,6 +200,22 @@ public sealed partial class MainWindow : Window
         TxtAppDest.Text = _cfg.AppListDest;
         ChkExportSettings.IsChecked = _cfg.ExportAppSettings;
 
+        // System Image page inputs.
+        TxtImageTarget.Text = _cfg.ImageTarget;
+        UpdateImageTargetKindLabel();
+        ChkImageSchedule.IsChecked = _cfg.ImageScheduleEnabled;
+        RbImageMonthly.IsChecked = _cfg.ImageCadence == "Monthly";
+        RbImageDaily.IsChecked = _cfg.ImageCadence == "Daily";
+        RbImageWeekly.IsChecked = _cfg.ImageCadence != "Monthly" && _cfg.ImageCadence != "Daily";
+        int dayIdx = Array.IndexOf(_imageDayOrder, _cfg.ImageWeeklyDay);
+        CmbImageWeeklyDay.SelectedIndex = dayIdx >= 0 ? dayIdx : 6;
+        NumImageMonthlyDay.Value = _cfg.ImageMonthlyDay;
+        if (clocks.Count > 0) TimeImage.ClockIdentifier = clocks[0];
+        TimeImage.SelectedTime = ParseScheduleTime(_cfg.ImageScheduleTime);
+        UpdateImageScheduleEnabledState();
+        UpdateImageCadenceRows();
+        _lastImageScheduleSig = ImageScheduleSignature(_cfg);
+
         // Track which folder row last held focus (for Remove). Handled at the
         // list level, not in the DataTemplate: a code-behind event handler
         // referenced from inside a DataTemplate is not reliably resolvable and
@@ -196,7 +241,11 @@ public sealed partial class MainWindow : Window
         // Initial population fired the dirty handlers; reset so the status
         // reflects the on-disk script.
         _dirty = false;
-        // Seed the status text without announcing it at launch.
+        _imageDirty = false;
+        // Seed both pages' status text without announcing at launch. File Backup
+        // is the active page, so refresh it last - its text is what the bar shows
+        // and what _lastAnnouncedStatus should match.
+        RefreshImageStatus(announce: false);
         RefreshScriptStatus(announce: false);
 
         AppWindow.Closing += OnAppWindowClosing;
@@ -210,12 +259,13 @@ public sealed partial class MainWindow : Window
         // FileBackupPage / AppMgmtPage are created by InitializeComponent; this
         // can fire during it (NavFile.IsSelected="True"), before the rest of the
         // constructor runs, so guard on the pages existing.
-        if (FileBackupPage == null || AppMgmtPage == null) return;
+        if (FileBackupPage == null || AppMgmtPage == null || SystemImagePage == null) return;
         string tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "file";
         if (tag == "apps")
         {
             _activePage = 1;
             FileBackupPage.Visibility = Visibility.Collapsed;
+            SystemImagePage.Visibility = Visibility.Collapsed;
             AppMgmtPage.Visibility = Visibility.Visible;
             // announceStart:false - the nav is already announcing the newly
             // selected page; announcing the scan start at the same instant makes
@@ -223,10 +273,22 @@ public sealed partial class MainWindow : Window
             // spoken cue instead.
             if (!_appScanned) { _appScanned = true; ScanApps(announceStart: false); }
         }
+        else if (tag == "image")
+        {
+            _activePage = 2;
+            FileBackupPage.Visibility = Visibility.Collapsed;
+            AppMgmtPage.Visibility = Visibility.Collapsed;
+            SystemImagePage.Visibility = Visibility.Visible;
+            // Probe for wbadmin once, lazily, like the app scan: absent on Home,
+            // where imaging self-disables. Repaint the status silently afterwards.
+            if (!_imageChecked) { _imageChecked = true; CheckImageAvailability(); }
+            RefreshImageStatus(announce: false);
+        }
         else
         {
             _activePage = 0;
             AppMgmtPage.Visibility = Visibility.Collapsed;
+            SystemImagePage.Visibility = Visibility.Collapsed;
             FileBackupPage.Visibility = Visibility.Visible;
         }
         // Repaint the status bar for the new page silently; switching pages is
@@ -391,6 +453,13 @@ public sealed partial class MainWindow : Window
             StatusDot.Visibility = Visibility.Visible;
             if (_fileStatusBrush != null) StatusDot.Fill = _fileStatusBrush;
             StatusBarText.Text = _fileStatusText;
+        }
+        else if (_activePage == 2)
+        {
+            // Same saved/unsaved dot semantic as File Backup.
+            StatusDot.Visibility = Visibility.Visible;
+            if (_imageStatusBrush != null) StatusDot.Fill = _imageStatusBrush;
+            StatusBarText.Text = _imageStatusText;
         }
         else
         {
@@ -1830,6 +1899,494 @@ public sealed partial class MainWindow : Window
     }
 
     // =====================================================================
+    //  SYSTEM IMAGE
+    // =====================================================================
+    // wbadmin is absent on some editions (notably Home). Probe once, lazily, and
+    // self-disable the on-demand and scheduled imaging if it's missing; recovery
+    // media and the restore help stay available regardless.
+    private async void CheckImageAvailability()
+    {
+        bool ok = await System.Threading.Tasks.Task.Run(() => SystemImageScript.IsWbadminAvailable());
+        _imageAvailable = ok;
+        if (!ok)
+        {
+            BtnCreateImage.IsEnabled = false;
+            ChkImageSchedule.IsChecked = false;
+            ChkImageSchedule.IsEnabled = false;
+            UpdateImageScheduleEnabledState();
+        }
+        RefreshImageStatus(announce: false);
+    }
+
+    private void RefreshImageStatus(bool announce = true)
+    {
+        if (StatusBarText == null) return;
+        if (!_imageAvailable)
+        {
+            _imageStatusBrush = new SolidColorBrush(StatusAmber);
+            _imageStatusText = "System imaging is unavailable on this edition of Windows (the wbadmin tool was not found). You can still create recovery media.";
+        }
+        else if (!File.Exists(GuardPaths.SystemImageScriptPath))
+        {
+            _imageStatusBrush = new SolidColorBrush(StatusAmber);
+            _imageStatusText = "No system image settings saved yet. Choose a destination and click Save Settings.";
+        }
+        else if (_imageDirty)
+        {
+            _imageStatusBrush = new SolidColorBrush(StatusAmber);
+            _imageStatusText = "You have unsaved changes. Click Save Settings to apply them.";
+        }
+        else
+        {
+            _imageStatusBrush = new SolidColorBrush(StatusGreen);
+            _imageStatusText = "System image settings saved. Last updated " +
+                File.GetLastWriteTime(GuardPaths.SystemImageScriptPath).ToString("yyyy-MM-dd HH:mm") + ".";
+        }
+        UpdateStatusBar();
+        if (announce && _activePage == 2 && _imageStatusText != _lastAnnouncedStatus)
+            Announce(StatusBarText);
+        _lastAnnouncedStatus = _imageStatusText;
+    }
+
+    private void SetImageStatusText(string text)
+    {
+        _imageStatusText = text;
+        UpdateStatusBar();
+        if (_activePage == 2 && _imageStatusText != _lastAnnouncedStatus)
+            Announce(StatusBarText);
+        _lastAnnouncedStatus = _imageStatusText;
+    }
+
+    // ---- dirty tracking ----
+    private void OnImageDirtyChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateImageTargetKindLabel();
+        _imageDirty = true;
+        RefreshImageStatus();
+    }
+    private void OnImageDirtySelection(object sender, SelectionChangedEventArgs e) { _imageDirty = true; RefreshImageStatus(); }
+
+    // The destination kind is derived from the path (a UNC is a share, anything
+    // else a local/external disk), so the two can never disagree. The caption
+    // reflects what the current path means for retention.
+    private static string ClassifyImageTarget(string? path) =>
+        (path ?? "").Trim().StartsWith(@"\\") ? "NetworkShare" : "LocalDisk";
+
+    private void UpdateImageTargetKindLabel()
+    {
+        if (LblImageTargetKind == null) return;
+        string p = (TxtImageTarget.Text ?? "").Trim();
+        string msg;
+        if (p.Length == 0)
+            msg = "Enter a drive such as E:\\ for a local or external disk, or a path such as \\\\server\\share for a network share.";
+        else if (p.StartsWith(@"\\"))
+            msg = "This is a network share: only the most recent image is kept, and a scheduled image cannot sign in to it.";
+        else
+            msg = "This is a local or external disk: several past images are kept automatically.";
+        LblImageTargetKind.Text = msg;
+        // Spoken when focus lands on the destination field (the visible captions are
+        // AccessibilityView=Raw, so this is how a screen reader hears the kind).
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(TxtImageTarget, msg);
+    }
+    private void OnImageMonthlyDayChanged(NumberBox sender, NumberBoxValueChangedEventArgs args) { _imageDirty = true; RefreshImageStatus(); }
+    private void OnImageTimeChanged(TimePicker sender, TimePickerSelectedValueChangedEventArgs args) { _imageDirty = true; RefreshImageStatus(); }
+
+    private void OnImageScheduleEnabledChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateImageScheduleEnabledState();
+        _imageDirty = true;
+        RefreshImageStatus();
+    }
+
+    private void OnImageCadenceChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateImageCadenceRows();
+        _imageDirty = true;
+        RefreshImageStatus();
+    }
+
+    private void UpdateImageScheduleEnabledState()
+    {
+        // StackPanel has no IsEnabled (it is a Panel, not a Control), so grey out
+        // the interactive leaves directly, matching UpdateScheduleEnabledState.
+        bool on = ChkImageSchedule.IsChecked == true;
+        if (ImageCadenceRadios != null) ImageCadenceRadios.IsEnabled = on;
+        if (CmbImageWeeklyDay != null) CmbImageWeeklyDay.IsEnabled = on;
+        if (NumImageMonthlyDay != null) NumImageMonthlyDay.IsEnabled = on;
+        if (TimeImage != null) TimeImage.IsEnabled = on;
+    }
+
+    private void UpdateImageCadenceRows()
+    {
+        if (ImageWeeklyDayRow == null || ImageMonthlyDayRow == null) return;
+        ImageWeeklyDayRow.Visibility = RbImageWeekly.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        ImageMonthlyDayRow.Visibility = RbImageMonthly.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // ---- harvest / save ----
+    private void HarvestImageUi()
+    {
+        _cfg.ImageTarget = (TxtImageTarget.Text ?? "").Trim();
+        _cfg.ImageTargetKind = ClassifyImageTarget(_cfg.ImageTarget);
+        _cfg.ImageScheduleEnabled = ChkImageSchedule.IsChecked == true;
+        _cfg.ImageCadence = RbImageMonthly.IsChecked == true ? "Monthly"
+            : RbImageDaily.IsChecked == true ? "Daily" : "Weekly";
+        _cfg.ImageScheduleTime = FormatScheduleTime(TimeImage.SelectedTime, _cfg.ImageScheduleTime);
+        int idx = CmbImageWeeklyDay.SelectedIndex;
+        if (idx >= 0 && idx < _imageDayOrder.Length) _cfg.ImageWeeklyDay = _imageDayOrder[idx];
+        if (!double.IsNaN(NumImageMonthlyDay.Value))
+            _cfg.ImageMonthlyDay = Math.Clamp((int)NumImageMonthlyDay.Value, 1, 28);
+    }
+
+    private static string ImageScheduleSignature(Settings c) =>
+        (c.ImageScheduleEnabled ? "1" : "0") + "|" + c.ImageCadence + "|" +
+        c.ImageScheduleTime + "|" + c.ImageWeeklyDay + "|" + c.ImageMonthlyDay;
+
+    // Returns false (after showing a message) when a required value is missing or
+    // the target is the system drive. Writes the ini + image script, then applies
+    // the scheduled task only when a schedule-affecting setting changed (the apply
+    // needs a UAC prompt, so an unchanged save must not re-prompt).
+    private async System.Threading.Tasks.Task<bool> SaveImageAsync()
+    {
+        HarvestImageUi();
+        if (string.IsNullOrEmpty(_cfg.ImageTarget))
+        {
+            await ShowMessageAsync("GUARD", "Enter an image destination first.\n\nType a drive (like E:\\) or a network share path, or use Browse to pick one.");
+            return false;
+        }
+        if (_cfg.ImageTargetKind == "LocalDisk" && SystemImageScript.IsSystemDrive(_cfg.ImageTarget))
+        {
+            await ShowMessageAsync("GUARD", "The image destination cannot be on the same drive as Windows.\n\nA system image includes the Windows drive, so it must be written to a separate disk or a network share. Choose another destination.");
+            return false;
+        }
+        if (_imageSaving) return false;
+        _imageSaving = true;
+        try
+        {
+            SettingsStore.Save(_cfg);
+            SystemImageScript.Write(_cfg);
+            _imageDirty = false;
+            RefreshImageStatus();
+            string sig = ImageScheduleSignature(_cfg);
+            if (sig != _lastImageScheduleSig)
+            {
+                var applied = await System.Threading.Tasks.Task.Run(() => ScheduledTasks.ApplySystemImage(_cfg));
+                _imageTaskError = applied.Error;
+                if (applied.Error == null) _lastImageScheduleSig = sig;
+                LblImageNextRun.Text = applied.NextRun == null
+                    ? "Next run: (no scheduled image)" : "Next run: " + applied.NextRun;
+            }
+            else
+            {
+                _imageTaskError = null;
+            }
+            return true;
+        }
+        finally { _imageSaving = false; }
+    }
+
+    private async void OnSaveImage(object sender, RoutedEventArgs e)
+    {
+        if (!await SaveImageAsync()) return;
+        if (_imageTaskError != null)
+        {
+            await ShowMessageAsync("GUARD", "Settings saved, but scheduling the system image reported a problem:\n\n" + _imageTaskError);
+            return;
+        }
+        if (_cfg.ImageScheduleEnabled && _cfg.ImageTargetKind == "NetworkShare")
+            await ShowMessageAsync("GUARD", "Note: a scheduled image runs as SYSTEM, which cannot supply network share sign-in details. If the scheduled image cannot reach the share, store images on a local or external disk for the schedule, or create images to the share on demand.");
+        StartImageSpaceCheck();
+    }
+
+    // Advisory free-space check appended to the saved-status line, like the File
+    // Backup space check. No precise image-size estimate (the source is the whole
+    // system drive); a low free-space floor is flagged as a warning.
+    private async void StartImageSpaceCheck()
+    {
+        int seq = ++_imageSpaceSeq;
+        string baseText = _imageStatusText;
+        SetImageStatusText(baseText + " Checking destination space...");
+        long? free = await System.Threading.Tasks.Task.Run(() => SaveValidation.TryGetFreeSpace(_cfg.ImageTarget));
+        if (seq != _imageSpaceSeq || _imageDirty) return;
+        string extra;
+        if (free is long freeBytes)
+        {
+            extra = " Destination available space: " + SaveValidation.FormatBytes(freeBytes) + ".";
+            if (freeBytes < 32L * 1024 * 1024 * 1024)
+            {
+                extra += " Warning: this may be too small for a full system image.";
+                _imageStatusBrush = new SolidColorBrush(StatusAmber);
+            }
+        }
+        else
+        {
+            extra = " Destination space could not be checked.";
+        }
+        SetImageStatusText(baseText + extra);
+    }
+
+    // ---- run ----
+    private async void OnCreateImageNow(object sender, RoutedEventArgs e) => await RunImage();
+
+    private async System.Threading.Tasks.Task RunImage()
+    {
+        if (_imageRunning)
+        {
+            await ShowMessageAsync("GUARD", "A system image is already running. Wait for it to finish, or press Stop Image to cancel it.");
+            return;
+        }
+        if (!_imageAvailable)
+        {
+            await ShowMessageAsync("GUARD", "System imaging is not available on this edition of Windows (the wbadmin tool was not found).");
+            return;
+        }
+        if (!await SaveImageAsync()) return;
+        if (_imageTaskError != null)
+            await ShowMessageAsync("GUARD", "Settings saved, but scheduling the system image reported a problem:\n\n" + _imageTaskError);
+        if (!File.Exists(GuardPaths.SystemImageScriptPath))
+        {
+            await ShowMessageAsync("GUARD", "Image script not found. Click Save Settings first.");
+            return;
+        }
+        if (!await ShowConfirmAsync("GUARD",
+            "Create a full system image now?\n\nThis can take a long time and needs Administrator approval. You can keep using your PC while it runs.",
+            "Create", "Cancel")) return;
+
+        TxtImageOutput.Text = "";
+        AppendOut(TxtImageOutput, "> Creating system image to " + _cfg.ImageTarget + "\r\n");
+        _imageLogPos = 0;
+        _imageTotalVols = 0;
+        _imageDoneVols = 0;
+        _imageOverall = 0;
+        _imageStopRequested = false;
+        // Indeterminate until the first volume percent arrives: wbadmin spends the
+        // first stretch taking a VSS snapshot with no percentage, and a determinate
+        // 0% there reads as stalled.
+        SetImageProgressIndeterminate("Starting system image...");
+        ShowStatusBarProgress(true);
+        _imageRunning = true;
+        SetImageBusy(true);
+
+        string? err = null;
+        bool ok = false;
+        try
+        {
+            // Output can't cross the elevation boundary (see RunPowerShellElevated),
+            // so the elevated script writes to the log and we tail it for progress
+            // while it runs; the exit code is the authoritative result.
+            string elevated = "& cmd.exe /c '\"" + GuardPaths.SystemImageScriptPath + "\"'; exit $LASTEXITCODE";
+            var runTask = System.Threading.Tasks.Task.Run(() => ProcessRunner.RunPowerShellElevated(elevated, out err));
+            while (!runTask.IsCompleted)
+            {
+                await System.Threading.Tasks.Task.Delay(700);
+                PumpImageLog();
+            }
+            PumpImageLog();
+            ok = await runTask;
+        }
+        catch (Exception ex) { err = ex.Message; }
+        finally
+        {
+            ShowStatusBarProgress(false);
+            _imageRunning = false;
+            SetImageBusy(false);
+        }
+
+        string outcome;
+        if (ok)
+        {
+            outcome = "System image completed successfully.";
+            SetImageProgressDeterminate(100, outcome);
+        }
+        else if (_imageStopRequested)
+        {
+            outcome = "System image stopped.";
+            SetImageProgressDeterminate(_imageOverall, outcome);
+        }
+        else if (err != null && err.Contains("declined"))
+        {
+            outcome = "System image cancelled - Administrator approval was declined.";
+            SetImageProgressDeterminate(0, "System image cancelled.");
+        }
+        else
+        {
+            outcome = "System image failed. See the output details and the last log.";
+            SetImageProgressDeterminate(_imageOverall, "System image failed.");
+        }
+        AppendOut(TxtImageOutput, "\r\n--- " + outcome + " ---\r\n");
+        if (ok && _cfg.ImageTargetKind == "NetworkShare")
+        {
+            string? winre = await System.Threading.Tasks.Task.Run(() => SystemImageScript.ResolveUncToIp(_cfg.ImageTarget));
+            AppendOut(TxtImageOutput,
+                "\r\nTo restore from this image later: boot the recovery USB, choose System Image\r\n" +
+                "Recovery, and when it asks for the network location enter  " + (winre ?? _cfg.ImageTarget) + "\r\n" +
+                "(the recovery tool cannot look up server names, so use the IP address" + (winre != null ? " shown" : "") + ").\r\n");
+        }
+        AnnounceSettled(outcome, 2000);
+    }
+
+    // Read new lines appended to the image log by the elevated run and feed them
+    // to the parser. FileShare.ReadWrite so the elevated writer is never blocked;
+    // a shrink means the script rewrote the log, so rewind.
+    private void PumpImageLog()
+    {
+        try
+        {
+            string path = GuardPaths.SystemImageLogPath;
+            if (!File.Exists(path)) return;
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (fs.Length < _imageLogPos) _imageLogPos = 0;
+            fs.Seek(_imageLogPos, SeekOrigin.Begin);
+            using var sr = new StreamReader(fs);
+            string rest = sr.ReadToEnd();
+            _imageLogPos = fs.Length;
+            foreach (var line in rest.Split('\n'))
+                HandleImageLine(line.TrimEnd('\r'));
+        }
+        catch { }
+    }
+
+    // wbadmin reports progress per volume ("copied (NN%)"), resetting to 0% for each
+    // new volume. Showing the raw per-volume percent makes the bar jump to 100% when
+    // the small EFI partition finishes, then restart at 0% - which looks like it
+    // finished and started over. Instead, fold the per-volume percents into one
+    // monotonic overall figure using the volume count from wbadmin's plan line.
+    // Everything that is not a percent line is echoed to the output box.
+    private void HandleImageLine(string? data)
+    {
+        if (string.IsNullOrWhiteSpace(data)) return;
+
+        // Volume count from the plan line, e.g. "This will back up (EFI System
+        // Partition),(C:) to E:." Counting "(" is robust to comma/spacing style.
+        if (_imageTotalVols == 0)
+        {
+            var plan = Regex.Match(data, @"back\s*up\s+(.+?)\s+to\b", RegexOptions.IgnoreCase);
+            if (plan.Success)
+            {
+                int vols = 0;
+                foreach (char c in plan.Groups[1].Value) if (c == '(') vols++;
+                if (vols > 0) _imageTotalVols = vols;
+            }
+        }
+        // A finished volume (not the final "backup operation completed" summary).
+        if (Regex.IsMatch(data, @"backup of volume.*completed successfully", RegexOptions.IgnoreCase))
+            _imageDoneVols++;
+
+        var m = Regex.Match(data, @"copied\s*\(\s*(\d+)\s*%\s*\)", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out int pct))
+        {
+            if (_imageTotalVols > 0)
+            {
+                double overall = (_imageDoneVols + pct / 100.0) / _imageTotalVols * 100.0;
+                if (overall < _imageOverall) overall = _imageOverall;   // never go backwards
+                if (overall > 100) overall = 100;
+                _imageOverall = overall;
+                SetImageProgressDeterminate(overall, "Creating system image... " + (int)overall + "%");
+            }
+            else
+            {
+                // Total not known yet (plan line unseen): keep it indeterminate
+                // rather than show a misleading per-volume percent.
+                SetImageProgressIndeterminate("Creating system image...");
+            }
+            return;
+        }
+        AppendOut(TxtImageOutput, data + "\r\n");
+    }
+
+    private void SetImageProgressDeterminate(double pct, string text)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ImageProgress.IsIndeterminate = false;
+            ImageProgress.Maximum = 100; ImageProgress.Value = pct;
+            ImageProgressLabel.Text = text;
+            StatusBarProgress.IsIndeterminate = false;
+            StatusBarProgress.Maximum = 100; StatusBarProgress.Value = pct;
+            StatusBarProgressText.Text = text;
+        });
+    }
+
+    private void SetImageProgressIndeterminate(string text)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ImageProgress.IsIndeterminate = true;
+            ImageProgressLabel.Text = text;
+            StatusBarProgress.IsIndeterminate = true;
+            StatusBarProgressText.Text = text;
+        });
+    }
+
+    // Mirror of SetFileBusy: enable Stop and hand it focus, grey the launchers, so
+    // a screen reader lands on the one action available during the run and returns
+    // to the launcher when it ends. (See SetFileBusy for the focus reasoning.)
+    private void SetImageBusy(bool busy)
+    {
+        if (busy)
+        {
+            BtnStopImage.IsEnabled = true;
+            _imageRunLauncher = FocusManager.GetFocusedElement(Content.XamlRoot) as Control;
+            if (_imageRunLauncher == BtnSaveImage || _imageRunLauncher == BtnCreateImage)
+                BtnStopImage.Focus(FocusState.Programmatic);
+            else
+                _imageRunLauncher = null;
+            BtnSaveImage.IsEnabled = false;
+            BtnCreateImage.IsEnabled = false;
+            BtnRecoveryMedia.IsEnabled = false;
+        }
+        else
+        {
+            BtnSaveImage.IsEnabled = true;
+            BtnCreateImage.IsEnabled = _imageAvailable;
+            BtnRecoveryMedia.IsEnabled = true;
+            if (_imageRunLauncher != null &&
+                ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnStopImage))
+                _imageRunLauncher.Focus(FocusState.Programmatic);
+            _imageRunLauncher = null;
+            BtnStopImage.IsEnabled = false;
+        }
+    }
+
+    // The elevated image can't be killed from this un-elevated process, so stopping
+    // goes through wbadmin's own "stop job", which needs its own elevation. The
+    // running image then exits with an error, which the run treats as "stopped".
+    private async void OnStopImage(object sender, RoutedEventArgs e)
+    {
+        if (!_imageRunning) return;
+        _imageStopRequested = true;
+        string? err = null;
+        bool ok = await System.Threading.Tasks.Task.Run(
+            () => ProcessRunner.RunPowerShellElevated("wbadmin stop job -quiet; exit 0", out err));
+        if (!ok)
+        {
+            _imageStopRequested = false;
+            await ShowMessageAsync("GUARD", "Could not stop the system image"
+                + (err != null ? " - " + err : "") + "\n\nIt will keep running.");
+        }
+    }
+
+    private async void OnBrowseImageTarget(object sender, RoutedEventArgs e) => await BrowseInto(TxtImageTarget);
+    private async void OnTestImageTarget(object sender, RoutedEventArgs e) => await TestConnection(TxtImageTarget.Text);
+    private void OnOpenImageLog(object sender, RoutedEventArgs e) => OpenPath(GuardPaths.SystemImageLogPath);
+
+    private async void OnRestoreHelp(object sender, RoutedEventArgs e)
+    {
+        string target = (TxtImageTarget.Text ?? "").Trim();
+        string? winrePath = ClassifyImageTarget(target) == "NetworkShare"
+            ? await System.Threading.Tasks.Task.Run(() => SystemImageScript.ResolveUncToIp(target))
+            : null;
+        var dlg = new Views.SystemImageRestoreHelpDialog(target, winrePath) { XamlRoot = Content.XamlRoot };
+        await ShowDialogAsync(dlg);
+    }
+
+    private async void OnCreateRecoveryMedia(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Views.RecoveryMediaDialog { XamlRoot = Content.XamlRoot, WindowHandle = WindowHandle };
+        await ShowDialogAsync(dlg);
+    }
+
+    // =====================================================================
     //  DIALOG HELPERS
     // =====================================================================
     private nint WindowHandle => WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -1971,7 +2528,7 @@ public sealed partial class MainWindow : Window
         {
             XamlRoot = Content.XamlRoot,
             Title = "GUARD",
-            Content = "You have unsaved changes to your backup settings.\n\nDo you want to save them before closing?",
+            Content = "You have unsaved changes.\n\nDo you want to save them before closing?",
             PrimaryButtonText = "Save",
             SecondaryButtonText = "Don't Save",
             CloseButtonText = "Cancel",
@@ -2031,26 +2588,31 @@ public sealed partial class MainWindow : Window
         // proceed untouched; otherwise cancel it and drive the close ourselves
         // after the prompts (the second Close() re-enters this handler with
         // _allowClose set, so it sails straight through).
-        bool busy = _backupRunning || _reinstalling;
-        if (!_dirty && !busy) return;
+        bool busy = _backupRunning || _reinstalling || _imageRunning;
+        if (!_dirty && !_imageDirty && !busy) return;
         args.Cancel = true;
 
         // Unsaved changes first (the common case): Save / Don't Save / Cancel.
-        if (_dirty)
+        // Covers either page's unsaved edits; Save persists whichever are dirty.
+        if (_dirty || _imageDirty)
         {
             var choice = await ShowSaveOnCloseAsync();
             if (choice == ContentDialogResult.None) return;     // Cancel: stay open
             // Save: a save that fails validation (e.g. an empty destination)
             // leaves the settings unsaved, so keep the window open to fix it.
-            // SaveAllAsync surfaces the reason and clears _dirty on success.
-            if (choice == ContentDialogResult.Primary && !await SaveAllAsync())
-                return;
+            // Each SaveAsync surfaces the reason and clears its dirty flag.
+            if (choice == ContentDialogResult.Primary)
+            {
+                if (_dirty && !await SaveAllAsync()) return;
+                if (_imageDirty && !await SaveImageAsync()) return;
+            }
             // Don't Save falls through and discards the edits.
         }
 
         if (busy)
         {
-            string what = _reinstalling ? "An app reinstall is still running." : "A backup is still running.";
+            string what = _imageRunning ? "A system image is still running."
+                : _reinstalling ? "An app reinstall is still running." : "A backup is still running.";
             if (!await ShowConfirmAsync("GUARD", what + " Close anyway?")) return;
             // Cancel both jobs so no cmd/robocopy/winget tree outlives the
             // window; the kill registrations run synchronously inside Cancel.

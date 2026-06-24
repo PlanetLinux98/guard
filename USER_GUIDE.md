@@ -4,7 +4,8 @@ GUARD is a portable and accessible backup and app-management utility for Windows
 the folders you choose to any destination (an external drive, a second disk, or
 a network share), on a schedule if you want one, and it keeps a list of your
 installed applications, with their settings, so you can rebuild a PC after a
-clean Windows install.
+clean Windows install. It can also create full system images of the whole PC, so
+you can restore everything (Windows, programs and settings) after a disk failure.
 
 There is no installation needed, and the app is fully portable to move between PC's 
 or system reinstalls. You extract one folder and run the exe inside it. GUARD writes 
@@ -27,6 +28,7 @@ inside the app at any time.
 - [Getting GUARD](#getting-guard)
 - [Your first backup](#your-first-backup)
 - [The File Backup tab](#the-file-backup-tab)
+- [The System Image tab](#the-system-image-tab)
 - [The App Management tab](#the-app-management-tab)
 - [The status bar](#the-status-bar)
 - [Where your files live (portability)](#where-your-files-live-portability)
@@ -260,6 +262,120 @@ were already up to date, failures (called out first, with a pointer to the log),
 and any extra files at the destination (noting whether Mirror removed them). The
 summary also appears on the progress line and in the status bar, so you rarely
 need to read the raw log.
+
+## The System Image tab
+
+A *system image* is a complete copy of the whole PC (Windows, your programs, their
+settings and your files) that can be restored onto a blank disk after a failure,
+without reinstalling anything. This is different from the File Backup tab, which
+copies the folders you choose; an image captures everything needed to boot.
+
+GUARD creates images with the built-in Windows backup engine (`wbadmin`), so there
+is nothing extra to install. On Windows editions that do not include that engine
+(notably **Windows Home**), the tab says so and the imaging buttons are disabled;
+you can still build recovery media there.
+
+> An image is restored from *outside* Windows (you cannot replace the running
+> system from within it). You boot from Windows installation media and use its
+> built-in System Image Recovery. The Create Recovery Media button builds that
+> media for you; see [Restoring from a system image](#restoring-from-a-system-image) below.
+
+### Choosing a destination
+
+Type or **Browse** to a destination. How images are kept depends on the kind of
+path you enter, and GUARD shows which applies beneath the box as you type:
+
+- **A local or external disk** (recommended). Give a drive, such as `E:\`. Windows
+  keeps several past images on a dedicated disk automatically and removes the
+  oldest when space runs low, and this is the most reliable kind of image to
+  restore from.
+- **A network share.** Give a path such as `\\server\share\Backups`. A share keeps
+  **only the most recent image** (each run replaces the last). A scheduled image
+  also cannot sign in to a share (see below), so a share is best used with on-demand
+  images.
+
+The destination cannot be on the same drive as Windows (an image includes the
+Windows drive, so it must be written somewhere separate). GUARD checks the free
+space after you save and warns if it looks too small.
+
+### Creating an image
+
+- **Create Image Now** makes an image straight away. Because imaging needs
+  Administrator rights, Windows shows one approval prompt; after that you can keep
+  using your PC while it runs. Progress and the result appear under **Output
+  details** and on the status bar.
+- **Stop Image** cancels a running image. Stopping also needs Administrator
+  approval (Windows confirms the stop).
+
+### Scheduling
+
+Tick **Create images on a schedule** and pick how often (**Weekly**, **Monthly**
+or **Daily**), the day, and the time. Saving registers a Windows scheduled task
+that runs as the SYSTEM account with the highest privileges, so the scheduled
+image runs quietly with no approval prompt. Registering or changing the schedule
+asks for Administrator approval once, at save time.
+
+Full images are large, so Weekly or Monthly usually makes more sense than Daily.
+Because a scheduled image runs as SYSTEM, it cannot supply network-share sign-in
+details; if you schedule images, store them on a local or external disk.
+
+> **BitLocker:** if your drive is encrypted with BitLocker, keep your BitLocker
+> recovery key safe. A restored image is unencrypted until you turn BitLocker back
+> on afterwards.
+
+### Create Recovery Media
+
+To restore an image you need to boot the PC from Windows installation media. The
+**Create Recovery Media...** button walks you through building a bootable USB
+using only built-in tools:
+
+1. GUARD shows the architecture (such as x64 or ARM64) and Windows version the USB
+   must match. The edition (Home, Pro, and so on) does not matter, because the USB
+   only starts the recovery tools; it does not reinstall Windows.
+2. Choose a Windows installation ISO. Use **Get the official ISO from Microsoft**
+   to open Microsoft's download page in your browser, then pick the downloaded
+   `.iso` file. (Automatic download is not offered: Microsoft requires a manual
+   download.)
+3. Choose the USB drive. Only removable USB drives are listed, so your internal
+   disks are never offered.
+4. Confirm. The drive is named back to you and then **completely erased**, so make
+   sure it is the right one and that anything important on it is saved elsewhere.
+5. GUARD formats the drive, copies the installer, and automatically splits a large
+   `install.wim` so it fits, then tells you when the USB is ready. The split is the
+   slowest step and can take ten minutes or more on a slow USB drive, during which
+   the progress bar does not move; leave the drive in until it finishes.
+
+You only need to build recovery media once; keep the USB with your backup disk.
+
+### Restoring from a system image
+
+This runs outside Windows. The same steps are available in the app from the
+**Restore Instructions** button.
+
+1. Connect the disk that holds the image (or make sure the network share is
+   reachable).
+2. Insert the recovery USB and start the PC from it (use the firmware boot menu,
+   often F12, Esc or F9 during startup).
+3. At the Windows Setup screen, choose your language, then click **Repair your
+   computer** (not Install).
+4. Go to **Troubleshoot**, then **Advanced options**, then **System Image
+   Recovery**.
+5. Pick the latest image (or **Select a system image** to choose a specific one or
+   a network location), then follow the prompts to restore.
+6. When it finishes, remove the USB and restart. If the drive used BitLocker, turn
+   it back on.
+
+**Restoring from a network share.** The recovery environment cannot look up server
+names the way Windows does, so when it asks for the network location, type the
+share's **IP address** in place of its name (for example `\\10.0.0.50\Backups`
+instead of `\\server\Backups`), and enter the share's username and password when
+prompted. Give the full path down to the folder you imaged to. To save you looking
+the address up, GUARD shows the exact path to type in two places: the **Restore
+Instructions** button, and the output box right after an image to a share finishes.
+
+> Restoring works best on the same or very similar hardware. On very different
+> hardware Windows may not boot afterwards; in that case do a clean Windows install
+> and use the File Backup and App Management tabs to bring back your files and apps.
 
 ## The App Management tab
 
