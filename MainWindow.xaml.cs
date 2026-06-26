@@ -248,6 +248,14 @@ public sealed partial class MainWindow : Window
         RefreshImageStatus(announce: false);
         RefreshScriptStatus(announce: false);
 
+        // If settings are already saved, surface the backup size and destination
+        // space on launch too, not only after a manual save. Silent and
+        // off-thread (announce:false), so it never speaks over the opening window
+        // or blocks it. The image page checks lazily on first visit instead (see
+        // CheckImageAvailability), where its wbadmin probe already runs.
+        if (File.Exists(GuardPaths.ScriptPath) && !_dirty)
+            StartSpaceStatusCheck(announce: false);
+
         AppWindow.Closing += OnAppWindowClosing;
     }
 
@@ -429,10 +437,11 @@ public sealed partial class MainWindow : Window
         else
         {
             _fileStatusBrush = new SolidColorBrush(StatusGreen);
-            _fileStatusText = "Settings saved. Last updated " +
+            _fileStatusText = "File backup settings saved. Last updated " +
                 File.GetLastWriteTime(GuardPaths.ScriptPath).ToString("yyyy-MM-dd HH:mm") + ".";
         }
         UpdateStatusBar();
+        UpdateSaveEnabled();
         // Only re-announce when the message actually changed; otherwise toggling
         // each day checkbox would re-read the status line on top of the box's own
         // checked/unchecked state. Announce only while the bar is showing this
@@ -440,6 +449,28 @@ public sealed partial class MainWindow : Window
         if (announce && _activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
         _lastAnnouncedStatus = _fileStatusText;
+    }
+
+    // Save Settings is redundant once the on-disk script already matches the
+    // saved config (nothing edited since the last save): a no-op save would just
+    // rewrite identical files and re-announce "saved", so disable it then. It
+    // stays enabled while there are unsaved edits or nothing has been saved yet.
+    // A running backup owns the button (SetFileBusy) and is left untouched. If
+    // the button is about to disable while it holds focus (the instant after a
+    // save), hand focus to Run Now so a keyboard/screen-reader user is not
+    // stranded on a control that just went unavailable.
+    private void UpdateSaveEnabled()
+    {
+        if (BtnSave == null || _backupRunning) return;
+        bool enable = _dirty || !File.Exists(GuardPaths.ScriptPath);
+        // The focus rescue only matters after the window is up; this also runs
+        // during construction (seeded status), when Content.XamlRoot is still
+        // null and passing it to FocusManager would fail-fast across the WinRT
+        // ABI. Guard on the root existing before querying focus.
+        if (!enable && BtnSave.IsEnabled && Content?.XamlRoot is not null &&
+            ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnSave))
+            BtnRunNow.Focus(FocusState.Programmatic);
+        BtnSave.IsEnabled = enable;
     }
 
     // The status bar shows the active page's status text; a running job's
@@ -634,14 +665,18 @@ public sealed partial class MainWindow : Window
     // cap to usually finish, so the figure is normally the full total, not a lower
     // bound. The sequence counter plus the dirty re-check drop a stale result if
     // the user edited or saved again mid-walk.
-    private async void StartSpaceStatusCheck()
+    // announce=false on the launch run: the seeded status is repainted silently
+    // at startup (RefreshScriptStatus(announce:false)), so the figures it gains
+    // here ride along silently too rather than speaking over the window opening;
+    // a manual save passes announce=true so the result is still spoken.
+    private async void StartSpaceStatusCheck(bool announce = true)
     {
         int seq = ++_spaceCheckSeq;
 
         // Interim placeholder so the line never sits silently mid-check; the
         // result replaces it (rebuilt from baseText, not appended) when done.
         string baseText = _fileStatusText;
-        SetFileStatusText(baseText + " Calculating backup size and destination space...");
+        SetFileStatusText(baseText + " Calculating backup size and destination space...", announce);
 
         var estimateTask = SaveValidation.EstimateBackupSizeAsync(_cfg.Folders, SaveValidation.EstimateCap);
         var freeTask = System.Threading.Tasks.Task.Run(() => SaveValidation.TryGetFreeSpace(_cfg.Dest));
@@ -671,18 +706,18 @@ public sealed partial class MainWindow : Window
             extra += " destination available space: " + SaveValidation.FormatBytes(freeBytes) + ".";
             if (tight) _fileStatusBrush = new SolidColorBrush(StatusAmber);
         }
-        SetFileStatusText(baseText + extra);
+        SetFileStatusText(baseText + extra, announce);
     }
 
     // Mid-flow file-status updates (the space-check placeholder and result)
     // route through the status bar like RefreshScriptStatus does: repaint the
     // bar, announce only while File Backup is the active page, and record the
     // text so an unchanged status is not re-spoken.
-    private void SetFileStatusText(string text)
+    private void SetFileStatusText(string text, bool announce = true)
     {
         _fileStatusText = text;
         UpdateStatusBar();
-        if (_activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
+        if (announce && _activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
         _lastAnnouncedStatus = _fileStatusText;
     }
@@ -1591,9 +1626,9 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            BtnSave.IsEnabled = true;
             BtnRunNow.IsEnabled = true;
             BtnPreview.IsEnabled = true;
+            UpdateSaveEnabled();
             // Return focus to the launcher before Stop greys out, so rerunning
             // is one keypress away and focus never lands somewhere arbitrary.
             if (_fileRunLauncher != null &&
@@ -1840,7 +1875,7 @@ public sealed partial class MainWindow : Window
     private async void OnBrowseApp(object sender, RoutedEventArgs e) => await BrowseInto(TxtAppDest);
     private async void OnTestDest(object sender, RoutedEventArgs e) => await TestConnection(TxtDest.Text);
     private async void OnTestApp(object sender, RoutedEventArgs e) => await TestConnection(TxtAppDest.Text);
-    private void OnOpenLog(object sender, RoutedEventArgs e) => OpenPath(GuardPaths.LogPath);
+    private void OnOpenLog(object sender, RoutedEventArgs e) => OpenPath(GuardPaths.LogPath, "No log found yet. Run a backup first.");
     private void OnOpenDest(object sender, RoutedEventArgs e) => OpenPath(TxtDest.Text);
     private void OnOpenAppDest(object sender, RoutedEventArgs e) => OpenPath(TxtAppDest.Text);
 
@@ -1869,7 +1904,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void OpenPath(string? path)
+    // notFound overrides the missing-path message; callers with an internal path
+    // (the logs) pass a plain-language line, since echoing Logs\backup_last.log
+    // means nothing to the user. Folder opens keep the default, which shows the
+    // path the user typed.
+    private async void OpenPath(string? path, string? notFound = null)
     {
         try
         {
@@ -1877,7 +1916,7 @@ public sealed partial class MainWindow : Window
             if (File.Exists(path) || Directory.Exists(path))
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
             else
-                await ShowMessageAsync("GUARD", "Not found:\n" + path);
+                await ShowMessageAsync("GUARD", notFound ?? ("Not found:\n" + path));
         }
         catch (Exception ex)
         {
@@ -1916,6 +1955,13 @@ public sealed partial class MainWindow : Window
             UpdateImageScheduleEnabledState();
         }
         RefreshImageStatus(announce: false);
+
+        // First visit with image settings already saved: show the destination
+        // space alongside "settings saved", as the File Backup page does on
+        // launch. Silent (announce:false) so it does not speak over the nav's
+        // page announcement; the amber dot still flags a tight destination.
+        if (_imageAvailable && File.Exists(GuardPaths.SystemImageScriptPath) && !_imageDirty)
+            StartImageSpaceCheck(announce: false);
     }
 
     private void RefreshImageStatus(bool announce = true)
@@ -1943,16 +1989,34 @@ public sealed partial class MainWindow : Window
                 File.GetLastWriteTime(GuardPaths.SystemImageScriptPath).ToString("yyyy-MM-dd HH:mm") + ".";
         }
         UpdateStatusBar();
+        UpdateImageSaveEnabled();
         if (announce && _activePage == 2 && _imageStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
         _lastAnnouncedStatus = _imageStatusText;
     }
 
-    private void SetImageStatusText(string text)
+    // Mirror of UpdateSaveEnabled for the System Image page: disable Save once the
+    // saved script matches the config, keep it enabled for unsaved edits or a
+    // first save. A running image owns the button (SetImageBusy). On disabling a
+    // focused Save, fall to Create Image (or Recovery Media if imaging is
+    // unavailable and Create Image is disabled) so focus is never stranded.
+    private void UpdateImageSaveEnabled()
+    {
+        if (BtnSaveImage == null || _imageRunning) return;
+        bool enable = _imageDirty || !File.Exists(GuardPaths.SystemImageScriptPath);
+        // See UpdateSaveEnabled: guard on the XAML root so the constructor-time
+        // seeded status does not query focus before Content.XamlRoot exists.
+        if (!enable && BtnSaveImage.IsEnabled && Content?.XamlRoot is not null &&
+            ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnSaveImage))
+            (BtnCreateImage.IsEnabled ? BtnCreateImage : BtnRecoveryMedia).Focus(FocusState.Programmatic);
+        BtnSaveImage.IsEnabled = enable;
+    }
+
+    private void SetImageStatusText(string text, bool announce = true)
     {
         _imageStatusText = text;
         UpdateStatusBar();
-        if (_activePage == 2 && _imageStatusText != _lastAnnouncedStatus)
+        if (announce && _activePage == 2 && _imageStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
         _lastAnnouncedStatus = _imageStatusText;
     }
@@ -2101,11 +2165,11 @@ public sealed partial class MainWindow : Window
     // Advisory free-space check appended to the saved-status line, like the File
     // Backup space check. No precise image-size estimate (the source is the whole
     // system drive); a low free-space floor is flagged as a warning.
-    private async void StartImageSpaceCheck()
+    private async void StartImageSpaceCheck(bool announce = true)
     {
         int seq = ++_imageSpaceSeq;
         string baseText = _imageStatusText;
-        SetImageStatusText(baseText + " Checking destination space...");
+        SetImageStatusText(baseText + " Checking destination space...", announce);
         long? free = await System.Threading.Tasks.Task.Run(() => SaveValidation.TryGetFreeSpace(_cfg.ImageTarget));
         if (seq != _imageSpaceSeq || _imageDirty) return;
         string extra;
@@ -2122,7 +2186,7 @@ public sealed partial class MainWindow : Window
         {
             extra = " Destination space could not be checked.";
         }
-        SetImageStatusText(baseText + extra);
+        SetImageStatusText(baseText + extra, announce);
     }
 
     // ---- run ----
@@ -2337,9 +2401,9 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            BtnSaveImage.IsEnabled = true;
             BtnCreateImage.IsEnabled = _imageAvailable;
             BtnRecoveryMedia.IsEnabled = true;
+            UpdateImageSaveEnabled();
             if (_imageRunLauncher != null &&
                 ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnStopImage))
                 _imageRunLauncher.Focus(FocusState.Programmatic);
@@ -2368,16 +2432,27 @@ public sealed partial class MainWindow : Window
 
     private async void OnBrowseImageTarget(object sender, RoutedEventArgs e) => await BrowseInto(TxtImageTarget);
     private async void OnTestImageTarget(object sender, RoutedEventArgs e) => await TestConnection(TxtImageTarget.Text);
-    private void OnOpenImageLog(object sender, RoutedEventArgs e) => OpenPath(GuardPaths.SystemImageLogPath);
+    private void OnOpenImageLog(object sender, RoutedEventArgs e) => OpenPath(GuardPaths.SystemImageLogPath, "No log found yet. Create a system image first.");
 
     private async void OnRestoreHelp(object sender, RoutedEventArgs e)
     {
         string target = (TxtImageTarget.Text ?? "").Trim();
-        string? winrePath = ClassifyImageTarget(target) == "NetworkShare"
-            ? await System.Threading.Tasks.Task.Run(() => SystemImageScript.ResolveUncToIp(target))
-            : null;
-        var dlg = new Views.SystemImageRestoreHelpDialog(target, winrePath) { XamlRoot = Content.XamlRoot };
+        var dlg = new Views.SystemImageRestoreHelpDialog(target) { XamlRoot = Content.XamlRoot };
+
+        // Resolve the share's server name to an IP off the UI thread so a slow or
+        // failing DNS lookup never delays the dialog; the await resumes on the UI
+        // thread, upgrading the text once it lands (no-op if it could not resolve).
+        if (ClassifyImageTarget(target) == "NetworkShare")
+            _ = ResolveRestoreIpAsync(dlg, target);
+
         await ShowDialogAsync(dlg);
+    }
+
+    private static async System.Threading.Tasks.Task ResolveRestoreIpAsync(
+        Views.SystemImageRestoreHelpDialog dlg, string target)
+    {
+        string? ip = await System.Threading.Tasks.Task.Run(() => SystemImageScript.ResolveUncToIp(target));
+        dlg.SetResolvedIp(ip);
     }
 
     private async void OnCreateRecoveryMedia(object sender, RoutedEventArgs e)

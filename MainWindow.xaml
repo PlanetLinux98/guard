@@ -405,8 +405,11 @@
                                          cancellation message are spoken via a UIA notification
                                          (AnnounceNotification), which carries its text in the
                                          event and is more reliable for one-shot messages. -->
-                                    <TextBlock x:Name="FileProgressLabel" Margin="0,0,0,2"
-                                               AutomationProperties.Name="Backup progress" />
+                                    <!-- No AutomationProperties.Name: a static name overrides the
+                                         live text as the UIA Name, so a screen reader's review cursor
+                                         reads the label ("Backup progress") instead of the current
+                                         step. Let the running text be the accessible name. -->
+                                    <TextBlock x:Name="FileProgressLabel" Margin="0,0,0,2" />
                                     <ProgressBar x:Name="FileProgress" Minimum="0" Maximum="1" Value="0"
                                                  AutomationProperties.Name="Backup progress bar" />
                                     <TextBlock Text="Output:" Margin="0,8,0,2" />
@@ -588,8 +591,9 @@
                             <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                       Header="Output details">
                                 <StackPanel Spacing="2">
-                                    <TextBlock x:Name="ImageProgressLabel" Margin="0,0,0,2"
-                                               AutomationProperties.Name="System image progress" />
+                                    <!-- No AutomationProperties.Name; see FileProgressLabel: the live
+                                         text is the accessible name so the review cursor reads it. -->
+                                    <TextBlock x:Name="ImageProgressLabel" Margin="0,0,0,2" />
                                     <ProgressBar x:Name="ImageProgress" Minimum="0" Maximum="100" Value="0"
                                                  AutomationProperties.Name="System image progress bar" />
                                     <TextBlock Text="Output:" Margin="0,8,0,2" />
@@ -770,8 +774,9 @@
                             <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                       Header="Output details">
                                 <StackPanel Spacing="2">
-                                    <TextBlock x:Name="AppProgressLabel" Margin="0,0,0,2"
-                                               AutomationProperties.Name="Reinstall progress" />
+                                    <!-- No AutomationProperties.Name; see FileProgressLabel: the live
+                                         text is the accessible name so the review cursor reads it. -->
+                                    <TextBlock x:Name="AppProgressLabel" Margin="0,0,0,2" />
                                     <ProgressBar x:Name="AppProgress" Minimum="0" Maximum="1" Value="0"
                                                  AutomationProperties.Name="Reinstall progress bar" />
                                     <TextBlock Text="Output:" Margin="0,8,0,2" />

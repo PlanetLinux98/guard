@@ -4,6 +4,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Restore this PC from a system image"
+    PrimaryButtonText="Open User Manual"
+    PrimaryButtonClick="OnOpenManual"
     CloseButtonText="Close"
     DefaultButton="Close"
     AutomationProperties.IsDialog="True">
@@ -34,16 +36,15 @@
             <TextBlock Text="Restoring from a network share" FontWeight="SemiBold" Margin="0,4,0,0" />
             <TextBlock TextWrapping="Wrap"
                        Text="The recovery environment cannot look up server names the way Windows does, so address the share by its IP address rather than its name, and have the share's username and password ready (it will ask for them). Enter the full path down to the folder that holds the image, the same folder you back up to here." />
-            <TextBlock x:Name="NetworkPathText" TextWrapping="Wrap" Visibility="Collapsed"
-                       AutomationProperties.Name="Network path to enter when restoring" />
+            <!-- No AutomationProperties.Name: the text is the actual path to type
+                 (set in code-behind). A static name would override it as the UIA
+                 Name, so a screen reader's review cursor would read the label
+                 instead of the path the user needs. Let the text be the name. -->
+            <TextBlock x:Name="NetworkPathText" TextWrapping="Wrap" Visibility="Collapsed" />
 
             <TextBlock TextWrapping="Wrap" Margin="0,4,0,0"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Text="Note: restoring works best on the same or very similar hardware. On very different hardware Windows may not boot afterwards; in that case use the File Backup and App Management tabs to recover your files and apps onto a fresh install instead." />
-
-            <Button Content="Open User Manual" AccessKey="M" HorizontalAlignment="Left" Margin="0,4,0,0"
-                    ToolTipService.ToolTip="Open the full restore instructions in the user manual"
-                    Click="OnOpenManual" />
         </StackPanel>
     </ScrollViewer>
 </ContentDialog>
