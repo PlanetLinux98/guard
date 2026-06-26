@@ -20,8 +20,7 @@ public sealed class AppListFile
     [JsonPropertyName("apps")] public AppListItem[]? Apps { get; set; }
 }
 
-// Source-generated serialization: AOT- and trim-safe (replaces the WPF
-// edition's reflection-based DataContractJsonSerializer).
+// Source-generated serialization: AOT- and trim-safe (no reflection).
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(AppListFile))]
 [JsonSerializable(typeof(AppListItem))]

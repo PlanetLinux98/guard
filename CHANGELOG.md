@@ -78,6 +78,43 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   next to `GUARD.exe` goes from ~89 directories to 3, and the release zip is ~24
   MB (was ~28). No change for users beyond a tidier folder; reversible from the
   build script if a future feature or translation needs those components.
+- The Save Settings button (on both the File Backup and System Image pages) is now
+  disabled whenever the saved settings are already up to date, and re-enables the
+  moment you change something (or when nothing has been saved yet). The greyed-out
+  button is a clear at-a-glance cue that there is nothing to save and prevents a
+  no-op save. Saving while the button has focus moves focus to Run Now / Create
+  Image Now, so keyboard and screen-reader users are not stranded on a control that
+  just became unavailable.
+- When GUARD opens with backup settings already saved, the File Backup status line
+  now fills in the backup size and destination free space on its own, instead of
+  showing only "Settings saved" until the next manual Save. The System Image page
+  does the same the first time it is opened. The check runs in the background so it
+  never delays the window, and updates the status quietly without speaking over the
+  opening window.
+- Opening the last log (File Backup or System Image) when none exists yet now says
+  "No log found yet. Run a backup first." instead of a bare "Not found:" followed by
+  an internal file path.
+- The System Image Restore Instructions dialog's "Open User Manual" button moved
+  from the bottom of the scrolling text to the dialog's button row, so it is always
+  visible without scrolling to the end first. Opening the manual no longer closes
+  the dialog, so the instructions stay up while the manual opens alongside.
+- The File Backup status line now reads "File backup settings saved" rather than
+  the bare "Settings saved", matching the System Image page's "System image settings
+  saved" so each page names which settings it means.
+
+### Fixed
+- Screen readers reading the progress line under "Output details" (on File Backup,
+  System Image, and App Management) with the review cursor now read the current
+  step, e.g. "Reinstalling 3 of 10", instead of a fixed label such as "Reinstall
+  progress". A static accessible name had been overriding the live text.
+- In the System Image Restore Instructions, the line giving the exact network path
+  to type into the recovery tool is now read by screen readers as the actual path,
+  instead of a fixed "Network path to enter when restoring" label that had hidden
+  it (the same static-name issue as the progress lines).
+- Opening Restore Instructions no longer hangs for a few seconds when the image
+  destination is a network share. The dialog now opens immediately and resolves the
+  server's IP address in the background, filling in the exact IP path to type once
+  it is known, instead of blocking on a slow or failing name lookup first.
 
 ## [0.4.1] - 2026-06-16
 

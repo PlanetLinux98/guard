@@ -21,9 +21,8 @@ functionality to come!
 
 > Pre-release: Expect rough edges and many future improvements.
 
-This is the **WinUI 3** edition, a ground-up rewrite of the original WPF version
-(now retired) built for far better screen-reader support and native dark-mode
-theming. It targets **.NET 10 + Windows App SDK 2.2.0**.
+Built for first-class screen-reader support and native dark-mode theming, GUARD
+targets **.NET 10 + Windows App SDK 2.2.0** (WinUI 3).
 
 ## Current Features
 
