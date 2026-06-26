@@ -69,20 +69,58 @@
              collapse). With content now filling the width responsively and the toggle
              present, the transition is clean both ways. -->
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="NavFile" Content="File Backup" Tag="file" IsSelected="True">
+                <!-- Each page's Content hosts its label plus a small ProgressRing
+                     (SetNavBusy) so a running job on the page stays visible (and
+                     screen-reader discoverable) from any page; the global status-bar
+                     progress shows the bar but not which page owns it. A
+                     NavigationViewItem only auto-derives its UIA name from a *string*
+                     Content; once Content is a panel that derivation is lost and the
+                     item reads nameless, so each carries an explicit
+                     AutomationProperties.Name equal to its visible label (WCAG 2.5.3).
+                     The label TextBlock and the ring are AccessibilityView=Raw so the
+                     subtree adds no duplicate/noise nodes, and "running" is exposed via
+                     HelpText only while busy (read after the name on focus). Note: in
+                     the compact icon rail (narrower than ExpandedModeThresholdWidth) the
+                     label and ring are hidden; SR users still get the name, the HelpText
+                     and the existing finish notification. -->
+                <NavigationViewItem x:Name="NavFile" Tag="file" IsSelected="True"
+                                    AutomationProperties.Name="File Backup">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8B7;" />
                     </NavigationViewItem.Icon>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="File Backup" VerticalAlignment="Center"
+                                   AutomationProperties.AccessibilityView="Raw" />
+                        <ProgressRing x:Name="NavFileRing" Width="16" Height="16"
+                                      IsActive="False" Visibility="Collapsed"
+                                      AutomationProperties.AccessibilityView="Raw" />
+                    </StackPanel>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="NavImage" Content="System Image" Tag="image">
+                <NavigationViewItem x:Name="NavImage" Tag="image"
+                                    AutomationProperties.Name="System Image">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE977;" />
                     </NavigationViewItem.Icon>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="System Image" VerticalAlignment="Center"
+                                   AutomationProperties.AccessibilityView="Raw" />
+                        <ProgressRing x:Name="NavImageRing" Width="16" Height="16"
+                                      IsActive="False" Visibility="Collapsed"
+                                      AutomationProperties.AccessibilityView="Raw" />
+                    </StackPanel>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="NavApps" Content="App Management" Tag="apps">
+                <NavigationViewItem x:Name="NavApps" Tag="apps"
+                                    AutomationProperties.Name="App Management">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE71D;" />
                     </NavigationViewItem.Icon>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="App Management" VerticalAlignment="Center"
+                                   AutomationProperties.AccessibilityView="Raw" />
+                        <ProgressRing x:Name="NavAppsRing" Width="16" Height="16"
+                                      IsActive="False" Visibility="Collapsed"
+                                      AutomationProperties.AccessibilityView="Raw" />
+                    </StackPanel>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
@@ -444,7 +482,7 @@
                                  pops into existence is not discoverable with a screen reader,
                                  whereas a disabled button is announced as unavailable in its
                                  stable place. -->
-                            <Button x:Name="BtnStopBackup" Content="Stop Backup" AccessKey="C" IsEnabled="False"
+                            <Button x:Name="BtnStopBackup" Content="Stop Backup" AccessKey="T" IsEnabled="False"
                                     ToolTipService.ToolTip="Stop the running backup"
                                     Click="OnStopBackup" />
                             <Border Width="1" Margin="4,2" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
@@ -807,7 +845,7 @@
                                     Click="OnImportApps" />
                             <!-- Enabled only while a reinstall runs; same discoverability
                                  reasoning as Stop Backup. -->
-                            <Button x:Name="BtnAppStop" Content="Stop Reinstall" AccessKey="C" IsEnabled="False"
+                            <Button x:Name="BtnAppStop" Content="Stop Reinstall" AccessKey="T" IsEnabled="False"
                                     ToolTipService.ToolTip="Stop the running reinstall; apps already installed stay installed"
                                     Click="OnStopReinstall" />
                             <Border Width="1" Margin="4,2" Background="{ThemeResource CardStrokeColorDefaultBrush}" />

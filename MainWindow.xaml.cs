@@ -903,6 +903,24 @@ public sealed partial class MainWindow : Window
         ChkExportSettings.IsEnabled = e;
         BtnAppAll.IsEnabled = e;
         BtnAppNone.IsEnabled = e;
+        SetNavBusy(NavApps, NavAppsRing, busy);
+    }
+
+    // Surface a page's running job on its nav item so an in-progress job stays
+    // discoverable from any page (the global status-bar progress shows the bar but
+    // not which page owns it). Visible iff the page has a live job; the visible
+    // label stays the accessible name, and a bare "running" rides on HelpText only
+    // while busy (cleared when done) so a screen reader hears it right after the
+    // name on focus ("System Image, running"). The help text is deliberately just
+    // "running", not "<page> running", or the page name would be read twice. Called
+    // from each Set*Busy on the UI thread; start/finish announcements are left to
+    // the existing job notifications (raised on the always-present status bar) so
+    // this adds no extra speech.
+    private static void SetNavBusy(NavigationViewItem item, ProgressRing ring, bool busy)
+    {
+        ring.IsActive = busy;
+        ring.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetHelpText(item, busy ? "running" : "");
     }
 
     private void OnFilterChanged(object sender, TextChangedEventArgs e)
@@ -1610,6 +1628,7 @@ public sealed partial class MainWindow : Window
 
     private void SetFileBusy(bool busy)
     {
+        SetNavBusy(NavFile, NavFileRing, busy);
         if (busy)
         {
             // Enable Stop and hand it focus before the launchers grey out;
@@ -2339,6 +2358,10 @@ public sealed partial class MainWindow : Window
         var m = Regex.Match(data, @"copied\s*\(\s*(\d+)\s*%\s*\)", RegexOptions.IgnoreCase);
         if (m.Success && int.TryParse(m.Groups[1].Value, out int pct))
         {
+            // A stop was requested but wbadmin is still winding down; hold the
+            // "Stopping..." state rather than let a late percent line move the bar,
+            // which would look like the image resumed.
+            if (_imageStopRequested) { SetImageProgressIndeterminate("Stopping system image..."); return; }
             if (_imageTotalVols > 0)
             {
                 double overall = (_imageDoneVols + pct / 100.0) / _imageTotalVols * 100.0;
@@ -2387,6 +2410,7 @@ public sealed partial class MainWindow : Window
     // to the launcher when it ends. (See SetFileBusy for the focus reasoning.)
     private void SetImageBusy(bool busy)
     {
+        SetNavBusy(NavImage, NavImageRing, busy);
         if (busy)
         {
             BtnStopImage.IsEnabled = true;
@@ -2417,14 +2441,24 @@ public sealed partial class MainWindow : Window
     // running image then exits with an error, which the run treats as "stopped".
     private async void OnStopImage(object sender, RoutedEventArgs e)
     {
-        if (!_imageRunning) return;
+        if (!_imageRunning || _imageStopRequested) return;
         _imageStopRequested = true;
+        // Stopping needs its own elevation (a second UAC prompt) and wbadmin then
+        // takes a few seconds to wind down, so the run does not end the instant Stop
+        // is pressed. Show a clear "stopping" state at once - bar to indeterminate
+        // and spoken - instead of leaving the bar creeping as if nothing happened.
+        // HandleImageLine freezes further percent updates while _imageStopRequested
+        // is set, and the run's end path swaps in "System image stopped."
+        SetImageProgressIndeterminate("Stopping system image...");
+        AnnounceNotification("Stopping system image...");
         string? err = null;
         bool ok = await System.Threading.Tasks.Task.Run(
             () => ProcessRunner.RunPowerShellElevated("wbadmin stop job -quiet; exit 0", out err));
         if (!ok)
         {
             _imageStopRequested = false;
+            // The image is still running; resume showing its real progress.
+            SetImageProgressDeterminate(_imageOverall, "Creating system image... " + (int)_imageOverall + "%");
             await ShowMessageAsync("GUARD", "Could not stop the system image"
                 + (err != null ? " - " + err : "") + "\n\nIt will keep running.");
         }
