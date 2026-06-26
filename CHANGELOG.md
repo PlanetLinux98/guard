@@ -9,6 +9,11 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- A small spinner now appears on a page's entry in the left navigation while that
+  page has a job running (a backup, a system image, or an app export/reinstall), so
+  you can tell at a glance which page is busy even while viewing another page. It
+  clears when the job finishes. Screen readers announce the page as "running" when
+  focused, and the existing completion announcement is unchanged.
 - New System Image page (second in the navigation) creates full bare-metal images
   of the whole PC using the built-in Windows `wbadmin` tool, so a machine can be
   recovered after a disk failure. Images go to a local or external disk (which
@@ -50,6 +55,14 @@ While GUARD is in the `0.x` series, behavior may change between minor versions.
   only; scheduled and unattended runs keep their compact log.
 
 ### Changed
+- The Stop button on every page now uses the same Alt+T access key (Stop Backup and
+  Stop Reinstall were Alt+C), so stopping a running job is the same keystroke
+  whichever page you are on.
+- Stopping a system image now shows a "Stopping system image..." state right away
+  (the progress bar goes busy and the message is announced), instead of appearing
+  to do nothing for the few seconds it takes the elevated stop to take effect. The
+  bar holds that state until the image actually stops rather than briefly creeping
+  on as if it had resumed.
 - Reworked the main window from a two-tab Pivot to a left navigation pane
   (NavigationView) with File Backup and App Management pages and Help and About
   as footer items (Help keeps its F1 shortcut). When the window is made narrow
