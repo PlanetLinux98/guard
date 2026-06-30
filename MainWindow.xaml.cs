@@ -95,9 +95,9 @@ public sealed partial class MainWindow : Window
     private string _appStatusText = "Open this tab to scan installed apps.";
 
     private bool _appScanned;
-    // Which page the nav has selected (0 = File Backup, 1 = App Management);
-    // the status bar and its announcements key off this, as they did off the
-    // old Pivot's SelectedIndex.
+    // Which page the nav has selected (0 = File Backup, 1 = App Management,
+    // 2 = System Image); the status bar, its announcements, and the per-page
+    // progress array key off this, as they did off the old Pivot's SelectedIndex.
     private int _activePage;
     private bool _scanning;
     private bool _reinstalling;
@@ -473,9 +473,10 @@ public sealed partial class MainWindow : Window
         BtnSave.IsEnabled = enable;
     }
 
-    // The status bar shows the active page's status text; a running job's
-    // progress is mirrored into the bar's progress area independently (see
-    // SetProgress), so a job stays visible from either page.
+    // The status bar shows the focused page's status text (left) and that page's job
+    // progress (right); both repaint here on a page switch, so the bar always
+    // reflects the page you are on. A job on an unfocused page stays visible via its
+    // nav ring, not the bar.
     private void UpdateStatusBar()
     {
         if (StatusBarText == null) return;
@@ -499,6 +500,8 @@ public sealed partial class MainWindow : Window
             StatusDot.Visibility = Visibility.Collapsed;
             StatusBarText.Text = _appStatusText;
         }
+        // Repaint the right-hand progress from the focused page's snapshot.
+        RenderStatusBar(_pageProg[_activePage]);
     }
 
     // Inventory status lives in the status bar (its single home); announce
@@ -903,24 +906,24 @@ public sealed partial class MainWindow : Window
         ChkExportSettings.IsEnabled = e;
         BtnAppAll.IsEnabled = e;
         BtnAppNone.IsEnabled = e;
-        SetNavBusy(NavApps, NavAppsRing, busy);
+        SetNavBusy(1, busy);
     }
 
-    // Surface a page's running job on its nav item so an in-progress job stays
-    // discoverable from any page (the global status-bar progress shows the bar but
-    // not which page owns it). Visible iff the page has a live job; the visible
-    // label stays the accessible name, and a bare "running" rides on HelpText only
-    // while busy (cleared when done) so a screen reader hears it right after the
-    // name on focus ("System Image, running"). The help text is deliberately just
-    // "running", not "<page> running", or the page name would be read twice. Called
-    // from each Set*Busy on the UI thread; start/finish announcements are left to
-    // the existing job notifications (raised on the always-present status bar) so
-    // this adds no extra speech.
-    private static void SetNavBusy(NavigationViewItem item, ProgressRing ring, bool busy)
+    // Mark a page's job as running or stopped. The nav ring (driven from the snapshot
+    // in ApplyPageProgress) keeps an in-progress job discoverable from any page;
+    // start/finish speech is left to the existing job notifications (raised on the
+    // always-present status bar), so this adds none.
+    private void SetNavBusy(int page, bool busy)
     {
-        ring.IsActive = busy;
-        ring.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        AutomationProperties.SetHelpText(item, busy ? "running" : "");
+        Progress(page, p =>
+        {
+            p.Running = busy;
+            // A fresh job starts indeterminate (spinning) until its first real
+            // percentage arrives; the per-job progress calls then switch the ring to
+            // a determinate arc. A job that never reports a percentage (the app scan)
+            // just keeps spinning.
+            if (busy) { p.Indeterminate = true; p.Value = 0; }
+        });
     }
 
     private void OnFilterChanged(object sender, TextChangedEventArgs e)
@@ -1111,7 +1114,6 @@ public sealed partial class MainWindow : Window
                     long totalBytes = 0;
                     foreach (var c in chosen) totalBytes += c.Bytes;
                     double barMax = totalBytes > 0 ? totalBytes : 1;
-                    StatusBarProgress.IsIndeterminate = false;
                     AppProgress.IsIndeterminate = false;
                     SetProgress(AppProgress, AppProgressLabel, barMax, 0, "Copying settings...");
                     bool announced = false;
@@ -1120,13 +1122,13 @@ public sealed partial class MainWindow : Window
                             onFolder: msg => DispatcherQueue.TryEnqueue(() =>
                             {
                                 AppProgressLabel.Text = msg;
-                                StatusBarProgressText.Text = msg;
+                                _pageProg[1].Text = msg; ApplyPageProgress(1);
                                 if (!announced) { announced = true; AnnounceSettled(msg); }
                             }),
                             onBytes: done => DispatcherQueue.TryEnqueue(() =>
                             {
                                 AppProgress.Value = done;
-                                StatusBarProgress.Value = done;
+                                _pageProg[1].Value = done; ApplyPageProgress(1);
                             })));
                     string copied = "Copied " + stats.Folders + " settings folder(s): " + stats.Files + " file(s)."
                         + (stats.SkippedFiles > 0
@@ -1155,8 +1157,8 @@ public sealed partial class MainWindow : Window
         finally
         {
             // Never leave a spinning/indeterminate bar behind on any exit path.
-            StatusBarProgress.IsIndeterminate = false;
             AppProgress.IsIndeterminate = false;
+            Progress(1, p => p.Indeterminate = false);
             _exporting = false;
             SetAppBusy(false);
         }
@@ -1179,24 +1181,31 @@ public sealed partial class MainWindow : Window
     // AnnounceNotification / AnnounceSettled.
     private void SetExportProgress(string text, bool indeterminate)
     {
-        ShowStatusBarProgress(true);
-        StatusBarProgress.IsIndeterminate = indeterminate;
         AppProgress.IsIndeterminate = indeterminate;
-        StatusBarProgressText.Text = text;
         AppProgressLabel.Text = text;
+        Progress(1, p =>
+        {
+            p.Indeterminate = indeterminate;
+            p.Text = text;
+            p.AreaVisible = true;
+            p.BarVisible = true;
+        });
     }
 
     // Terminal export state (success summary, cancellation, failure): show it in
     // the progress slot with no moving bar, and keep the slot visible so the
-    // read-status-bar hotkey reports the outcome from anywhere.
+    // read-status-bar hotkey reports the outcome while App Management is focused.
     private void SetExportOutcome(string text)
     {
-        StatusBarProgress.IsIndeterminate = false;
         AppProgress.IsIndeterminate = false;
-        StatusBarProgress.Visibility = Visibility.Collapsed;
-        StatusBarProgressArea.Visibility = Visibility.Visible;
-        StatusBarProgressText.Text = text;
         AppProgressLabel.Text = text;
+        Progress(1, p =>
+        {
+            p.Indeterminate = false;
+            p.BarVisible = false;
+            p.AreaVisible = true;
+            p.Text = text;
+        });
     }
 
     private async void OnImportApps(object sender, RoutedEventArgs e)
@@ -1373,7 +1382,7 @@ public sealed partial class MainWindow : Window
         int restoreCount = restore?.Count ?? 0;
         int totalSteps = targets.Count + restoreCount;
         SetProgress(AppProgress, AppProgressLabel, totalSteps > 0 ? totalSteps : 1, 0, "Starting...");
-        ShowStatusBarProgress(true);
+        ShowStatusBarProgress(1, true);
 
         int ok = 0, fail = 0, attempted = 0;
         AppSettingsRestoreStats? rstats = null;
@@ -1427,7 +1436,7 @@ public sealed partial class MainWindow : Window
         // summary below always prints last.
         string outcome = BuildReinstallOutcome(ct.IsCancellationRequested, targets.Count, attempted, ok, fail, rstats);
         AppProgressLabel.Text = outcome;
-        StatusBarProgressText.Text = outcome;
+        Progress(1, p => p.Text = outcome);
         AppendOut(TxtAppOutput, "\r\n--- " + outcome + " ---\r\n");
 
         _reinstalling = false;
@@ -1440,7 +1449,7 @@ public sealed partial class MainWindow : Window
         if (launcher != null && ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnAppStop))
             launcher.Focus(FocusState.Programmatic);
         BtnAppStop.IsEnabled = false;
-        ShowStatusBarProgress(false);
+        ShowStatusBarProgress(1, false);
         AnnounceSettled(outcome, 2000);
     }
 
@@ -1510,7 +1519,7 @@ public sealed partial class MainWindow : Window
         _runIsPreview = arg == "test";
         _runDoneAnnounce = null;
         SetProgress(FileProgress, FileProgressLabel, 1, 0, "Measuring folders...");
-        ShowStatusBarProgress(true);
+        ShowStatusBarProgress(0, true);
 
         _backupRunning = true;
         _runCts = new CancellationTokenSource();
@@ -1584,9 +1593,9 @@ public sealed partial class MainWindow : Window
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     FileProgressLabel.Text = "Backup cancelled.";
-                    // Mirror into the bar's outcome slot; SetProgress last wrote
+                    // Mirror into the page's progress slot; SetProgress last wrote
                     // a stale "Backing up..." line there.
-                    StatusBarProgressText.Text = "Backup cancelled.";
+                    _pageProg[0].Text = "Backup cancelled."; ApplyPageProgress(0);
                 });
             }
             else
@@ -1602,7 +1611,7 @@ public sealed partial class MainWindow : Window
         {
             // Whatever the outcome (finish, cancel, launch error), the bar's
             // progress area must not outlive the job it mirrors.
-            ShowStatusBarProgress(false);
+            ShowStatusBarProgress(0, false);
             _backupRunning = false;
             _runCts.Dispose();
             _runCts = null;
@@ -1628,7 +1637,7 @@ public sealed partial class MainWindow : Window
 
     private void SetFileBusy(bool busy)
     {
-        SetNavBusy(NavFile, NavFileRing, busy);
+        SetNavBusy(0, busy);
         if (busy)
         {
             // Enable Stop and hand it focus before the launchers grey out;
@@ -1807,50 +1816,113 @@ public sealed partial class MainWindow : Window
                        : b.ToString("0.#", CultureInfo.CurrentCulture)) + " " + units[u];
     }
 
-    // Advances only the backup bar's value (file + status-bar mirror), leaving the
-    // max and the "Backing up: ... (n of N)" label untouched; used for the frequent
-    // within-folder byte updates so they neither rewrite the label nor reset the max.
-    private void SetFileProgressValue(double val)
+    // Per-page progress model. The status bar's right-hand area shows only the
+    // FOCUSED page's job (repainted on a page switch, like the left-hand status), and
+    // each page's nav ring shows that page's own job - a filling determinate arc once
+    // a real percentage is known, spinning while a phase has none. Index by the
+    // _activePage convention: 0 File Backup, 1 App Management, 2 System Image. The nav
+    // ring is what keeps a job on an unfocused page discoverable; the bar no longer
+    // mirrors it, so the two surfaces don't duplicate each other.
+    private sealed class PageProgress
     {
-        DispatcherQueue.TryEnqueue(() =>
+        public bool Running;               // a job is live on this page (drives the ring)
+        public bool Indeterminate = true;  // phase has no measurable percent -> spin
+        public double Max = 1;
+        public double Value;
+        public string Text = "";           // current progress line, or the lingering outcome
+        public bool AreaVisible;           // status-bar right area shown (running or outcome)
+        public bool BarVisible;            // the moving bar shown (vs outcome text only)
+    }
+    private readonly PageProgress[] _pageProg = { new(), new(), new() };
+
+    private ProgressRing NavRingFor(int page) => page == 1 ? NavAppsRing : page == 2 ? NavImageRing : NavFileRing;
+    private NavigationViewItem NavItemFor(int page) => page == 1 ? NavApps : page == 2 ? NavImage : NavFile;
+    private int PageOfBar(ProgressBar bar) => bar == AppProgress ? 1 : bar == ImageProgress ? 2 : 0;
+
+    // Mutate one page's snapshot on the UI thread, then render it. Callers may be on
+    // a background thread (script output, worker tasks), so the marshalling lives
+    // here rather than in each call site.
+    private void Progress(int page, Action<PageProgress> mutate)
+        => DispatcherQueue.TryEnqueue(() => { mutate(_pageProg[page]); ApplyPageProgress(page); });
+
+    // Render a page's snapshot to its nav ring (always) and, when it is the focused
+    // page, to the shared status-bar right area. UI thread only.
+    private void ApplyPageProgress(int page)
+    {
+        var p = _pageProg[page];
+        var ring = NavRingFor(page);
+        ring.Visibility = p.Running ? Visibility.Visible : Visibility.Collapsed;
+        ring.IsActive = p.Running;
+        ring.IsIndeterminate = p.Indeterminate;
+        if (!p.Indeterminate)
         {
-            FileProgress.Value = val;
-            StatusBarProgress.Value = val;
-        });
+            if (p.Max > 0) ring.Maximum = p.Max;
+            ring.Value = p.Value;
+        }
+        // "running" rides on HelpText (read after the page name on focus) only while
+        // a job is live; cleared when done. Just "running", not "<page> running", or
+        // a screen reader would read the page name twice.
+        AutomationProperties.SetHelpText(NavItemFor(page), p.Running ? "running" : "");
+        if (page == _activePage) RenderStatusBar(p);
     }
 
+    // Paint the shared status-bar progress controls from a snapshot. Called by
+    // ApplyPageProgress for the focused page and by UpdateStatusBar on a page switch.
+    private void RenderStatusBar(PageProgress p)
+    {
+        StatusBarProgressArea.Visibility = p.AreaVisible ? Visibility.Visible : Visibility.Collapsed;
+        StatusBarProgress.Visibility = (p.AreaVisible && p.BarVisible) ? Visibility.Visible : Visibility.Collapsed;
+        StatusBarProgress.IsIndeterminate = p.Indeterminate;
+        if (p.Max > 0) StatusBarProgress.Maximum = p.Max;
+        StatusBarProgress.Value = p.Value;
+        StatusBarProgressText.Text = p.Text;
+    }
+
+    // Advances only the backup bar's value (in-page bar + the page's snapshot),
+    // leaving the max and the "Backing up: ... (n of N)" label untouched; used for
+    // the frequent within-folder byte updates so they neither rewrite the label nor
+    // reset the max. Visibility is owned by ShowStatusBarProgress, not touched here.
+    private void SetFileProgressValue(double val)
+    {
+        DispatcherQueue.TryEnqueue(() => FileProgress.Value = val);
+        Progress(0, p => p.Value = val);
+    }
+
+    // Determinate update for a page's bar: the in-page bar/label plus the page's
+    // snapshot (which feeds the nav ring and, when focused, the status bar).
+    // Visibility stays with ShowStatusBarProgress so a determinate outcome update
+    // after a run cannot re-show a bar that was just hidden.
     private void SetProgress(ProgressBar bar, TextBlock lbl, double max, double val, string text)
     {
         if (bar == null) return;
+        int page = PageOfBar(bar);
         DispatcherQueue.TryEnqueue(() =>
         {
             if (max > 0) bar.Maximum = max;
             bar.Value = val;
             if (lbl != null) lbl.Text = text;
-            // Mirror into the status bar so the running job stays visible when
-            // the in-tab progress area is scrolled away or on the other tab.
-            // Deliberately not a live region: progress text is not announced
-            // today and a per-item announcement stream would be noisy.
-            if (max > 0) StatusBarProgress.Maximum = max;
-            StatusBarProgress.Value = val;
-            StatusBarProgressText.Text = text;
+        });
+        Progress(page, p =>
+        {
+            p.Indeterminate = false;
+            if (max > 0) p.Max = max;
+            p.Value = val;
+            p.Text = text;
         });
     }
 
-    // The bar's progress area shows live progress while a job runs; when it ends
-    // only the progress bar hides, and the area keeps the final outcome (summary /
-    // cancelled / done counts) until the next job, so the read-status-bar hotkey
-    // reports how the last run ended from anywhere. The area fully collapses only
-    // when there's no outcome to show (before any job, or after a launch failure).
-    private void ShowStatusBarProgress(bool show)
+    // The status-bar progress area shows live progress while a page's job runs; when
+    // it ends only the bar hides, and the area keeps the final outcome (summary /
+    // cancelled / done counts) until that page's next job, so the read-status-bar
+    // hotkey reports how the last run ended while the page is focused. The area fully
+    // collapses only when there's no outcome to show (before any job, or after a
+    // launch failure).
+    private void ShowStatusBarProgress(int page, bool show)
     {
-        DispatcherQueue.TryEnqueue(() =>
+        Progress(page, p =>
         {
-            StatusBarProgress.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            if (show)
-                StatusBarProgressArea.Visibility = Visibility.Visible;
-            else if (string.IsNullOrEmpty(StatusBarProgressText.Text))
-                StatusBarProgressArea.Visibility = Visibility.Collapsed;
+            if (show) { p.AreaVisible = true; p.BarVisible = true; }
+            else { p.BarVisible = false; p.AreaVisible = !string.IsNullOrEmpty(p.Text); }
         });
     }
 
@@ -2237,7 +2309,16 @@ public sealed partial class MainWindow : Window
 
         TxtImageOutput.Text = "";
         AppendOut(TxtImageOutput, "> Creating system image to " + _cfg.ImageTarget + "\r\n");
-        _imageLogPos = 0;
+        // Tail only THIS run's lines. The previous run's log is still on disk until
+        // the elevated script truncates it (its first redirect is `>`), and that does
+        // not happen until AFTER the UAC prompt is approved - so starting at 0 lets
+        // the first polls re-read the prior run's "completed successfully" lines (plus
+        // its summary's repeats), which inflate the volume tally so the bar jumps to
+        // 100% at once and the old run is echoed into the output. Start at the current
+        // end; when the script truncates, the file shrinks below this offset and
+        // PumpImageLog's shrink guard rewinds to 0 to read the new run fresh.
+        try { _imageLogPos = File.Exists(GuardPaths.SystemImageLogPath) ? new FileInfo(GuardPaths.SystemImageLogPath).Length : 0; }
+        catch { _imageLogPos = 0; }
         _imageTotalVols = 0;
         _imageDoneVols = 0;
         _imageOverall = 0;
@@ -2246,7 +2327,7 @@ public sealed partial class MainWindow : Window
         // first stretch taking a VSS snapshot with no percentage, and a determinate
         // 0% there reads as stalled.
         SetImageProgressIndeterminate("Starting system image...");
-        ShowStatusBarProgress(true);
+        ShowStatusBarProgress(2, true);
         _imageRunning = true;
         SetImageBusy(true);
 
@@ -2270,7 +2351,7 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { err = ex.Message; }
         finally
         {
-            ShowStatusBarProgress(false);
+            ShowStatusBarProgress(2, false);
             _imageRunning = false;
             SetImageBusy(false);
         }
@@ -2388,10 +2469,11 @@ public sealed partial class MainWindow : Window
             ImageProgress.IsIndeterminate = false;
             ImageProgress.Maximum = 100; ImageProgress.Value = pct;
             ImageProgressLabel.Text = text;
-            StatusBarProgress.IsIndeterminate = false;
-            StatusBarProgress.Maximum = 100; StatusBarProgress.Value = pct;
-            StatusBarProgressText.Text = text;
         });
+        // Visibility stays with ShowStatusBarProgress: this also paints the post-run
+        // outcome (100% / stopped / failed) after the bar has been hidden, and must
+        // not re-show it.
+        Progress(2, p => { p.Indeterminate = false; p.Max = 100; p.Value = pct; p.Text = text; });
     }
 
     private void SetImageProgressIndeterminate(string text)
@@ -2400,9 +2482,8 @@ public sealed partial class MainWindow : Window
         {
             ImageProgress.IsIndeterminate = true;
             ImageProgressLabel.Text = text;
-            StatusBarProgress.IsIndeterminate = true;
-            StatusBarProgressText.Text = text;
         });
+        Progress(2, p => { p.Indeterminate = true; p.Text = text; });
     }
 
     // Mirror of SetFileBusy: enable Stop and hand it focus, grey the launchers, so
@@ -2410,7 +2491,7 @@ public sealed partial class MainWindow : Window
     // to the launcher when it ends. (See SetFileBusy for the focus reasoning.)
     private void SetImageBusy(bool busy)
     {
-        SetNavBusy(NavImage, NavImageRing, busy);
+        SetNavBusy(2, busy);
         if (busy)
         {
             BtnStopImage.IsEnabled = true;

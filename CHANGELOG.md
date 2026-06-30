@@ -9,11 +9,13 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 ## [Unreleased]
 
 ### Added
-- A small spinner now appears on a page's entry in the left navigation while that
-  page has a job running (a backup, a system image, or an app export/reinstall), so
-  you can tell at a glance which page is busy even while viewing another page. It
-  clears when the job finishes. Screen readers announce the page as "running" when
-  focused, and the existing completion announcement is unchanged.
+- A small progress ring now appears on a page's entry in the left navigation while
+  that page has a job running (a backup, a system image, or an app export/reinstall),
+  so you can tell at a glance which page is busy even while viewing another page. The
+  ring fills to show how far along the job is once a percentage is known, and spins
+  while a step has no measurable progress. It clears when the job finishes. Screen
+  readers announce the page as "running" when focused, and the existing completion
+  announcement is unchanged.
 - New System Image page (second in the navigation) creates full bare-metal images
   of the whole PC using the built-in Windows `wbadmin` tool, so a machine can be
   recovered after a disk failure. Images go to a local or external disk (which
@@ -55,6 +57,10 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   only; scheduled and unattended runs keep their compact log.
 
 ### Changed
+- The status bar's progress area (its right-hand side) now follows the page you are
+  viewing: it shows the current or most recent job of the focused page and repaints
+  when you switch pages, instead of always showing the most recent job from any page.
+  A job running on another page stays visible through that page's navigation ring.
 - The Stop button on every page now uses the same Alt+T access key (Stop Backup and
   Stop Reinstall were Alt+C), so stopping a running job is the same keystroke
   whichever page you are on.
@@ -116,6 +122,11 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   saved" so each page names which settings it means.
 
 ### Fixed
+- Creating a system image no longer jumps the progress to 100% almost immediately
+  (and no longer shows the previous run's log above the current one). GUARD had
+  re-read the previous run's log while waiting for the Administrator prompt, whose
+  per-volume completion lines made the bar look finished before the new image had
+  really started; it now tails only the current run.
 - Screen readers reading the progress line under "Output details" (on File Backup,
   System Image, and App Management) with the review cursor now read the current
   step, e.g. "Reinstalling 3 of 10", instead of a fixed label such as "Reinstall
