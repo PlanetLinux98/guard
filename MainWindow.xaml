@@ -64,7 +64,7 @@
              than dropping to the hidden "minimal" mode in range.
 
              The earlier gap-on-left/clip-on-right glitch on the Expanded<->Compact
-             transition came from the old Stretch+MaxWidth content centering colliding
+             transition came from the old Stretch+MaxWidth content centring colliding
              with the inset recompute (and from hiding the toggle while still allowing
              collapse). With content now filling the width responsively and the toggle
              present, the transition is clean both ways. -->

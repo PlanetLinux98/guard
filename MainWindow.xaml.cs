@@ -416,7 +416,7 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    // Status-dot colors: green = saved and healthy, amber = needs attention
+    // Status-dot colours: green = saved and healthy, amber = needs attention
     // (unsaved changes, nothing saved yet, or low destination space).
     private static readonly Color StatusGreen = Color.FromArgb(0xFF, 0x3F, 0xB9, 0x50);
     private static readonly Color StatusAmber = Color.FromArgb(0xFF, 0xD2, 0x99, 0x22);
