@@ -70,9 +70,11 @@
              present, the transition is clean both ways. -->
             <NavigationView.MenuItems>
                 <!-- Each page's Content hosts its label plus a small ProgressRing
-                     (SetNavBusy) so a running job on the page stays visible (and
-                     screen-reader discoverable) from any page; the global status-bar
-                     progress shows the bar but not which page owns it. A
+                     (ApplyPageProgress) so a running job on the page stays visible (and
+                     screen-reader discoverable) from any page: the ring fills as a
+                     determinate arc once a percentage is known and spins while a phase
+                     has none. The status-bar progress now tracks only the focused page,
+                     so the ring is what surfaces a job owned by another page. A
                      NavigationViewItem only auto-derives its UIA name from a *string*
                      Content; once Content is a panel that derivation is lost and the
                      item reads nameless, so each carries an explicit
@@ -858,10 +860,11 @@
             </Grid>
         </NavigationView>
 
-        <!-- Status bar. Shows the active page's status (settings state on File
-             Backup, scan/import summary on App Management); the right-hand
-             progress area mirrors a running job so it stays visible even when
-             the in-page output is collapsed or on the other page.
+        <!-- Status bar. Shows the FOCUSED page's status (settings state on File
+             Backup, scan/import summary on App Management) on the left and that
+             page's job progress on the right; both repaint on a page switch, so the
+             bar always reflects the page you are on. A job running on an unfocused
+             page stays visible through its nav ring instead.
              StatusBarText is the single live region for status announcements,
              and the bar is the only home of the inventory scan/import summary,
              so each change is announced exactly once. -->
