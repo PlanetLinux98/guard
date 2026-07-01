@@ -50,7 +50,7 @@ public static class BackupScript
         sb.AppendLine("REM                              (used by the on-connect scheduled task)");
         sb.AppendLine("REM ===========================================================================");
         sb.AppendLine();
-        sb.AppendLine("set \"DEST=" + cfg.Dest + "\"");
+        sb.AppendLine("set \"DEST=" + DestValue(cfg.Dest) + "\"");
         if (cfg.Versioned)
             sb.AppendLine("set \"KEEP=" + keep + "\"");
         sb.AppendLine("set \"LOGDIR=%~dp0Logs\"");
@@ -104,14 +104,16 @@ public static class BackupScript
         }
         sb.AppendLine(">\"%LOG%\"  echo ===========================================================");
         sb.AppendLine(">>\"%LOG%\" echo  Backup     %date% %time%");
-        sb.AppendLine(">>\"%LOG%\" echo  Destination: %DEST%");
+        // %DEST% is quoted wherever echo re-expands it: unquoted, a & < > | or ^
+        // in the path would be parsed as a cmd operator mid-message.
+        sb.AppendLine(">>\"%LOG%\" echo  Destination: \"%DEST%\"");
         if (cfg.Versioned)
             sb.AppendLine(">>\"%LOG%\" echo  Version folder: %STAMP%  (keeping the newest %KEEP%)");
         sb.AppendLine("if defined DRY >>\"%LOG%\" echo  *** PREVIEW MODE - no changes made ***");
         sb.AppendLine(">>\"%LOG%\" echo ===========================================================");
         sb.AppendLine();
         sb.AppendLine("echo.");
-        sb.AppendLine("echo Backup    destination: %DEST%");
+        sb.AppendLine("echo Backup    destination: \"%DEST%\"");
         if (cfg.Versioned)
             sb.AppendLine("echo Version folder: %STAMP%  (keeping the newest %KEEP%)");
         sb.AppendLine("if defined DRY echo *** PREVIEW MODE - nothing will be copied or deleted ***");
@@ -119,8 +121,8 @@ public static class BackupScript
         sb.AppendLine("echo.");
         sb.AppendLine();
         sb.AppendLine("if not exist \"%DEST%\\\" (");
-        sb.AppendLine("   echo ERROR: destination not reachable at %DEST%  - aborting.");
-        sb.AppendLine("   >>\"%LOG%\" echo ERROR: destination not reachable at %DEST% - aborting.");
+        sb.AppendLine("   echo ERROR: destination not reachable at \"%DEST%\"  - aborting.");
+        sb.AppendLine("   >>\"%LOG%\" echo ERROR: destination not reachable at \"%DEST%\" - aborting.");
         sb.AppendLine("   goto :end");
         sb.AppendLine(")");
         sb.AppendLine();
@@ -134,8 +136,13 @@ public static class BackupScript
         for (int i = 0; i < inc.Count; i++)
         {
             var f = inc[i];
+            // A stray leading/trailing backslash on the subfolder (or an empty
+            // legacy one) must not leave the quoted destination ending in \",
+            // which robocopy's parser reads as an escaped quote; "." keeps an
+            // empty subfolder meaning "the destination root itself".
+            string sub = f.SubFolder.Trim().Trim('\\');
             sb.AppendLine("if defined GUARD_UI echo @@PROGRESS@@ " + (i + 1) + " " + inc.Count + " " + MarkerSafe(f.SubFolder));
-            sb.AppendLine("call :backup \"" + f.Source + "\" \"" + runDest + "\\" + f.SubFolder + "\"");
+            sb.AppendLine("call :backup \"" + SourceArg(f.Source) + "\" \"" + runDest + "\\" + (sub.Length > 0 ? sub : ".") + "\"");
         }
         sb.AppendLine("if defined GUARD_UI echo @@PROGRESS@@ DONE");
         sb.AppendLine();
@@ -164,18 +171,18 @@ public static class BackupScript
         sb.AppendLine();
         sb.AppendLine(":backup");
         sb.AppendLine("if not exist \"%~1\" (");
-        sb.AppendLine("   echo SKIP  source not found: %~1");
+        sb.AppendLine("   echo SKIP  source not found: \"%~1\"");
         sb.AppendLine("   >>\"%LOG%\" echo.");
-        sb.AppendLine("   >>\"%LOG%\" echo SKIP source not found: %~1");
+        sb.AppendLine("   >>\"%LOG%\" echo SKIP source not found: \"%~1\"");
         sb.AppendLine("   goto :eof");
         sb.AppendLine(")");
-        sb.AppendLine("echo Backing up: %~1");
+        sb.AppendLine("echo Backing up: \"%~1\"");
         sb.AppendLine(">>\"%LOG%\" echo.");
-        sb.AppendLine(">>\"%LOG%\" echo --- %~1  =^> %~2");
+        sb.AppendLine(">>\"%LOG%\" echo --- \"%~1\"  =^> \"%~2\"");
         sb.AppendLine("robocopy \"%~1\" \"%~2\" %OPTS% %DRY% /LOG+:\"%LOG%\" /TEE");
         sb.AppendLine("if errorlevel 8 (");
         sb.AppendLine("   set \"HADERR=1\"");
-        sb.AppendLine("   echo    !! errors copying %~1 - see the log");
+        sb.AppendLine("   echo    !! errors copying \"%~1\" - see the log");
         sb.AppendLine(")");
         sb.AppendLine("goto :eof");
         sb.AppendLine();
@@ -210,10 +217,37 @@ public static class BackupScript
             sb.AppendLine();
         }
         sb.AppendLine(":end");
-        sb.AppendLine("endlocal");
         sb.AppendLine("echo.");
+        // The pause must run BEFORE endlocal: PAUSEATEND is set inside the
+        // setlocal scope, so endlocal discards it and a pause placed after
+        // never fires - a double-clicked run's window then closes instantly.
         sb.AppendLine("if defined PAUSEATEND pause");
+        sb.AppendLine("endlocal");
         File.WriteAllText(GuardPaths.ScriptPath, sb.ToString());
+    }
+
+    // A quoted path argument must never end in a backslash: robocopy parses \"
+    // as an escaped quote and mangles every argument after it. A bare or
+    // slashed drive root becomes "X:\." ("X:" alone is drive-relative and
+    // would resolve against that drive's current directory).
+    private static string SourceArg(string source)
+    {
+        string s = (source ?? "").Trim();
+        if (s.Length == 2 && s[1] == ':') return s + "\\.";
+        if (!s.EndsWith("\\")) return s;
+        string t = s.TrimEnd('\\');
+        return t.Length == 2 && t[1] == ':' ? t + "\\." : t;
+    }
+
+    // DEST composes as %DEST%\<sub>, so it must not end in a backslash - except
+    // a drive root, which keeps "X:\" ("X:" alone is drive-relative; the
+    // "E:\\Sub" the composition then yields is harmless to robocopy and cmd).
+    private static string DestValue(string dest)
+    {
+        string d = (dest ?? "").Trim();
+        if (d.Length == 2 && d[1] == ':') return d + "\\";
+        string t = d.TrimEnd('\\');
+        return t.Length == 2 && t[1] == ':' ? t + "\\" : t;
     }
 
     // Strip characters that would break a batch `echo` so a subfolder name is

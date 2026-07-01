@@ -10,8 +10,12 @@ public static class GuardPaths
     // Resolve from the real exe, not AppContext.BaseDirectory: the single-file
     // build self-extracts native libs, pointing BaseDirectory at a temp cache.
     // ProcessPath is the apphost exe, so working files land next to it (portable).
+    // No TrimEnd: GetDirectoryName keeps a trailing separator only for a drive
+    // root, and trimming that yields "E:", a drive-RELATIVE path that resolves
+    // against E:'s current directory - so an exe run from a USB stick's root
+    // would scatter its working files.
     public static readonly string BaseDir =
-        Path.GetDirectoryName(Environment.ProcessPath)!.TrimEnd('\\');
+        Path.GetDirectoryName(Environment.ProcessPath)!;
     public static string IniPath => Path.Combine(BaseDir, "backup-settings.ini");
     public static string ScriptPath => Path.Combine(BaseDir, "guard-backup.cmd");
     public static string LogPath => Path.Combine(BaseDir, @"Logs\backup_last.log");

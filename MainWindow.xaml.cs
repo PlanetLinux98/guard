@@ -583,6 +583,14 @@ public sealed partial class MainWindow : Window
         foreach (var (box, day) in _dayBoxes)
             if (box.IsChecked == true) _cfg.ScheduleDays.Add(day);
         _cfg.ScheduleTime = FormatScheduleTime(TimeSchedule.SelectedTime, _cfg.ScheduleTime);
+        HarvestAppUi();
+    }
+
+    // Split out so App Management flows (export) can harvest their own fields
+    // without also pulling the File Backup page's unsaved edits into the live
+    // config (which a later ini write would silently persist).
+    private void HarvestAppUi()
+    {
         _cfg.AppListDest = (TxtAppDest.Text ?? "").Trim();
         _cfg.ExportAppSettings = ChkExportSettings.IsChecked == true;
     }
@@ -594,6 +602,14 @@ public sealed partial class MainWindow : Window
         if (string.IsNullOrEmpty(_cfg.Dest))
         {
             await ShowMessageAsync("GUARD", "Enter a backup destination first.\n\nType a folder path next to \"Backup destination\", or use the Browse button to pick one.");
+            return false;
+        }
+        // A quote would end the generated script's set "DEST=..." early and
+        // corrupt every later line that expands it; nothing else needs blocking
+        // (the script quotes DEST wherever it is used).
+        if (_cfg.Dest.Contains('"'))
+        {
+            await ShowMessageAsync("GUARD", "The backup destination cannot contain quote (\") characters.");
             return false;
         }
         if (_cfg.ScheduleEnabled && _cfg.ScheduleDays.Count == 0)
@@ -623,7 +639,9 @@ public sealed partial class MainWindow : Window
         _saving = true;
         try
         {
-            SettingsStore.Save(_cfg);
+            // Section-scoped: never commits the image page's unsaved edits
+            // (see SettingsStore.SaveFileBackup).
+            SettingsStore.SaveFileBackup(_cfg);
             BackupScript.Write(_cfg);
             _dirty = false;
             RefreshScriptStatus();
@@ -998,7 +1016,10 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "An export is already running. Wait for it to finish.");
             return;
         }
-        HarvestUi();
+        // Only this page's fields: HarvestUi would pull the File Backup page's
+        // unsaved edits into the live config, and the save below would then
+        // persist edits the user never saved.
+        HarvestAppUi();
         if (string.IsNullOrEmpty(_cfg.AppListDest))
         {
             await ShowMessageAsync("GUARD", "Enter an app list destination first.\n\nType a folder path next to \"List destination\", or use the Browse button to pick one.");
@@ -1141,7 +1162,7 @@ public sealed partial class MainWindow : Window
                 }
             }
 
-            SettingsStore.Save(_cfg);
+            SettingsStore.SaveAppList(_cfg);
             // Outcome goes in the progress slot (like a backup/reinstall outcome),
             // not the main line: it is not announced here (the dialog below reads
             // it), and the main line keeps the inventory status so reading the bar
@@ -1210,7 +1231,6 @@ public sealed partial class MainWindow : Window
 
     private async void OnImportApps(object sender, RoutedEventArgs e)
     {
-        HarvestUi();
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
         picker.FileTypeFilter.Add(".json");
@@ -1494,7 +1514,19 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "A backup is already running. Wait for it to finish, or press Stop Backup to cancel it.");
             return;
         }
-        if (!await SaveAllAsync()) return;
+        // A clean config skips the save: the script already matches the saved
+        // settings, and re-saving would re-apply the scheduled tasks (a
+        // multi-second PowerShell call) for nothing. The unreachable-sources
+        // note is still refreshed, since a drive can come or go between runs.
+        if (_dirty || !File.Exists(GuardPaths.ScriptPath))
+        {
+            if (!await SaveAllAsync()) return;
+        }
+        else
+        {
+            _missingSources = await System.Threading.Tasks.Task.Run(
+                () => SaveValidation.UnreachableSources(_cfg.Folders));
+        }
         string script = GuardPaths.ScriptPath;
         if (!File.Exists(script))
         {
@@ -2209,6 +2241,13 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "Enter an image destination first.\n\nType a drive (like E:\\) or a network share path, or use Browse to pick one.");
             return false;
         }
+        // Same reasoning as the backup destination: a quote would corrupt the
+        // generated script's set "TARGET=..." line.
+        if (_cfg.ImageTarget.Contains('"'))
+        {
+            await ShowMessageAsync("GUARD", "The image destination cannot contain quote (\") characters.");
+            return false;
+        }
         if (_cfg.ImageTargetKind == "LocalDisk" && SystemImageScript.IsSystemDrive(_cfg.ImageTarget))
         {
             await ShowMessageAsync("GUARD", "The image destination cannot be on the same drive as Windows.\n\nA system image includes the Windows drive, so it must be written to a separate disk or a network share. Choose another destination.");
@@ -2218,7 +2257,9 @@ public sealed partial class MainWindow : Window
         _imageSaving = true;
         try
         {
-            SettingsStore.Save(_cfg);
+            // Section-scoped: never commits the File Backup page's unsaved
+            // edits (see SettingsStore.SaveSystemImage).
+            SettingsStore.SaveSystemImage(_cfg);
             SystemImageScript.Write(_cfg);
             _imageDirty = false;
             RefreshImageStatus();
@@ -2801,8 +2842,13 @@ public sealed partial class MainWindow : Window
 
         if (busy)
         {
-            string what = _imageRunning ? "A system image is still running."
-                : _reinstalling ? "An app reinstall is still running." : "A backup is still running.";
+            // The elevated image cannot be cancelled from this un-elevated
+            // process (only wbadmin stop job can), so be honest that it
+            // continues; the backup/reinstall trees are killed below.
+            string what = _imageRunning
+                ? "A system image is still running. It runs with Administrator rights, so it will keep running in the background after GUARD closes."
+                : _reinstalling ? "An app reinstall is still running. Closing GUARD stops it."
+                : "A backup is still running. Closing GUARD stops it.";
             if (!await ShowConfirmAsync("GUARD", what + " Close anyway?")) return;
             // Cancel both jobs so no cmd/robocopy/winget tree outlives the
             // window; the kill registrations run synchronously inside Cancel.

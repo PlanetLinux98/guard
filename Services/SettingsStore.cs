@@ -72,7 +72,10 @@ public static class SettingsStore
                         cfg.VersionsToKeep = Math.Clamp(keep, 1, 365);
                     break;
                 case "Schedule.Enabled": cfg.ScheduleEnabled = val == "1"; break;
-                case "Schedule.Time": cfg.ScheduleTime = val; break;
+                // Normalize like the VersionsToKeep clamp: a hand-edited time
+                // would otherwise be spliced verbatim into the PowerShell
+                // Register-ScheduledTask command (see ScheduledTasks.TriggerArgs).
+                case "Schedule.Time": cfg.ScheduleTime = ScheduledTasks.NormalizeTime(val, "02:00"); break;
                 // Only override the all-seven default when the key is actually
                 // present; a legacy ini without it stays daily.
                 case "Schedule.Days": cfg.ScheduleDays = ParseDays(val); break;
@@ -85,7 +88,7 @@ public static class SettingsStore
                     break;
                 case "SystemImage.ScheduleEnabled": cfg.ImageScheduleEnabled = val == "1"; break;
                 case "SystemImage.Cadence": cfg.ImageCadence = ParseCadence(val); break;
-                case "SystemImage.Time": cfg.ImageScheduleTime = val; break;
+                case "SystemImage.Time": cfg.ImageScheduleTime = ScheduledTasks.NormalizeTime(val, "03:00"); break;
                 case "SystemImage.WeeklyDay":
                     if (Enum.TryParse<DayOfWeek>(val.Trim(), ignoreCase: true, out var iwd))
                         cfg.ImageWeeklyDay = iwd;
@@ -159,6 +162,54 @@ public static class SettingsStore
                 if (p.Id == t) { ids.Add(t); break; }
         }
         return ids;
+    }
+
+    // Section-scoped saves. The live Settings can carry another page's
+    // harvested-but-unsaved edits (a failed validation leaves them behind, and
+    // the folder/exclude lists are two-way bound so they mutate immediately), so
+    // a flow that persists the whole object would silently commit edits the user
+    // never saved. Each save therefore re-reads the on-disk settings and
+    // overlays only the fields it owns.
+    public static void SaveFileBackup(Settings live)
+    {
+        var s = Load();
+        s.Dest = live.Dest;
+        s.Mode = live.Mode;
+        s.ExcludePresets = live.ExcludePresets;
+        s.Excludes = live.Excludes;
+        s.Versioned = live.Versioned;
+        s.VersionsToKeep = live.VersionsToKeep;
+        s.ScheduleEnabled = live.ScheduleEnabled;
+        s.ScheduleTime = live.ScheduleTime;
+        s.ScheduleDays = live.ScheduleDays;
+        s.TriggerOnConnect = live.TriggerOnConnect;
+        s.Folders = live.Folders;
+        // The app-list fields ride along: they are harvested fresh from the UI
+        // (no unsaved state exists for them, the App page has no dirty tracking).
+        s.AppListDest = live.AppListDest;
+        s.ExportAppSettings = live.ExportAppSettings;
+        Save(s);
+    }
+
+    public static void SaveSystemImage(Settings live)
+    {
+        var s = Load();
+        s.ImageTarget = live.ImageTarget;
+        s.ImageTargetKind = live.ImageTargetKind;
+        s.ImageScheduleEnabled = live.ImageScheduleEnabled;
+        s.ImageCadence = live.ImageCadence;
+        s.ImageScheduleTime = live.ImageScheduleTime;
+        s.ImageWeeklyDay = live.ImageWeeklyDay;
+        s.ImageMonthlyDay = live.ImageMonthlyDay;
+        Save(s);
+    }
+
+    public static void SaveAppList(Settings live)
+    {
+        var s = Load();
+        s.AppListDest = live.AppListDest;
+        s.ExportAppSettings = live.ExportAppSettings;
+        Save(s);
     }
 
     public static void Save(Settings cfg)

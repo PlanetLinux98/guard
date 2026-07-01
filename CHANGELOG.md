@@ -120,8 +120,46 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - The File Backup status line now reads "File backup settings saved" rather than
   the bare "Settings saved", matching the System Image page's "System image settings
   saved" so each page names which settings it means.
+- Run Now and Preview no longer re-save the settings when nothing has changed, so
+  a run starts several seconds sooner (re-saving re-registered the scheduled tasks
+  through PowerShell every time, even when they were already correct). The
+  unreachable-sources note is still refreshed before each run.
+- Closing GUARD while a job is running now says what closing means for that job:
+  a backup or app reinstall is stopped, while a system image (which runs with
+  Administrator rights) keeps running in the background.
 
 ### Fixed
+- The generated guard-backup.cmd keeps its window open again after a double-clicked
+  run, as its own usage notes promise. The "press any key" pause ran after the
+  script's endlocal, which had already discarded the flag that requests it, so the
+  window closed the instant the backup finished. Scheduled, on-connect and in-app
+  runs are unaffected (they never pause by design).
+- Exporting an app list, or saving System Image settings, no longer silently
+  commits the other pages' unsaved edits to backup-settings.ini. Each save now
+  writes only its own page's settings, so an edited-but-unsaved backup destination
+  can no longer show up as "saved" on the next launch while the generated script
+  still targets the old one.
+- A source folder ending in a backslash (like D:\Data\ or a whole drive D:\) no
+  longer breaks the generated robocopy command. Inside a quoted argument a trailing
+  backslash reads as an escaped quote and mangles everything after it; sources are
+  now normalized when the script is written (a drive root becomes D:\.), and the
+  backup destination is normalized the same way.
+- The Add/Edit Folder dialog now rejects quote and pipe characters (a quote breaks
+  the generated script's quoting, a pipe silently truncates the entry in the
+  settings file), and rejects subfolder names with invalid filename characters or
+  ".." segments that would escape the destination root.
+- A destination or source path containing & or other cmd operator characters no
+  longer produces garbled "not recognized" lines in the backup output: the
+  generated script now quotes paths wherever echo re-expands them.
+- A hand-edited schedule time in backup-settings.ini is now normalized to HH:mm
+  when loaded (falling back to the default when unparseable), instead of being
+  passed verbatim into the PowerShell command that registers the scheduled task.
+- GUARD run from the root folder of a drive (such as a USB stick's root) now finds
+  its settings, script and logs correctly; the exe-folder path lost its trailing
+  separator there and became a drive-relative path.
+- The recovery media build now unmounts the ISO and logs the reason if it fails
+  unexpectedly partway (for example the USB drive being unplugged mid-build),
+  instead of leaving the ISO mounted and reporting a failure with no explanation.
 - Creating a system image no longer jumps the progress to 100% almost immediately
   (and no longer shows the previous run's log above the current one). GUARD had
   re-read the previous run's log while waiting for the Administrator prompt, whose

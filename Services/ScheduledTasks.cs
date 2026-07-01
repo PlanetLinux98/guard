@@ -157,12 +157,15 @@ public static class ScheduledTasks
         "<January/><February/><March/><April/><May/><June/>" +
         "<July/><August/><September/><October/><November/><December/>";
 
-    private static string NormalizeTime(string? t)
+    // Public: SettingsStore normalizes both schedule times at load with this,
+    // so a hand-edited ini value can never be spliced into a PowerShell command
+    // (TriggerArgs) or the task XML.
+    public static string NormalizeTime(string? t, string fallback = "03:00")
     {
         if (!string.IsNullOrWhiteSpace(t) && TimeSpan.TryParse(t.Trim(), out var ts)
             && ts >= TimeSpan.Zero && ts < TimeSpan.FromDays(1))
             return ts.ToString(@"hh\:mm");
-        return "03:00";
+        return fallback;
     }
 
     private static string XmlEscape(string s) =>
@@ -189,10 +192,13 @@ public static class ScheduledTasks
     // off), and -DaysOfWeek with no days is invalid, so we never emit one.
     private static string TriggerArgs(Settings cfg)
     {
+        // Normalized again defensively: the time is interpolated into a
+        // PowerShell command, so it must only ever be an HH:mm token.
+        string at = NormalizeTime(cfg.ScheduleTime, "02:00");
         var days = cfg.ScheduleDays.Distinct().ToList();
         if (days.Count == 0 || days.Count >= 7)
-            return "-Daily -At " + cfg.ScheduleTime;
-        return "-Weekly -DaysOfWeek " + string.Join(",", days) + " -At " + cfg.ScheduleTime;
+            return "-Daily -At " + at;
+        return "-Weekly -DaysOfWeek " + string.Join(",", days) + " -At " + at;
     }
 
     // "Run when the destination becomes available" detection. Options weighed:
