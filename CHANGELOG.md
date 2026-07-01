@@ -127,6 +127,11 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - Closing GUARD while a job is running now says what closing means for that job:
   a backup or app reinstall is stopped, while a system image (which runs with
   Administrator rights) keeps running in the background.
+- Internal code reorganization, no behaviour change: the main window's code-behind
+  is split into per-page files (File Backup, System Image, App Management),
+  superseded scheduled-task helpers that duplicated the batched save path were
+  removed, and small helpers previously duplicated across files (byte-size labels,
+  dialog access-key styles, visual-tree search) were consolidated.
 
 ### Fixed
 - The generated guard-backup.cmd keeps its window open again after a double-clicked

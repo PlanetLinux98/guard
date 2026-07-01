@@ -59,34 +59,6 @@ public static class ProcessRunner
         return p.ExitCode;
     }
 
-    // Run PowerShell, optionally returning a problem message (null on success).
-    public static string? RunPowerShell(string script)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("powershell.exe",
-                "-NoProfile -ExecutionPolicy Bypass -Command \"" + script.Replace("\"", "\\\"") + "\"")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            using var p = Process.Start(psi)!;
-            // Concurrent drain; see RunCapture for the deadlock reasoning.
-            var so = p.StandardOutput.ReadToEndAsync();
-            var se = p.StandardError.ReadToEndAsync();
-            p.WaitForExit();
-            so.GetAwaiter().GetResult();
-            string err = se.GetAwaiter().GetResult();
-            return p.ExitCode != 0 ? err : null;
-        }
-        catch (Exception ex)
-        {
-            return ex.Message;
-        }
-    }
-
     public static string RunPowerShellCapture(string script)
     {
         var psi = new ProcessStartInfo("powershell.exe",
