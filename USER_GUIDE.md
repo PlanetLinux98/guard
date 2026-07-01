@@ -242,12 +242,12 @@ run whether or not GUARD is open. The PC does need to be on at the scheduled tim
   skipped at run time). A dialog appears if there is a problem saving. If you
   close GUARD with changes you have not saved, it asks whether to save them
   first, with Save, Don't Save, and Cancel.
-- **Run Now** (Alt+N) saves your settings and runs the backup immediately, with
-  progress in the status bar and output box.
-- **Preview** (Alt+P) saves your settings and does a dry run: the output box
+- **Run Now** (Alt+N) saves any unsaved changes, then runs the backup
+  immediately, with progress in the status bar and output box.
+- **Preview** (Alt+P) likewise saves first, then does a dry run: the output box
   shows what the backup *would* copy or delete, but nothing changes. Always
   preview after switching to Mirror or changing exclusions.
-- **Stop Backup** (Alt+C) cancels a running backup (the whole script and robocopy
+- **Stop Backup** (Alt+T) cancels a running backup (the whole script and robocopy
   process tree is stopped). It is available only while a backup is running.
 - **Open Last Log** (Alt+L) opens the log of the most recent run
   (`Logs\backup_last.log`), including scheduled runs.
@@ -472,7 +472,7 @@ How the restore is kept safe:
 
 Other controls here:
 
-- **Stop Reinstall** (Alt+C) stops the reinstall loop after the current app;
+- **Stop Reinstall** (Alt+T) stops the reinstall loop after the current app;
   apps already installed stay installed. It is available only while a reinstall is
   running.
 - **Open Folder** (Alt+O) opens the list destination in File Explorer.
