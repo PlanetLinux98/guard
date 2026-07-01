@@ -64,11 +64,6 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - The Stop button on every page now uses the same Alt+T access key (Stop Backup and
   Stop Reinstall were Alt+C), so stopping a running job is the same keystroke
   whichever page you are on.
-- Stopping a system image now shows a "Stopping system image..." state right away
-  (the progress bar goes busy and the message is announced), instead of appearing
-  to do nothing for the few seconds it takes the elevated stop to take effect. The
-  bar holds that state until the image actually stops rather than briefly creeping
-  on as if it had resumed.
 - Reworked the main window from a two-tab Pivot to a left navigation pane
   (NavigationView) with File Backup and App Management pages and Help and About
   as footer items (Help keeps its F1 shortcut). When the window is made narrow
@@ -113,10 +108,6 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - Opening the last log (File Backup or System Image) when none exists yet now says
   "No log found yet. Run a backup first." instead of a bare "Not found:" followed by
   an internal file path.
-- The System Image Restore Instructions dialog's "Open User Manual" button moved
-  from the bottom of the scrolling text to the dialog's button row, so it is always
-  visible without scrolling to the end first. Opening the manual no longer closes
-  the dialog, so the instructions stay up while the manual opens alongside.
 - The File Backup status line now reads "File backup settings saved" rather than
   the bare "Settings saved", matching the System Image page's "System image settings
   saved" so each page names which settings it means.
@@ -162,26 +153,10 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - GUARD run from the root folder of a drive (such as a USB stick's root) now finds
   its settings, script and logs correctly; the exe-folder path lost its trailing
   separator there and became a drive-relative path.
-- The recovery media build now unmounts the ISO and logs the reason if it fails
-  unexpectedly partway (for example the USB drive being unplugged mid-build),
-  instead of leaving the ISO mounted and reporting a failure with no explanation.
-- Creating a system image no longer jumps the progress to 100% almost immediately
-  (and no longer shows the previous run's log above the current one). GUARD had
-  re-read the previous run's log while waiting for the Administrator prompt, whose
-  per-volume completion lines made the bar look finished before the new image had
-  really started; it now tails only the current run.
 - Screen readers reading the progress line under "Output details" (on File Backup,
   System Image, and App Management) with the review cursor now read the current
   step, e.g. "Reinstalling 3 of 10", instead of a fixed label such as "Reinstall
   progress". A static accessible name had been overriding the live text.
-- In the System Image Restore Instructions, the line giving the exact network path
-  to type into the recovery tool is now read by screen readers as the actual path,
-  instead of a fixed "Network path to enter when restoring" label that had hidden
-  it (the same static-name issue as the progress lines).
-- Opening Restore Instructions no longer hangs for a few seconds when the image
-  destination is a network share. The dialog now opens immediately and resolves the
-  server's IP address in the background, filling in the exact IP path to type once
-  it is known, instead of blocking on a slow or failing name lookup first.
 
 ## [0.4.1] - 2026-06-16
 
