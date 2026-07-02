@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Globalization;
 
 namespace GuardWui3.Models;
 
@@ -38,7 +37,7 @@ public sealed partial class AppSettingsRestoreCandidate : INotifyPropertyChanged
     // still reads where the data lands.
     public string DisplayPath => RootAnchor + "\\" + FolderName;
     public string MatchedAppsLabel => string.Join(", ", MatchedApps);
-    public string SizeLabel => FormatBytes(Bytes);
+    public string SizeLabel => SizeText.FormatBytes(Bytes);
     public string StatusLabel => TargetExists ? "Replaces existing" : "New";
 
     // Spoken name for the row's checkbox (the role announces checked state). The
@@ -50,15 +49,6 @@ public sealed partial class AppSettingsRestoreCandidate : INotifyPropertyChanged
             ? $"the target {TargetPath} already exists and will be replaced; your current copy is renamed aside first"
             : $"new, no existing folder at {TargetPath}") +
         $", restores {MatchedAppsLabel}";
-
-    private static string FormatBytes(long b)
-    {
-        const double K = 1024.0;
-        if (b >= 1024L * 1024 * 1024) return (b / (K * K * K)).ToString("0.#", CultureInfo.InvariantCulture) + " GB";
-        if (b >= 1024L * 1024) return (b / (K * K)).ToString("0.#", CultureInfo.InvariantCulture) + " MB";
-        if (b >= 1024L) return (b / K).ToString("0", CultureInfo.InvariantCulture) + " KB";
-        return b + " bytes";
-    }
 
     public override string ToString() => Caption;
 

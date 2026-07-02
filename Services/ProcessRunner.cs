@@ -21,10 +21,13 @@ public static class ProcessRunner
             StandardOutputEncoding = Encoding.UTF8
         };
         using var p = Process.Start(psi)!;
-        string o = p.StandardOutput.ReadToEnd();
-        p.StandardError.ReadToEnd();
+        // Drain both pipes concurrently: reading one to the end while the child
+        // blocks on the other pipe's full buffer deadlocks both sides.
+        var so = p.StandardOutput.ReadToEndAsync();
+        var se = p.StandardError.ReadToEndAsync();
         p.WaitForExit();
-        return o;
+        se.GetAwaiter().GetResult();
+        return so.GetAwaiter().GetResult();
     }
 
     // Runs `winget install` for one id, streaming combined output via onLine;
@@ -56,31 +59,6 @@ public static class ProcessRunner
         return p.ExitCode;
     }
 
-    // Run PowerShell, optionally returning a problem message (null on success).
-    public static string? RunPowerShell(string script)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("powershell.exe",
-                "-NoProfile -ExecutionPolicy Bypass -Command \"" + script.Replace("\"", "\\\"") + "\"")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            using var p = Process.Start(psi)!;
-            string err = p.StandardError.ReadToEnd();
-            p.StandardOutput.ReadToEnd();
-            p.WaitForExit();
-            return p.ExitCode != 0 ? err : null;
-        }
-        catch (Exception ex)
-        {
-            return ex.Message;
-        }
-    }
-
     public static string RunPowerShellCapture(string script)
     {
         var psi = new ProcessStartInfo("powershell.exe",
@@ -92,10 +70,12 @@ public static class ProcessRunner
             RedirectStandardError = true
         };
         using var p = Process.Start(psi)!;
-        string outp = p.StandardOutput.ReadToEnd();
-        p.StandardError.ReadToEnd();
+        // Concurrent drain; see RunCapture for the deadlock reasoning.
+        var so = p.StandardOutput.ReadToEndAsync();
+        var se = p.StandardError.ReadToEndAsync();
         p.WaitForExit();
-        return outp;
+        se.GetAwaiter().GetResult();
+        return so.GetAwaiter().GetResult();
     }
 
     // Run a PowerShell script ELEVATED (UAC prompt). Output can't cross the

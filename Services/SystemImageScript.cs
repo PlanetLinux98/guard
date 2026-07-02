@@ -44,7 +44,8 @@ public static class SystemImageScript
         sb.AppendLine();
         sb.AppendLine(">\"%LOG%\"  echo ===========================================================");
         sb.AppendLine(">>\"%LOG%\" echo  System image   %date% %time%");
-        sb.AppendLine(">>\"%LOG%\" echo  Target: %TARGET%");
+        // Quoted so a & or ^ in a share path is not parsed as a cmd operator.
+        sb.AppendLine(">>\"%LOG%\" echo  Target: \"%TARGET%\"");
         sb.AppendLine(">>\"%LOG%\" echo ===========================================================");
         sb.AppendLine(">>\"%LOG%\" echo.");
         sb.AppendLine();

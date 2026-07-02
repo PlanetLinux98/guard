@@ -91,6 +91,11 @@ public static class RecoveryMedia
         sb.AppendLine("function Log($m){ $m | Out-File -FilePath $log -Append -Encoding UTF8 }");
         sb.AppendLine("function Pct($n){ Log ('@@PCT@@ ' + $n) }");
         sb.AppendLine("function Stop-IfCancelled($iso){ if (Test-Path $cancel) { try { Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue | Out-Null } catch {}; Log 'CANCELLED'; exit 9 } }");
+        // Every anticipated failure below dismounts the ISO and logs a reason,
+        // but ErrorActionPreference=Stop makes any UNanticipated error (say the
+        // USB disk vanishing mid-script) terminating - without this trap that
+        // strands the mounted ISO and leaves the wizard a reasonless failure.
+        sb.AppendLine("trap { try { Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue | Out-Null } catch {}; Log ('ERROR: ' + $_); exit 1 }");
         sb.AppendLine("'' | Out-File -FilePath $log -Encoding UTF8");
         sb.AppendLine("Remove-Item $cancel -Force -ErrorAction SilentlyContinue");
         sb.AppendLine("Log ('Recovery media build  ' + (Get-Date))");

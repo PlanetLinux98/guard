@@ -19,13 +19,3 @@ public sealed class AppListFile
     [JsonPropertyName("machine")] public string? Machine { get; set; }
     [JsonPropertyName("apps")] public AppListItem[]? Apps { get; set; }
 }
-
-// Source-generated serialization: AOT- and trim-safe (no reflection).
-[JsonSourceGenerationOptions(WriteIndented = true)]
-[JsonSerializable(typeof(AppListFile))]
-[JsonSerializable(typeof(AppListItem))]
-[JsonSerializable(typeof(AppSettingsManifest))]
-[JsonSerializable(typeof(AppSettingsManifestEntry))]
-public partial class GuardJsonContext : JsonSerializerContext
-{
-}

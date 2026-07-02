@@ -8,7 +8,9 @@
     DefaultButton="Close">
 
     <StackPanel Width="380" Spacing="6">
-        <TextBlock Text="GUARD" FontSize="26" FontWeight="Bold" AutomationProperties.Name="GUARD" />
+        <!-- No AutomationProperties.Name: a TextBlock's accessible name is its
+             Text (the repo rule the release lint greps for). -->
+        <TextBlock Text="GUARD" FontSize="26" FontWeight="Bold" />
         <TextBlock x:Name="VersionText" Margin="0,0,0,8" />
         <TextBlock Text="A backup and app inventory utility for Windows." />
         <TextBlock Text="Created by PlanetLinux98." />

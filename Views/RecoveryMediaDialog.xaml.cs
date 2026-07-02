@@ -39,8 +39,8 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
         // Alt mnemonics on the dialog buttons. Back/Cancel are constant letters, so
         // a Style carries them; the primary changes (Next / Erase and Build) and is
         // restyled as the default button, so its key is set on the realized button.
-        SecondaryButtonStyle = MakeAccessKeyStyle("B");
-        CloseButtonStyle = MakeAccessKeyStyle("C");
+        SecondaryButtonStyle = UiHelpers.AccessKeyButtonStyle("B");
+        CloseButtonStyle = UiHelpers.AccessKeyButtonStyle("C");
         // A screen reader does not auto-read content that swaps inside an open
         // dialog (no focus move, no live region), so announce each step's text as
         // it appears. Opened fires the first one once the dialog is on screen.
@@ -48,32 +48,10 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
         ShowStep(0);
     }
 
-    private static Style MakeAccessKeyStyle(string key)
-    {
-        var style = new Style(typeof(Button))
-        {
-            BasedOn = (Style)Application.Current.Resources["DefaultButtonStyle"]
-        };
-        style.Setters.Add(new Setter(UIElement.AccessKeyProperty, key));
-        return style;
-    }
-
     private void ApplyPrimaryAccessKey()
     {
         string key = _step == 3 ? "E" : "N";   // Erase and Build / Next
-        if (FindDescendantByName(this, "PrimaryButton") is Button b) b.AccessKey = key;
-    }
-
-    private static FrameworkElement? FindDescendantByName(DependencyObject root, string name)
-    {
-        int count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
-        for (int i = 0; i < count; i++)
-        {
-            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
-            if (child is FrameworkElement fe && fe.Name == name) return fe;
-            if (FindDescendantByName(child, name) is { } found) return found;
-        }
-        return null;
+        if (UiHelpers.FindDescendantByName(this, "PrimaryButton") is Button b) b.AccessKey = key;
     }
 
     private void ShowStep(int step)
@@ -121,9 +99,9 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
     // screen reader speaks on focus (focus lands on that button on these steps).
     private void UpdateActionButtonDescriptions()
     {
-        if (FindDescendantByName(this, "PrimaryButton") is Button pb)
+        if (UiHelpers.FindDescendantByName(this, "PrimaryButton") is Button pb)
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(pb, _step == 3 ? ConfirmText.Text : "");
-        if (FindDescendantByName(this, "CloseButton") is Button cb)
+        if (UiHelpers.FindDescendantByName(this, "CloseButton") is Button cb)
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(cb, _step == 5 ? ResultText.Text : "");
     }
 
