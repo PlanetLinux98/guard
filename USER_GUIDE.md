@@ -534,8 +534,8 @@ winget, `winget upgrade` also works, as before.
 
 ### Appearance
 
-Choose **Use Windows setting** (the default) to follow your system's light or
-dark mode, or pin GUARD to **Light** or **Dark** regardless of the system.
+Choose **System setting** (the default) to follow Windows' light or dark mode,
+or pin GUARD to **Light** or **Dark** regardless of the system.
 
 ### Startup
 

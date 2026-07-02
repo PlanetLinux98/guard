@@ -898,14 +898,14 @@
                                          name from its text (unlike the Mode radios' two-line
                                          content); only the group needs an explicit Name. -->
                                     <RadioButtons AutomationProperties.Name="Appearance" MaxColumns="3">
-                                        <RadioButton x:Name="RbThemeSystem" Content="Use Windows setting" IsChecked="True"
+                                        <RadioButton x:Name="RbThemeSystem" Content="System setting" IsChecked="True"
                                                      Checked="OnThemeChanged" />
                                         <RadioButton x:Name="RbThemeLight" Content="Light"
                                                      Checked="OnThemeChanged" />
                                         <RadioButton x:Name="RbThemeDark" Content="Dark"
                                                      Checked="OnThemeChanged" />
                                     </RadioButtons>
-                                    <TextBlock Text="Use Windows setting follows your system's light or dark mode; Light or Dark pins GUARD to one."
+                                    <TextBlock Text="System setting follows Windows' light or dark mode; Light or Dark pins GUARD to one."
                                                TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
