@@ -35,6 +35,10 @@
          (CsWinRT1030). Harmless for the ReadyToRun build. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>GUARD</AssemblyName>
+    <!-- Embedded as the exe's Win32 icon group (Explorer, taskbar); MainWindow
+         extracts it at runtime for the title bar / Alt-Tab, so no loose .ico
+         ships. Regenerate from the SVG masters with Assets\make-icon.py. -->
+    <ApplicationIcon>Assets\GUARD.ico</ApplicationIcon>
     <!-- The shipped single-file GUARD.exe and the staged release folder/zip live
          in the project root; keep the SDK from globbing them as project items.
          (GUARD.exe collides with publish output; GUARD\ and GUARD.zip would
@@ -54,7 +58,10 @@
          WinUI Page glob (which honors DefaultItemExcludes) and break the build.
          Their redundant loose copy is instead stripped from the publish/bundle
          output in TrimGuardPublishPayload below. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe;GUARD.zip;SHA256SUMS;GUARD\**;*.cmd;*.md;LICENSE;.gitignore</DefaultItemExcludes>
+    <!-- Assets\ holds the icon sources (SVG masters, generator script, .ico);
+         the .ico reaches the exe via ApplicationIcon (a property, not an item),
+         so none of the folder belongs in the default None glob / bundle. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe;GUARD.zip;SHA256SUMS;GUARD\**;*.cmd;*.md;LICENSE;.gitignore;Assets\**</DefaultItemExcludes>
     <!-- Versioning is driven by MinVer from git tags (releases are tagged vX.Y.Z),
          so the version is never hand-edited; do not add a <Version> property here,
          it would override MinVer's computed value. Untagged commits get the next
@@ -69,6 +76,12 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
     <!-- Build-time only: computes the version during build, ships nothing. -->
     <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- About dialog logo, embedded in the assembly so no loose image ships
+         (Assets\** is out of the default globs, hence the explicit item). -->
+    <EmbeddedResource Include="Assets\guard-icon-256.png" LogicalName="GUARD.Icon256.png" />
   </ItemGroup>
 
   <!-- Trim the publish output of payload GUARD never uses, cutting both on-disk

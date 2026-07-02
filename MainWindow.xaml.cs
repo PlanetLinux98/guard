@@ -156,6 +156,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "GUARD";
+        SetWindowIcon();
         // Wider than the old 820 to keep the page content roomy beside the
         // ~210 DIP navigation pane (the seven schedule-day checkboxes need a
         // full-width row). Height holds at 900: the expanders collapse the
@@ -823,6 +824,29 @@ public sealed partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint hwnd);
+
+    // ---- Window icon ----------------------------------------------------
+    // The exe's embedded icon group (csproj ApplicationIcon) doubles as the
+    // window icon, so no loose .ico ships next to GUARD.exe. Both WM_SETICON
+    // slots are set: ICON_SMALL feeds the title bar at 16 px, ICON_BIG feeds
+    // Alt-Tab at 32 px; a single AppWindow.SetIcon HICON would leave Windows
+    // to rescale whichever slot it lacks. The handles stay in use for the
+    // window's lifetime, so they are never destroyed.
+    private const uint WM_SETICON = 0x0080;
+
+    [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern uint ExtractIconExW(string file, int index, out nint largeIcon, out nint smallIcon, uint count);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint SendMessageW(nint hWnd, uint msg, nuint wParam, nint lParam);
+
+    private void SetWindowIcon()
+    {
+        if (Environment.ProcessPath is not { } exe) return;
+        ExtractIconExW(exe, 0, out nint big, out nint small, 1);
+        if (small != 0) SendMessageW(WindowHandle, WM_SETICON, 0, small); // ICON_SMALL
+        if (big != 0) SendMessageW(WindowHandle, WM_SETICON, 1, big);     // ICON_BIG
+    }
 
     // ---- Minimum window size ------------------------------------------------
     // WinUI 3 exposes no minimum-size property, so the resize floor is enforced

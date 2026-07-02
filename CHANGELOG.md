@@ -9,6 +9,9 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- An original app icon: a glossy blue glass shield carrying a bold white G with
+  an amber drive-activity light, shown in Explorer, on the taskbar, in the title
+  bar, in the Alt+Tab switcher, and at the top of the About dialog.
 - Built-in updater. Once a day when GUARD starts it quietly checks the project's
   GitHub Releases for a newer version (on by default; configurable on the new
   Settings page). When one exists, a notice appears above the status bar (and is

@@ -1,0 +1,27 @@
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GUARD app icon, simplified rendition: a blue gradient shield with a bold white G and an amber dot">
+  <title>GUARD app icon (simplified for 16 to 32 px)</title>
+  <!-- Hand-simplified for tiny sizes: no drop shadow, reflections, bevel, or
+       glow rings (they turn to mush below 48 px); the G, its dot, and the rim
+       are thickened so they survive the downscale. -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#45c6ff"/>
+      <stop offset="0.55" stop-color="#1e88e5"/>
+      <stop offset="1" stop-color="#0c3f97"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="clip">
+      <path d="M128 26 C154 40 186 48 216 48 C216 116 202 176 128 226 C54 176 40 116 40 48 C70 48 102 40 128 26 Z"/>
+    </clipPath>
+  </defs>
+  <path d="M128 26 C154 40 186 48 216 48 C216 116 202 176 128 226 C54 176 40 116 40 48 C70 48 102 40 128 26 Z" fill="url(#body)"/>
+  <g clip-path="url(#clip)">
+    <ellipse cx="128" cy="30" rx="118" ry="78" fill="url(#gloss)"/>
+  </g>
+  <path d="M160 77 A50 50 0 1 0 175 132 L140 132" fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round"/>
+  <circle cx="128" cy="114" r="14" fill="#ffc400"/>
+  <path d="M128 26 C154 40 186 48 216 48 C216 116 202 176 128 226 C54 176 40 116 40 48 C70 48 102 40 128 26 Z" fill="none" stroke="#ffffff" stroke-opacity="0.75" stroke-width="6"/>
+</svg>

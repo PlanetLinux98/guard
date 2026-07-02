@@ -1,0 +1,52 @@
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GUARD app icon: a glossy blue glass shield with two diagonal window-light reflections sweeping across its face, a bold white letter G, and an amber drive-activity light in the counter of the G">
+  <title>GUARD app icon (full artwork, 48 px and up)</title>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#45c6ff"/>
+      <stop offset="0.55" stop-color="#1e88e5"/>
+      <stop offset="1" stop-color="#0c3f97"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bevel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="caustic" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#80d8ff" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#80d8ff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clip">
+      <path d="M128 26 C154 40 186 48 216 48 C216 116 202 176 128 226 C54 176 40 116 40 48 C70 48 102 40 128 26 Z"/>
+    </clipPath>
+  </defs>
+  <!-- soft drop shadow -->
+  <path d="M128 26 C154 40 186 48 216 48 C216 116 202 176 128 226 C54 176 40 116 40 48 C70 48 102 40 128 26 Z" fill="#0c3f97" opacity="0.3" transform="translate(0 5)"/>
+  <!-- shield body -->
+  <path d="M128 26 C154 40 186 48 216 48 C216 116 202 176 128 226 C54 176 40 116 40 48 C70 48 102 40 128 26 Z" fill="url(#body)" stroke="#0a3573" stroke-opacity="0.55" stroke-width="4"/>
+  <!-- caustic pool near the point -->
+  <g clip-path="url(#clip)">
+    <ellipse cx="128" cy="200" rx="58" ry="36" fill="url(#caustic)"/>
+  </g>
+  <!-- the G with a shallow cast shadow -->
+  <path d="M160 77 A50 50 0 1 0 175 132 L140 132" fill="none" stroke="#082e66" stroke-opacity="0.35" stroke-width="24" stroke-linecap="round" transform="translate(0 4)"/>
+  <path d="M160 77 A50 50 0 1 0 175 132 L140 132" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round"/>
+  <!-- drive activity light as the G's counter -->
+  <circle cx="128" cy="116" r="15" fill="#ffb300" opacity="0.35"/>
+  <circle cx="128" cy="116" r="9" fill="#ffc400"/>
+  <!-- diagonal front-surface reflections; they pass OVER the G, selling the pane of glass -->
+  <g clip-path="url(#clip)">
+    <g transform="rotate(-22 128 126)" fill="#ffffff">
+      <rect x="60" y="-40" width="36" height="340" opacity="0.16"/>
+      <rect x="106" y="-40" width="16" height="340" opacity="0.1"/>
+    </g>
+    <ellipse cx="128" cy="28" rx="118" ry="76" fill="url(#gloss)"/>
+  </g>
+  <!-- bevelled inner edge: bright at the top, fading away down the sides -->
+  <g transform="translate(128 126) scale(0.9) translate(-128 -126)">
+    <path d="M128 26 C154 40 186 48 216 48 C216 116 202 176 128 226 C54 176 40 116 40 48 C70 48 102 40 128 26 Z" fill="none" stroke="url(#bevel)" stroke-width="6"/>
+  </g>
+  <path d="M128 26 C154 40 186 48 216 48 C216 116 202 176 128 226 C54 176 40 116 40 48 C70 48 102 40 128 26 Z" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="3"/>
+</svg>
