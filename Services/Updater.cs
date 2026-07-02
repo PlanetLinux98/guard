@@ -22,6 +22,10 @@ namespace GuardWui3.Services;
 // overwrite-extract leaves them untouched.
 public static class Updater
 {
+    // releases/latest returns the newest NON-prerelease, non-draft release, so
+    // betas never reach users - provided "Set as a pre-release" is ticked when
+    // publishing. Offering betas would need /releases plus real SemVer
+    // pre-release ordering in IsNewer (core-only today, by design).
     private const string ApiLatest = "https://api.github.com/repos/PlanetLinux98/guard/releases/latest";
     public const string ZipAssetName = "GUARD.zip";
     private const string ChecksumAssetName = "SHA256SUMS";
