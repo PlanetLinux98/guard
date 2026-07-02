@@ -109,8 +109,11 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   "No log found yet. Run a backup first." instead of a bare "Not found:" followed by
   an internal file path.
 - The File Backup status line now reads "File backup settings saved" rather than
-  the bare "Settings saved", matching the System Image page's "System image settings
-  saved" so each page names which settings it means.
+  the bare "Settings saved", and "No file backup settings saved yet" rather than
+  "No settings saved yet", matching the System Image page's wording so each page
+  names which settings it means. Run Now with no saved script likewise says
+  "Backup script not found. Click Save Settings first." instead of showing an
+  internal file path.
 - Run Now and Preview no longer re-save the settings when nothing has changed, so
   a run starts several seconds sooner (re-saving re-registered the scheduled tasks
   through PowerShell every time, even when they were already correct). The

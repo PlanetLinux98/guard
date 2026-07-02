@@ -427,7 +427,9 @@ public sealed partial class MainWindow : Window
         if (!File.Exists(GuardPaths.ScriptPath))
         {
             _fileStatusBrush = new SolidColorBrush(StatusAmber);
-            _fileStatusText = "No settings saved yet. Click Save Settings before running a backup.";
+            // Wording parallels the System Image page's "No system image
+            // settings saved yet..." so each page names which settings it means.
+            _fileStatusText = "No file backup settings saved yet. Click Save Settings before running a backup.";
         }
         else if (_dirty)
         {

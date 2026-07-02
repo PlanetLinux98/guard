@@ -366,7 +366,8 @@ public sealed partial class MainWindow : Window
         string script = GuardPaths.ScriptPath;
         if (!File.Exists(script))
         {
-            await ShowMessageAsync("GUARD", "Script not found:\n" + script);
+            // Parallels the System Image page's wording; no internal path dump.
+            await ShowMessageAsync("GUARD", "Backup script not found. Click Save Settings first.");
             return;
         }
 
