@@ -1,4 +1,6 @@
-# GUARD
+<!-- Decorative: the heading text already says GUARD, so the logo carries an
+     empty alt and screen readers skip straight to the title. -->
+# <img src="Assets/guard-icon-256.png" width="48" alt=""> GUARD
 
 A portable, fully accessible backup and data-protection utility for Windows.
 GUARD backs up your chosen folders to any destination (a local drive, an
