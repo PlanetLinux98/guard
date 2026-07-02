@@ -6,6 +6,10 @@ namespace GuardWui3.Views;
 
 public sealed partial class AboutDialog : ContentDialog
 {
+    // Set when the user picked Check for Updates; MainWindow runs the check
+    // after this dialog closes (two ContentDialogs cannot overlap).
+    public bool CheckUpdatesRequested { get; private set; }
+
     public AboutDialog()
     {
         InitializeComponent();
@@ -15,5 +19,11 @@ public sealed partial class AboutDialog : ContentDialog
     private void OnProjectPage(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         try { Process.Start(new ProcessStartInfo(GuardPaths.RepoUrl) { UseShellExecute = true }); } catch { }
+    }
+
+    private void OnCheckUpdates(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        CheckUpdatesRequested = true;
+        Hide();
     }
 }

@@ -51,6 +51,17 @@ if exist "%ROOT%\GUARD.zip" del /Q "%ROOT%\GUARD.zip"
 tar.exe -a -c -f "%ROOT%\GUARD.zip" -C "%ROOT%" GUARD
 if errorlevel 1 exit /b 1
 
+REM Checksum manifest (sha256sum format) for the built-in updater: GUARD
+REM verifies the downloaded GUARD.zip against this before applying an update,
+REM so attach SHA256SUMS to the GitHub Release right next to GUARD.zip.
+if exist "%ROOT%\SHA256SUMS" del /Q "%ROOT%\SHA256SUMS"
+for /f %%H in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%ROOT%\GUARD.zip' -Algorithm SHA256).Hash.ToLower()"') do >"%ROOT%\SHA256SUMS" echo %%H  GUARD.zip
+if not exist "%ROOT%\SHA256SUMS" (
+  echo Could not compute the GUARD.zip checksum.
+  exit /b 1
+)
+
 echo.
 echo Built NativeAOT release: %STAGE%\GUARD.exe
 echo Release zip:             %ROOT%\GUARD.zip
+echo Checksums:               %ROOT%\SHA256SUMS
