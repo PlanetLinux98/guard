@@ -8,10 +8,20 @@
     DefaultButton="Close">
 
     <StackPanel Width="380" Spacing="6">
-        <!-- No AutomationProperties.Name: a TextBlock's accessible name is its
-             Text (the repo rule the release lint greps for). -->
-        <TextBlock Text="GUARD" FontSize="26" FontWeight="Bold" />
-        <TextBlock x:Name="VersionText" Margin="0,0,0,8" />
+        <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+            <!-- Decorative: the dialog title already names the app, so the
+                 logo stays out of the accessibility tree. Source is set in
+                 code-behind from the embedded resource. -->
+            <Image x:Name="IconImage" Width="64" Height="64"
+                   VerticalAlignment="Center"
+                   AutomationProperties.AccessibilityView="Raw" />
+            <StackPanel VerticalAlignment="Center">
+                <!-- No AutomationProperties.Name: a TextBlock's accessible name
+                     is its Text (the repo rule the release lint greps for). -->
+                <TextBlock Text="GUARD" FontSize="26" FontWeight="Bold" />
+                <TextBlock x:Name="VersionText" />
+            </StackPanel>
+        </StackPanel>
         <TextBlock Text="A backup and app inventory utility for Windows." />
         <TextBlock Text="Created by PlanetLinux98." />
         <TextBlock Text="Released under the MIT License." Margin="0,0,0,10" />
