@@ -256,7 +256,24 @@ public sealed partial class MainWindow : Window
         if (File.Exists(GuardPaths.ScriptPath) && !_dirty)
             StartSpaceStatusCheck(announce: false);
 
+        // Settings page (guard-prefs.ini): seed its controls and apply the theme.
+        InitializeSettingsPage();
+
         AppWindow.Closing += OnAppWindowClosing;
+        // A staged update (Install and Relaunch, or the install-on-exit mode) is
+        // applied by a helper script that waits for this process to end; launch
+        // it at the last moment so it never races a close the user cancels.
+        Closed += OnWindowClosed;
+
+        // The startup-page switch and the daily update check run after the
+        // constructor: selecting a nav page kicks that page's lazy work, and
+        // nothing reachable from here may touch the not-yet-live visual tree
+        // (the XamlRoot fail-fast; see UpdateSaveEnabled's guard).
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ApplyStartupPage();
+            _ = AutoUpdateCheckAsync();
+        });
     }
 
     // =====================================================================
@@ -267,7 +284,20 @@ public sealed partial class MainWindow : Window
         // FileBackupPage / AppMgmtPage are created by InitializeComponent; this
         // can fire during it (NavFile.IsSelected="True"), before the rest of the
         // constructor runs, so guard on the pages existing.
-        if (FileBackupPage == null || AppMgmtPage == null || SystemImagePage == null) return;
+        if (FileBackupPage == null || AppMgmtPage == null || SystemImagePage == null
+            || SettingsPage == null) return;
+        // The built-in Settings footer item has no Tag; it flags itself here.
+        if (args.IsSettingsSelected)
+        {
+            _activePage = 3;
+            FileBackupPage.Visibility = Visibility.Collapsed;
+            SystemImagePage.Visibility = Visibility.Collapsed;
+            AppMgmtPage.Visibility = Visibility.Collapsed;
+            SettingsPage.Visibility = Visibility.Visible;
+            UpdateStatusBar();
+            return;
+        }
+        SettingsPage.Visibility = Visibility.Collapsed;
         string tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "file";
         if (tag == "apps")
         {
@@ -495,6 +525,13 @@ public sealed partial class MainWindow : Window
             if (_imageStatusBrush != null) StatusDot.Fill = _imageStatusBrush;
             StatusBarText.Text = _imageStatusText;
         }
+        else if (_activePage == 3)
+        {
+            // Settings persist as they change, so there is no saved/unsaved
+            // state for the dot to reflect.
+            StatusDot.Visibility = Visibility.Collapsed;
+            StatusBarText.Text = "Settings are saved as soon as you change them.";
+        }
         else
         {
             // The dot's saved/unsaved colour semantic does not apply to the
@@ -568,7 +605,9 @@ public sealed partial class MainWindow : Window
     // a real percentage is known, spinning while a phase has none. Index by the
     // _activePage convention: 0 File Backup, 1 App Management, 2 System Image. The nav
     // ring is what keeps a job on an unfocused page discoverable; the bar no longer
-    // mirrors it, so the two surfaces don't duplicate each other.
+    // mirrors it, so the two surfaces don't duplicate each other. Index 3 is the
+    // Settings page: it never runs a job, but UpdateStatusBar reads the focused
+    // page's snapshot unconditionally, so it needs a (permanently empty) slot.
     private sealed class PageProgress
     {
         public bool Running;               // a job is live on this page (drives the ring)
@@ -579,7 +618,7 @@ public sealed partial class MainWindow : Window
         public bool AreaVisible;           // status-bar right area shown (running or outcome)
         public bool BarVisible;            // the moving bar shown (vs outcome text only)
     }
-    private readonly PageProgress[] _pageProg = { new(), new(), new() };
+    private readonly PageProgress[] _pageProg = { new(), new(), new(), new() };
 
     private ProgressRing NavRingFor(int page) => page == 1 ? NavAppsRing : page == 2 ? NavImageRing : NavFileRing;
     private NavigationViewItem NavItemFor(int page) => page == 1 ? NavApps : page == 2 ? NavImage : NavFile;
@@ -772,6 +811,9 @@ public sealed partial class MainWindow : Window
     {
         var dlg = new Views.AboutDialog { XamlRoot = Content.XamlRoot };
         await ShowDialogAsync(dlg);
+        // Runs after About closes: only one ContentDialog may be open at a time,
+        // and the check's result is itself a dialog.
+        if (dlg.CheckUpdatesRequested) await CheckForUpdatesNowAsync();
     }
 
     // =====================================================================
@@ -874,6 +916,10 @@ public sealed partial class MainWindow : Window
     private async System.Threading.Tasks.Task<ContentDialogResult> ShowDialogAsync(ContentDialog dlg)
     {
         if (_dialogOpen) return ContentDialogResult.None;
+        // Dialogs render in the popup layer, which does not pick up the root
+        // element's RequestedTheme override; mirror it so a pinned Light/Dark
+        // theme (Settings page) applies to every dialog too.
+        if (Content is FrameworkElement root) dlg.RequestedTheme = root.RequestedTheme;
         _dialogOpen = true;
         try { return await dlg.ShowAsync(); }
         finally { _dialogOpen = false; }

@@ -17,6 +17,9 @@ public static class GuardPaths
     public static readonly string BaseDir =
         Path.GetDirectoryName(Environment.ProcessPath)!;
     public static string IniPath => Path.Combine(BaseDir, "backup-settings.ini");
+    // GUARD's own app preferences (updates, theme, startup page); separate from
+    // backup-settings.ini because prefs save immediately, not via Save Settings.
+    public static string PrefsPath => Path.Combine(BaseDir, "guard-prefs.ini");
     public static string ScriptPath => Path.Combine(BaseDir, "guard-backup.cmd");
     public static string LogPath => Path.Combine(BaseDir, @"Logs\backup_last.log");
     public static string ManualPath => Path.Combine(BaseDir, "USER_GUIDE.md");

@@ -54,7 +54,7 @@
          WinUI Page glob (which honors DefaultItemExcludes) and break the build.
          Their redundant loose copy is instead stripped from the publish/bundle
          output in TrimGuardPublishPayload below. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe;GUARD.zip;GUARD\**;*.cmd;*.md;LICENSE;.gitignore</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe;GUARD.zip;SHA256SUMS;GUARD\**;*.cmd;*.md;LICENSE;.gitignore</DefaultItemExcludes>
     <!-- Versioning is driven by MinVer from git tags (releases are tagged vX.Y.Z),
          so the version is never hand-edited; do not add a <Version> property here,
          it would override MinVer's computed value. Untagged commits get the next

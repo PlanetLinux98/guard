@@ -8,6 +8,8 @@ namespace GuardWui3.Models;
 [JsonSerializable(typeof(AppListItem))]
 [JsonSerializable(typeof(AppSettingsManifest))]
 [JsonSerializable(typeof(AppSettingsManifestEntry))]
+[JsonSerializable(typeof(GitHubRelease))]
+[JsonSerializable(typeof(GitHubAsset))]
 public partial class GuardJsonContext : JsonSerializerContext
 {
 }

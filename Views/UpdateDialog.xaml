@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="GuardWui3.Views.UpdateDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Update available"
+    PrimaryButtonText="Install and Relaunch"
+    SecondaryButtonText="Skip This Version"
+    CloseButtonText="Remind Me Later"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnInstallClick"
+    SecondaryButtonClick="OnSkipClick"
+    CloseButtonClick="OnCloseClick">
+
+    <StackPanel Width="460" Spacing="8">
+        <!-- No AutomationProperties.Name on any TextBlock here: their accessible
+             name is their live Text (the repo rule the release lint greps for). -->
+        <TextBlock x:Name="HeadlineText" TextWrapping="Wrap" />
+        <TextBlock Text="What's new:" FontWeight="SemiBold" />
+        <!-- Read-only TextBox, not a TextBlock in a ScrollViewer: notes can be
+             long, and a TextBox gives a screen reader a focusable, line-by-line
+             reviewable control (same reasoning as the pages' output boxes). -->
+        <TextBox x:Name="NotesBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                 MaxHeight="240" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 AutomationProperties.Name="Release notes" />
+        <ProgressBar x:Name="DownloadBar" Visibility="Collapsed" Minimum="0" Maximum="1" Value="0"
+                     AutomationProperties.Name="Download progress" />
+        <!-- Live region: no Name, or every change would announce the static name
+             instead of the message. -->
+        <TextBlock x:Name="StatusText" TextWrapping="Wrap"
+                   AutomationProperties.LiveSetting="Polite" />
+    </StackPanel>
+</ContentDialog>

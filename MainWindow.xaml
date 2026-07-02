@@ -38,6 +38,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Left navigation replaces the old Pivot: it reclaims the oversized tab
@@ -51,7 +52,7 @@
                         CompactModeThresholdWidth="500"
                         ExpandedModeThresholdWidth="980"
                         IsBackButtonVisible="Collapsed"
-                        IsSettingsVisible="False"
+                        IsSettingsVisible="True"
                         IsPaneToggleButtonVisible="True"
                         SelectionChanged="OnNavSelectionChanged"
                         ItemInvoked="OnNavItemInvoked"><!--
@@ -857,8 +858,103 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+
+                <!-- ============================ SETTINGS ============================ -->
+                <!-- Reached through the NavigationView's built-in Settings footer item
+                     (IsSettingsVisible); standard gear icon with standard UIA semantics.
+                     Everything here saves to guard-prefs.ini the moment it changes, so
+                     there is no bottom action bar (nothing to Save; the status bar says
+                     so while this page is focused). -->
+                <Grid x:Name="SettingsPage" Visibility="Collapsed">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel HorizontalAlignment="Stretch" Margin="16" Spacing="12">
+
+                            <!-- Updates -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Updates" Style="{StaticResource CardTitle}" />
+                                    <CheckBox x:Name="ChkUpdateAutoCheck" AccessKey="U"
+                                              Content="Check for updates automatically"
+                                              ToolTipService.ToolTip="Once a day when GUARD starts, quietly check GitHub for a newer release and mention it here if one exists"
+                                              Checked="OnUpdatePrefChanged" Unchecked="OnUpdatePrefChanged" />
+                                    <!-- Indented + greyed while auto-check is off, mirroring the
+                                         schedule sections' dependent-control pattern. -->
+                                    <CheckBox x:Name="ChkUpdateAutoInstall" AccessKey="A" Margin="24,0,0,0"
+                                              Content="Download updates automatically and install them when GUARD exits"
+                                              ToolTipService.ToolTip="When a check finds a new version, download it in the background and apply it after you close GUARD, instead of asking first"
+                                              Checked="OnUpdatePrefChanged" Unchecked="OnUpdatePrefChanged" />
+                                    <Button x:Name="BtnCheckUpdates" Content="Check for Updates Now" AccessKey="C"
+                                            Margin="0,4,0,0"
+                                            ToolTipService.ToolTip="Check GitHub for a newer GUARD release right now; a skipped version is offered again"
+                                            Click="OnCheckUpdatesNow" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Appearance -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Appearance" Style="{StaticResource CardTitle}" />
+                                    <!-- Single-word contents, so each radio derives its own UIA
+                                         name from its text (unlike the Mode radios' two-line
+                                         content); only the group needs an explicit Name. -->
+                                    <RadioButtons AutomationProperties.Name="Appearance" MaxColumns="3">
+                                        <RadioButton x:Name="RbThemeSystem" Content="System setting" IsChecked="True"
+                                                     Checked="OnThemeChanged" />
+                                        <RadioButton x:Name="RbThemeLight" Content="Light"
+                                                     Checked="OnThemeChanged" />
+                                        <RadioButton x:Name="RbThemeDark" Content="Dark"
+                                                     Checked="OnThemeChanged" />
+                                    </RadioButtons>
+                                    <TextBlock Text="System setting follows Windows' light or dark mode; Light or Dark pins GUARD to one."
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Startup -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Startup" Style="{StaticResource CardTitle}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <TextBlock Text="Page shown when GUARD opens:" VerticalAlignment="Center" />
+                                        <!-- Items are built from the NavigationView's own menu items
+                                             (PopulateStartupCombo), so a future page appears here with
+                                             no extra work. -->
+                                        <ComboBox x:Name="CmbStartupPage" AccessKey="P" MinWidth="200"
+                                                  AutomationProperties.Name="Page shown when GUARD opens"
+                                                  SelectionChanged="OnStartupPageChanged" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </Grid>
         </NavigationView>
+
+        <!-- Update notice: non-modal by design. The launch auto-check must not
+             steal focus with a dialog while the user is orienting, so it lands
+             here (above the status bar, where announcements already point) with
+             a button into the full update dialog; closing it means "remind me
+             later". Announced once via the status bar's UIA notification. -->
+        <InfoBar x:Name="UpdateInfoBar" Grid.Row="1" Margin="12,4" IsOpen="False"
+                 Severity="Informational">
+            <InfoBar.ActionButton>
+                <Button x:Name="BtnUpdateDetails" Content="View Update"
+                        ToolTipService.ToolTip="See what's new and choose whether to install (Ctrl+U)"
+                        Click="OnUpdateInfoBarAction">
+                    <Button.KeyboardAccelerators>
+                        <!-- Window-wide jump into the offer: the InfoBar sits at
+                             the end of the tab order, so a keyboard user would
+                             otherwise Tab through the whole page to reach it.
+                             Inert while the InfoBar is closed (a collapsed
+                             element's accelerator does not fire). -->
+                        <KeyboardAccelerator Modifiers="Control" Key="U" />
+                    </Button.KeyboardAccelerators>
+                </Button>
+            </InfoBar.ActionButton>
+        </InfoBar>
 
         <!-- Status bar. Shows the FOCUSED page's status (settings state on File
              Backup, scan/import summary on App Management) on the left and that
@@ -868,7 +964,7 @@
              StatusBarText is the single live region for status announcements,
              and the bar is the only home of the inventory scan/import summary,
              so each change is announced exactly once. -->
-        <Border Grid.Row="1" BorderThickness="0,1,0,0"
+        <Border Grid.Row="2" BorderThickness="0,1,0,0"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <!-- StatusBarHost exposes the bar to UIA as control type StatusBar.
                  The background and padding sit on the Grid INSIDE the host, not

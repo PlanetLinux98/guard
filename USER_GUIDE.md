@@ -30,6 +30,7 @@ inside the app at any time.
 - [The File Backup tab](#the-file-backup-tab)
 - [The System Image tab](#the-system-image-tab)
 - [The App Management tab](#the-app-management-tab)
+- [The Settings page](#the-settings-page)
 - [The status bar](#the-status-bar)
 - [Where your files live (portability)](#where-your-files-live-portability)
 - [Keyboard and screen-reader notes](#keyboard-and-screen-reader-notes)
@@ -79,6 +80,10 @@ The first time you run it, Windows SmartScreen may show "Windows protected your
 PC" because GUARD is not signed with a paid code-signing certificate. Choose
 **More info**, then **Run anyway**. The source code is public if you want to
 check it. (Installing through winget avoids this prompt.)
+
+However you install it, GUARD keeps itself current: once a day it checks GitHub
+for a newer release and offers to install it, and it can update fully
+automatically if you prefer (see [The Settings page](#the-settings-page)).
 
 There is no uninstaller because none is needed: GUARD never writes to the
 registry for its own settings and never writes outside its folder. To remove a
@@ -487,6 +492,56 @@ Two practical notes:
   the Windows registry, so GUARD cannot detect them. Keep those in a backed-up
   folder instead.
 
+## The Settings page
+
+The gear item at the bottom of the left navigation (labelled **Settings**)
+opens GUARD's own settings. Changes here take effect and are saved the moment
+you make them; there is no Save button. They live in `guard-prefs.ini` next to
+`GUARD.exe`, so they travel with the folder like everything else.
+
+### Updates
+
+**Check for updates automatically** (Alt+U, on by default): once a day, when
+GUARD starts, it quietly asks GitHub whether a newer release exists. If the
+check cannot reach the internet it simply tries again on a later start.
+
+When a new version is found, a notice appears just above the status bar (and is
+announced to screen readers). Choose **View Update** on the notice to see what
+is new in that release, then pick one of:
+
+- **Install and Relaunch** (Alt+I): downloads the new version, verifies the
+  download against the release's published checksum, closes GUARD, applies the
+  update, and reopens it. Your settings, generated scripts, and logs are never
+  part of the download, so they are untouched.
+- **Remind Me Later** (Alt+R, or Esc): does nothing; the next daily check
+  offers the version again.
+- **Skip This Version** (Alt+S): that version is not offered again by the
+  automatic check; the next release after it will be. A manual check always
+  shows the newest version, skipped or not.
+
+**Download updates automatically and install them when GUARD exits** (Alt+A) is
+the hands-off mode: a found update downloads in the background and applies
+itself after you close GUARD (it does not reopen GUARD afterwards).
+
+**Check for Updates Now** (Alt+C) checks immediately and always reports a
+result, up to date or otherwise. The About dialog carries the same button
+(Alt+U there).
+
+Self-updating needs the GUARD folder to be writable. If you have placed GUARD
+somewhere it cannot write (for example under `C:\Program Files`), GUARD says so
+and points you to the Releases page to update by hand. If you installed through
+winget, `winget upgrade` also works, as before.
+
+### Appearance
+
+Choose **System setting** (the default) to follow Windows' light or dark mode,
+or pin GUARD to **Light** or **Dark** regardless of the system.
+
+### Startup
+
+**Page shown when GUARD opens** (Alt+P) picks which page is selected at launch:
+File Backup (the default), System Image, or App Management.
+
 ## The status bar
 
 A status bar runs along the bottom of the window. It shows the active tab's
@@ -506,9 +561,11 @@ Everything GUARD knows lives in its own folder, next to `GUARD.exe`:
 
 | File | What it is |
 |---|---|
-| `backup-settings.ini` | All your settings: destination, folder list, mode, exclusions, schedule. Plain text. |
+| `backup-settings.ini` | All your backup settings: destination, folder list, mode, exclusions, schedule. Plain text. |
+| `guard-prefs.ini` | GUARD's own preferences from the Settings page: update options, theme, startup page. Plain text. |
 | `guard-backup.cmd` | The generated backup script. Regenerated on every Save Settings. Theoretically you could run this script portably from anywhere to do an on-demand backup. |
 | `Logs\backup_last.log` | The log of the most recent backup or preview run. |
+| `Logs\update_last.log` | The log of the most recent self-update. |
 | `USER_GUIDE.md` | This manual; the Help button (F1) opens it. |
 
 Because everything is in one folder, **moving the folder moves the app and its
@@ -545,7 +602,8 @@ screen reader. A few specifics worth knowing:
 - **Alt access keys** reach the important controls directly (the access key for
   each control is given in parentheses throughout this manual), and **F1** opens
   this manual from anywhere.
-- **Dark and light Mica theming** follows your Windows setting automatically.
+- **Dark and light Mica theming** follows your Windows setting automatically,
+  or can be pinned to Light or Dark on the [Settings page](#the-settings-page).
 
 If something reads or behaves badly with your screen reader, that is treated as a
 serious bug; please report it on the
@@ -556,7 +614,10 @@ serious bug; please report it on the
 **Is my data sent anywhere?**
 No. GUARD has no telemetry, no account, and no cloud component. Backups and exports 
 go only to the destination you choose. The only internet-reaching network (WAN) 
-activity GUARD can cause is winget contacting its official package sources during an app reinstall.
+activity GUARD can cause is winget contacting its official package sources during 
+an app reinstall, and the update check asking GitHub for the newest release number 
+(which sends nothing about you or your PC, and can be turned off on the Settings 
+page).
 
 **What happens if my destination drive is unplugged at backup time?**
 The backup safely does nothing: the script checks the destination first and, if

@@ -9,6 +9,27 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 ## [Unreleased]
 
 ### Added
+- Built-in updater. Once a day when GUARD starts it quietly checks the project's
+  GitHub Releases for a newer version (on by default; configurable on the new
+  Settings page). When one exists, a notice appears above the status bar (and is
+  announced to screen readers) with a View Update button (Ctrl+U jumps straight
+  to it from anywhere in the window); the update dialog shows that release's
+  notes, converted to plain readable text so screen readers are not fed raw
+  markdown, and offers Install and Relaunch, Remind Me Later, or Skip
+  This Version (a skipped version is not offered again automatically, but a manual
+  check always shows the newest release). Installing downloads the release zip,
+  verifies it against the release's published SHA-256 checksum, applies it after
+  GUARD closes, and reopens GUARD; settings, generated scripts, and logs are
+  untouched. An optional hands-off mode downloads updates in the background and
+  installs them when GUARD exits. Check for Updates Now is available on the
+  Settings page and in the About dialog. Release builds now also produce a
+  SHA256SUMS manifest, attached to each GitHub Release for the verification step.
+- Settings page, reached from the standard gear item at the bottom of the left
+  navigation. Changes save the moment they are made (no Save button). It holds
+  the update options, an Appearance choice (follow Windows' light or dark mode,
+  or pin GUARD to one), and the page GUARD opens on at startup. Preferences are
+  stored in a new `guard-prefs.ini` next to `GUARD.exe`, so they travel with the
+  folder like everything else.
 - A small progress ring now appears on a page's entry in the left navigation while
   that page has a job running (a backup, a system image, or an app export/reinstall),
   so you can tell at a glance which page is busy even while viewing another page. The

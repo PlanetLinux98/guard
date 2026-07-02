@@ -2,9 +2,11 @@
 GUARD.exe
 GUARD.pdb
 
-# Shipping artifacts: staged release folder and its zip (publish-singlefile.cmd)
+# Shipping artifacts: staged release folder, its zip, and the checksum
+# manifest the updater verifies against (publish-release.cmd)
 /GUARD/
 GUARD.zip
+SHA256SUMS
 
 # .NET SDK build output
 bin/
@@ -13,6 +15,7 @@ obj/
 # Generated at runtime by the app
 backup-settings.ini
 guard-backup.cmd
+guard-prefs.ini
 onconnect-stamp.txt
 Logs/
 

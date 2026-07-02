@@ -15,8 +15,15 @@
         <TextBlock Text="A backup and app inventory utility for Windows." />
         <TextBlock Text="Created by PlanetLinux98." />
         <TextBlock Text="Released under the MIT License." Margin="0,0,0,10" />
-        <Button Content="Open Project Page" AccessKey="P" HorizontalAlignment="Left"
-                ToolTipService.ToolTip="Open the GUARD project page in your browser"
-                Click="OnProjectPage" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Content="Open Project Page" AccessKey="P"
+                    ToolTipService.ToolTip="Open the GUARD project page in your browser"
+                    Click="OnProjectPage" />
+            <!-- Closes About and hands off to MainWindow (only one ContentDialog
+                 may be open at a time, so the check's own dialogs need About gone). -->
+            <Button Content="Check for Updates" AccessKey="U"
+                    ToolTipService.ToolTip="Check GitHub for a newer GUARD release"
+                    Click="OnCheckUpdates" />
+        </StackPanel>
     </StackPanel>
 </ContentDialog>
