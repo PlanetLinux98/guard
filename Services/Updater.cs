@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using GuardWui3.Models;
@@ -47,6 +48,29 @@ public static class Updater
             return string.IsNullOrEmpty(rel?.TagName) ? null : rel;
         }
         catch { return null; }
+    }
+
+    // Release bodies are GitHub markdown; shown raw, a screen reader speaks the
+    // syntax ("number number Fixed", "star star"). Reduce to plain text: fence
+    // lines dropped, links and images kept as their text, heading / emphasis /
+    // code markers stripped, * and + bullets normalized to -. Single-underscore
+    // emphasis is left alone: underscores in real names (update_last.log) are
+    // likelier than _italics_ in release notes.
+    public static string NotesToPlainText(string markdown)
+    {
+        string s = markdown.Replace("\r\n", "\n");
+        s = Regex.Replace(s, @"^\s*(```|~~~).*\n?", "", RegexOptions.Multiline);
+        s = Regex.Replace(s, @"!\[([^\]]*)\]\([^)]*\)", "$1");
+        s = Regex.Replace(s, @"\[([^\]]+)\]\([^)]*\)", "$1");
+        s = Regex.Replace(s, @"^#{1,6}\s+", "", RegexOptions.Multiline);
+        s = Regex.Replace(s, @"^(\s*)[*+]\s+", "$1- ", RegexOptions.Multiline);
+        s = Regex.Replace(s, @"^>\s?", "", RegexOptions.Multiline);
+        s = Regex.Replace(s, @"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", "$2");
+        s = Regex.Replace(s, @"\*(?=\S)(.+?)(?<=\S)\*", "$1");
+        s = Regex.Replace(s, @"~~(?=\S)(.+?)(?<=\S)~~", "$1");
+        s = Regex.Replace(s, @"`([^`]+)`", "$1");
+        s = Regex.Replace(s, @"\n{3,}", "\n\n");
+        return s.Trim();
     }
 
     // Tag vs the running version, compared on the Major.Minor.Patch core only.

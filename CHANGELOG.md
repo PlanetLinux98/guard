@@ -12,8 +12,10 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - Built-in updater. Once a day when GUARD starts it quietly checks the project's
   GitHub Releases for a newer version (on by default; configurable on the new
   Settings page). When one exists, a notice appears above the status bar (and is
-  announced to screen readers) with a View Update button; the update dialog shows
-  that release's notes and offers Install and Relaunch, Remind Me Later, or Skip
+  announced to screen readers) with a View Update button (Ctrl+U jumps straight
+  to it from anywhere in the window); the update dialog shows that release's
+  notes, converted to plain readable text so screen readers are not fed raw
+  markdown, and offers Install and Relaunch, Remind Me Later, or Skip
   This Version (a skipped version is not offered again automatically, but a manual
   check always shows the newest release). Installing downloads the release zip,
   verifies it against the release's published SHA-256 checksum, applies it after

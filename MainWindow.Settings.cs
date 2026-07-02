@@ -181,7 +181,7 @@ public sealed partial class MainWindow
         // Same settle delay as job announcements: launch focus churn would
         // otherwise cut the speech off.
         AnnounceSettled(message + (showAction
-            ? " Choose View Update, above the status bar, to see what's new."
+            ? " Press Control+U to see what's new and choose whether to install."
             : ""), 2000);
     }
 

@@ -3,6 +3,7 @@ using System.Threading;
 using GuardWui3.Models;
 using GuardWui3.Services;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 
 namespace GuardWui3.Views;
@@ -28,9 +29,11 @@ public sealed partial class UpdateDialog : ContentDialog
         InitializeComponent();
         HeadlineText.Text = "GUARD " + release.TagName + " is available. You have version "
             + GuardPaths.AppVersion + ".";
+        // De-markdowned so NVDA reads the notes as prose, not syntax; the
+        // converter emits \n, the TextBox wants \r\n.
         NotesBox.Text = string.IsNullOrWhiteSpace(release.Body)
             ? "(This release has no notes.)"
-            : release.Body.Replace("\r\n", "\n").Replace("\n", "\r\n");
+            : Updater.NotesToPlainText(release.Body).Replace("\n", "\r\n");
         // Mnemonics, same route as the save-on-close prompt: secondary/close via
         // a Style; the default (primary) button's Style is overwritten by the
         // dialog's visual state, so its key goes on the realized button.
@@ -51,7 +54,7 @@ public sealed partial class UpdateDialog : ContentDialog
         IsPrimaryButtonEnabled = false;
         IsSecondaryButtonEnabled = false; // Close stays enabled: it cancels the download
         DownloadBar.Visibility = Visibility.Visible;
-        StatusText.Text = "Downloading the update...";
+        SetStatus("Downloading the update...");
         _cts = new CancellationTokenSource();
         try
         {
@@ -61,12 +64,12 @@ public sealed partial class UpdateDialog : ContentDialog
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = "Download cancelled.";
+            SetStatus("Download cancelled.");
             ResetAfterFailure();
         }
         catch (Exception ex)
         {
-            StatusText.Text = "The update could not be downloaded: " + ex.Message;
+            SetStatus("The update could not be downloaded: " + ex.Message);
             ResetAfterFailure();
         }
         finally
@@ -75,6 +78,22 @@ public sealed partial class UpdateDialog : ContentDialog
             _cts?.Dispose();
             _cts = null;
         }
+    }
+
+    // Set the status line and force its announcement: inside a ContentDialog
+    // popup the automatic LiveRegionChanged event often doesn't fire (same fix
+    // as RecoveryMediaDialog's build status), so a screen reader otherwise
+    // stays silent on download errors.
+    private void SetStatus(string text)
+    {
+        StatusText.Text = text;
+        try
+        {
+            var peer = FrameworkElementAutomationPeer.FromElement(StatusText)
+                       ?? FrameworkElementAutomationPeer.CreatePeerForElement(StatusText);
+            peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        }
+        catch { }
     }
 
     private void ResetAfterFailure()
