@@ -39,9 +39,13 @@ dotnet publish "%ROOT%\GUARD-WUI3.csproj" -r win-x64 -c Release ^
   -o "%STAGE%"
 if errorlevel 1 exit /b 1
 
-REM Debug symbols are not shipped; the offline manual is.
+REM Debug symbols are not shipped; the offline manual is. The manual ships as
+REM HTML rendered from USER_GUIDE.md (see make-user-guide.py; needs Python 3
+REM with the "markdown" package) so Help opens in the default browser rather
+REM than tripping over PCs with no .md file association.
 del /Q "%STAGE%\*.pdb" >nul 2>nul
-copy /Y "%ROOT%\USER_GUIDE.md" "%STAGE%\USER_GUIDE.md" >nul
+python "%ROOT%\make-user-guide.py" "%STAGE%\USER_GUIDE.html"
+if errorlevel 1 exit /b 1
 
 REM Zip the folder (extracts to GUARD\GUARD.exe). This zip is the release asset.
 REM Use bsdtar (built-in tar.exe), not PowerShell's Compress-Archive: the latter

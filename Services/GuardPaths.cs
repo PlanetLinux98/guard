@@ -22,7 +22,12 @@ public static class GuardPaths
     public static string PrefsPath => Path.Combine(BaseDir, "guard-prefs.ini");
     public static string ScriptPath => Path.Combine(BaseDir, "guard-backup.cmd");
     public static string LogPath => Path.Combine(BaseDir, @"Logs\backup_last.log");
-    public static string ManualPath => Path.Combine(BaseDir, "USER_GUIDE.md");
+    // HTML, not the .md source: every PC opens .html in a browser, while .md
+    // often has no file association and Help dead-ended on Windows' picker.
+    public static string ManualPath => Path.Combine(BaseDir, "USER_GUIDE.html");
+    // The manual as older zips shipped it; deleted at startup once the HTML
+    // exists (updates extract over BaseDir and never remove old files).
+    public static string LegacyManualPath => Path.Combine(BaseDir, "USER_GUIDE.md");
     // System Image tab: the generated wbadmin script and its own log, kept apart
     // from the file-backup pair so a system image never clobbers backup_last.log.
     public static string SystemImageScriptPath => Path.Combine(BaseDir, "guard-system-image.cmd");

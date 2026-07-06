@@ -2,6 +2,8 @@
      empty alt and screen readers skip straight to the title. -->
 # <img src="Assets/guard-icon-256.png" width="48" alt=""> GUARD
 
+[User Manual](USER_GUIDE.md) · [Releases](https://github.com/PlanetLinux98/guard/releases) · [Changelog](CHANGELOG.md)
+
 A portable, fully accessible backup and data-protection utility for Windows.
 GUARD backs up your chosen folders to any destination (a local drive, an
 external disk, or a network share), captures a full bare-metal image of the whole
@@ -10,13 +12,13 @@ and their settings to restore, after a clean OS install. It carries no installer
 release is a small `GUARD.zip` you extract to a self-contained `GUARD\` folder,
 then run the `GUARD.exe` inside.
 
-> **New to GUARD?** The [User Manual](USER_GUIDE.md) covers setup and every
-> feature in detail. It also ships inside the release zip, and the in-app Help
-> button (F1) opens it.
-
 GUARD is also on **winget**: `winget install --id PlanetLinux98.GUARD` (or just
 `winget install GUARD`). New releases usually appear in winget within a couple of
 days of the GitHub Release.
+
+> **New to GUARD?** The [User Manual](USER_GUIDE.md) covers setup and every
+> feature in detail. It also ships inside the release zip, and the in-app Help
+> item (F1) opens it.
 
 The goal is to become the ultimate portable data-protection toolkit. More
 functionality to come!
@@ -60,12 +62,6 @@ targets **.NET 10 + Windows App SDK 2.2.0** (WinUI 3).
 - **Screen-reader-first design** is the reason this app exists; accessibility is
   woven through every control. See the [User Manual](USER_GUIDE.md) for details.
 
-## Planned Features & Improvements
-
-- A menu bar and further UX polish.
-- More backup scheduling options (e.g. hourly, monthly).
-- More granular progress reporting and cleaner output text.
-
 ## Requirements
 
 - Windows 10 version 1809 (build 17763) or later, including Windows 11. Note
@@ -86,8 +82,9 @@ publish-release.cmd
 ```
 
 Builds a self-contained **NativeAOT** GUARD, stages the publish folder into a
-`GUARD\` folder alongside `USER_GUIDE.md`, and zips it to `GUARD.zip` in the
-project root. NativeAOT cannot be a single `.exe` (WinUI 3 / Windows App SDK ship
+`GUARD\` folder alongside `USER_GUIDE.html` (the manual, rendered from
+`USER_GUIDE.md` by `make-user-guide.py`; needs Python 3 with
+`pip install markdown`), and zips it to `GUARD.zip` in the project root. NativeAOT cannot be a single `.exe` (WinUI 3 / Windows App SDK ship
 native DLLs that cannot be merged into the AOT binary), so the release is the
 whole folder - which GUARD already ships as. Being a portable app, GUARD writes
 its working files (`backup-settings.ini`, `guard-backup.cmd`, `Logs\`) next to
@@ -129,18 +126,21 @@ shipped artifact, but a working build for anyone without the C++ tools AOT needs
 | Path | Purpose |
 |---|---|
 | `Models/` | FolderPair, AppEntry, Settings, AppListFile, exclude and app-settings models (+ System.Text.Json source-gen context) |
-| `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, app-settings export/restore, JSON I/O, process helpers |
-| `MainWindow.xaml(.cs)` | All three pages and all wiring |
-| `Views/` | FolderDialog, AboutDialog, the exclude / app-import / app-settings dialogs, and the status-bar host (ContentDialogs + controls) |
+| `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, app-settings export/restore, system-image + recovery-media scripting, the updater, JSON I/O, process helpers |
+| `MainWindow.xaml(.cs)` | All four pages and all wiring |
+| `Views/` | The ContentDialogs (folder, exclude, about, app-import, app-settings export/restore, recovery-media, restore-help, update) and the status-bar host |
+| `Assets/` | App icon: SVG masters, `make-icon.py`, and the committed `GUARD.ico` + 256 px PNG |
 | `publish-release.cmd` | Build the shipping NativeAOT `GUARD` and stage it into `GUARD.zip` |
 | `publish-aot.cmd` | Quick NativeAOT build, no packaging (see [NativeAOT](#nativeaot)) |
 | `GUARD\`, `GUARD.zip` | The staged release folder and its zip (project root; not source) |
-| `USER_GUIDE.md` | The end-user manual; shipped in the zip and opened by Help (F1) |
+| `USER_GUIDE.md` | The end-user manual; ships in the zip as `USER_GUIDE.html`, opened by Help (F1) |
+| `make-user-guide.py` | Renders the manual to the `USER_GUIDE.html` the zip ships (run by `publish-release.cmd`) |
 
 ## Usage
 
-GUARD has three pages, **File Backup**, **System Image** and **App Management**.
-For a full, step-by-step walkthrough of every control and workflow, see the
+GUARD has four pages: **File Backup**, **System Image**, **App Management**,
+and **Settings** (update options, theme, startup page). For a full,
+step-by-step walkthrough of every control and workflow, see the
 [User Manual](USER_GUIDE.md) (or press F1 in the app).
 
 ## NativeAOT

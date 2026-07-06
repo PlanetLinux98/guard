@@ -8,6 +8,21 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+### Changed
+- The offline manual now ships as `USER_GUIDE.html` (styled, self-contained, and
+  following the system's light or dark mode), so Help (F1) opens it in the
+  default browser on any PC. Previously it shipped as `USER_GUIDE.md`, which
+  many PCs have no program associated with, leaving Help at a "how do you want
+  to open this file?" prompt. On update, the old `USER_GUIDE.md` left in the
+  GUARD folder is cleaned up automatically.
+
+### Fixed
+- Corrected out-of-date details in the manual: the Windows App SDK version, the
+  Help item's location, a broken Troubleshooting link, and the portability
+  table now also lists the system-image, recovery-media, and on-connect files.
+  The README's outgrown Planned Features section is removed, and its top now
+  leads with a links line (User Manual, Releases, Changelog).
+
 ## [0.5.0] - 2026-07-02
 
 ### Added

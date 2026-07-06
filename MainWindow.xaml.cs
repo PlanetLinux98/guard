@@ -164,6 +164,17 @@ public sealed partial class MainWindow : Window
         SizeToDips(1040, 900);
         EnableMinimumWindowSize();
 
+        // Releases up to v0.5.0 shipped the manual as USER_GUIDE.md; an update
+        // extracts over BaseDir without deleting old files, so clear the stale
+        // copy once the HTML manual is present. Best effort: a locked file
+        // just stays until a later launch.
+        try
+        {
+            if (File.Exists(GuardPaths.ManualPath) && File.Exists(GuardPaths.LegacyManualPath))
+                File.Delete(GuardPaths.LegacyManualPath);
+        }
+        catch { }
+
         _cfg = SettingsStore.Load();
 
         // Populate the file-tab inputs from settings.

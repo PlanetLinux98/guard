@@ -17,8 +17,8 @@ read cleanly with a screen reader. Most controls have an Alt access key, and
 the lists can be navigated with the arrow keys or by typing the first letter of
 an item.
 
-Press **F1**, or the **Help** button at the top right, to open this manual from
-inside the app at any time.
+Press **F1**, or the **Help** item at the bottom of the left navigation, to
+open this manual from inside the app at any time.
 
 > GUARD is in its 0.x series: it is fully usable, but features and behaviour may
 > change between releases.
@@ -70,7 +70,7 @@ Prefer a portable copy, or do not have winget? Download it instead:
 1. On the [Releases page](https://github.com/PlanetLinux98/guard/releases),
    download `GUARD.zip` from the latest release.
 2. Extract the zip. You get a folder named `GUARD` containing `GUARD.exe` and
-   this manual (`USER_GUIDE.md`).
+   this manual (`USER_GUIDE.html`).
 3. Move the `GUARD` folder somewhere permanent, for example `C:\Tools\GUARD`.
    GUARD writes its settings next to the exe, so give it a home rather than
    running it from your Downloads folder.
@@ -225,7 +225,7 @@ task is registered.
   a separate option that works with or without the day/time schedule. It quietly
   checks for the destination every 15 minutes and at sign-in, and runs the backup
   at most once a day when the destination is reachable, so plugging in the
-  external drive (or the network share coming back) wouldd trigger that day's
+  external drive (or the network share coming back) would trigger that day's
   backup within 15 minutes of becoming reachable.
 - **Next run** shows when Windows will next run the scheduled backup, or that no
   task is registered.
@@ -564,9 +564,13 @@ Everything GUARD knows lives in its own folder, next to `GUARD.exe`:
 | `backup-settings.ini` | All your backup settings: destination, folder list, mode, exclusions, schedule. Plain text. |
 | `guard-prefs.ini` | GUARD's own preferences from the Settings page: update options, theme, startup page. Plain text. |
 | `guard-backup.cmd` | The generated backup script. Regenerated on every Save Settings. Theoretically you could run this script portably from anywhere to do an on-demand backup. |
+| `guard-system-image.cmd` | The generated system-image script, if you use the System Image tab. |
+| `onconnect-stamp.txt` | Records the last day an on-connect backup ran, so it runs at most once a day. Only appears if that option is on. |
 | `Logs\backup_last.log` | The log of the most recent backup or preview run. |
+| `Logs\system-image_last.log` | The log of the most recent system image. |
+| `Logs\recovery-media_last.log` | The log of the most recent recovery-media (bootable USB) build. |
 | `Logs\update_last.log` | The log of the most recent self-update. |
-| `USER_GUIDE.md` | This manual; the Help button (F1) opens it. |
+| `USER_GUIDE.html` | This manual; the Help button (F1) opens it in your browser. |
 
 Because everything is in one folder, **moving the folder moves the app and its
 settings together**: copy the `GUARD` folder to another PC or a USB stick and
@@ -660,7 +664,7 @@ may not exist in the scheduled task's session.
 ## Troubleshooting
 
 **SmartScreen blocks the app on first run.** Choose **More info**, then **Run
-anyway**. See [Download and first run](#download-and-first-run).
+anyway**. See [Download manually](#download-manually).
 
 **Save Settings asks me to pick a day.** The schedule is on but no weekday is
 ticked. Tick at least one day, or turn the schedule off.
@@ -690,7 +694,7 @@ container). Close the app and restore again, or restore those by hand.
 
 ## For developers
 
-GUARD is an SDK-style C# project targeting .NET 10 and Windows App SDK 1.8
+GUARD is an SDK-style C# project targeting .NET 10 and Windows App SDK 2.2
 (WinUI 3), shipped unpackaged and self-contained. Build, project layout, and
 contributing notes are in the [README](README.md). The repo is trunk-based, with
 short-lived branches off `main` and a PR per change; accessibility reports are
