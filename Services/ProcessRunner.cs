@@ -83,6 +83,31 @@ public static class ProcessRunner
         return so.GetAwaiter().GetResult();
     }
 
+    // Run a PowerShell script FILE non-elevated, returning the exit code with
+    // stdout and stderr combined. Unlike RunPowerShellCapture the caller can
+    // tell a failed run from a quiet success, and stderr carries the error
+    // text (Add-AppxPackage reports deployment failures there).
+    public static int RunPowerShellFileCapture(string scriptPath, out string output)
+    {
+        var psi = new ProcessStartInfo("powershell.exe",
+            "-NoProfile -ExecutionPolicy Bypass -File \"" + scriptPath + "\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        using var p = Process.Start(psi)!;
+        // Concurrent drain; see RunCapture for the deadlock reasoning.
+        var so = p.StandardOutput.ReadToEndAsync();
+        var se = p.StandardError.ReadToEndAsync();
+        p.WaitForExit();
+        string e = se.GetAwaiter().GetResult().Trim();
+        string o = so.GetAwaiter().GetResult().Trim();
+        output = o.Length > 0 && e.Length > 0 ? o + "\n" + e : o + e;
+        return p.ExitCode;
+    }
+
     // Run a PowerShell script ELEVATED (UAC prompt). Output can't cross the
     // elevation boundary, so the script goes to a temp .ps1 and only the exit
     // code is checked. True on success, false on failure/cancellation.

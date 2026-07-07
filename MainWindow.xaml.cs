@@ -306,6 +306,9 @@ public sealed partial class MainWindow : Window
             SystemImagePage.Visibility = Visibility.Collapsed;
             AppMgmtPage.Visibility = Visibility.Collapsed;
             SettingsPage.Visibility = Visibility.Visible;
+            // Probe for winget once, lazily, like the app scan and the wbadmin
+            // check: the card only appears when winget is actually missing.
+            ProbeWingetForSettings();
             UpdateStatusBar();
             return;
         }

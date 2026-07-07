@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="GuardWui3.Views.WingetInstallDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Install winget"
+    PrimaryButtonText="Install"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnInstallClick"
+    CloseButtonClick="OnCloseClick">
+
+    <StackPanel Width="460" Spacing="8">
+        <!-- No AutomationProperties.Name on any TextBlock here: their accessible
+             name is their live Text (the repo rule the release lint greps for). -->
+        <TextBlock x:Name="ContextText" TextWrapping="Wrap" Visibility="Collapsed"
+                   FontWeight="SemiBold" />
+        <TextBlock TextWrapping="Wrap"
+                   Text="winget is Windows' app package manager. GUARD uses it to reinstall apps from a saved list automatically; without it, apps must be reinstalled by hand." />
+        <TextBlock TextWrapping="Wrap"
+                   Text="Install downloads Microsoft's signed App Installer package (roughly 300 MB) from the official winget release on GitHub and sets it up for your user account. No Administrator approval is needed, and nothing else on this PC is changed." />
+        <ProgressBar x:Name="InstallBar" Visibility="Collapsed" Minimum="0" Maximum="1" Value="0"
+                     AutomationProperties.Name="Install progress" />
+        <!-- Live region: no Name, or every change would announce the static name
+             instead of the message. -->
+        <TextBlock x:Name="StatusText" TextWrapping="Wrap"
+                   AutomationProperties.LiveSetting="Polite" />
+    </StackPanel>
+</ContentDialog>
