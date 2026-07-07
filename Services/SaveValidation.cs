@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Enumeration;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -69,6 +70,34 @@ public static class SaveValidation
         return bad;
     }
 
+    // Mirror-mode destination collisions, which must BLOCK a save like the
+    // source/destination overlap: /MIR deletes destination files not present in
+    // its own source, so two included pairs whose subfolders coincide (or nest)
+    // have each run purge the other pair's output - the backup silently ends up
+    // holding only the later pair. A legacy empty subfolder means the destination
+    // root itself, which collides with every other pair. Additive mode never
+    // deletes, so merged subfolders stay allowed there.
+    public static List<string> MirrorSubfolderConflicts(IEnumerable<FolderPair> folders)
+    {
+        var keys = new List<(string Key, string Label)>();
+        foreach (var f in folders)
+        {
+            if (!f.Include) continue;
+            string sub = (f.SubFolder ?? "").Trim().Trim('\\');
+            // Empty (root) keys as "" so it prefixes everything; non-empty keys
+            // end in a separator so prefix tests match whole segments only.
+            keys.Add((sub.Length > 0 ? sub + "\\" : "",
+                      sub.Length > 0 ? sub : "(the destination root)"));
+        }
+        var conflicts = new List<string>();
+        for (int i = 0; i < keys.Count; i++)
+            for (int j = i + 1; j < keys.Count; j++)
+                if (keys[i].Key.StartsWith(keys[j].Key, StringComparison.OrdinalIgnoreCase)
+                    || keys[j].Key.StartsWith(keys[i].Key, StringComparison.OrdinalIgnoreCase))
+                    conflicts.Add(keys[i].Label + "  and  " + keys[j].Label);
+        return conflicts;
+    }
+
     // Full path, env-expanded, normalized, and forced to end in a separator so a
     // StartsWith prefix test compares whole path segments. Empty for a blank or
     // unparseable path so the caller skips it rather than guessing at overlap.
@@ -104,34 +133,28 @@ public static class SaveValidation
 
     // Sums the included source trees on a worker thread under a hard time cap.
     // If the cap hits, the partial total is returned flagged incomplete so the
-    // caller can label it honestly.
-    public static Task<EstimateResult> EstimateBackupSizeAsync(IEnumerable<FolderPair> folders, TimeSpan cap)
+    // caller can label it honestly. Honours the exclusion tokens so the figure
+    // reflects what a run would actually copy - counting excluded trees (a
+    // node_modules, say) overstated the size and raised false low-space warnings.
+    public static Task<EstimateResult> EstimateBackupSizeAsync(
+        IEnumerable<FolderPair> folders, List<string> excludeDirs, List<string> excludeFiles, TimeSpan cap)
     {
         var sources = new List<string>();
         foreach (var f in folders)
             if (f.Include) sources.Add(Environment.ExpandEnvironmentVariables(f.Source ?? ""));
+        string[] exDirs = excludeDirs.ToArray(), exFiles = excludeFiles.ToArray();
 
         return Task.Run(() =>
         {
             long total = 0;
             var deadline = DateTime.UtcNow + cap;
-            var opts = new EnumerationOptions
-            {
-                IgnoreInaccessible = true,
-                RecurseSubdirectories = true,
-                AttributesToSkip = FileAttributes.ReparsePoint,
-            };
             foreach (var src in sources)
             {
                 try
                 {
                     if (src.Length == 0 || !Directory.Exists(src)) continue;
-                    foreach (var file in new DirectoryInfo(src).EnumerateFiles("*", opts))
-                    {
-                        try { total += file.Length; } catch { }
-                        if (DateTime.UtcNow > deadline)
-                            return new EstimateResult(total, Complete: false);
-                    }
+                    if (!TrySumTree(src, exDirs, exFiles, deadline, CancellationToken.None, ref total))
+                        return new EstimateResult(total, Complete: false);
                 }
                 catch { }
             }
@@ -151,41 +174,76 @@ public static class SaveValidation
     // if cancelled or the cap is hit (a partial set would give wrong offsets), so
     // the caller falls back.
     public static Task<List<long>?> MeasureIncludedFolderSizesAsync(
-        IEnumerable<FolderPair> folders, TimeSpan cap, CancellationToken ct)
+        IEnumerable<FolderPair> folders, List<string> excludeDirs, List<string> excludeFiles,
+        TimeSpan cap, CancellationToken ct)
     {
         var sources = new List<string>();
         foreach (var f in folders)
             if (f.Include) sources.Add(Environment.ExpandEnvironmentVariables(f.Source ?? ""));
+        string[] exDirs = excludeDirs.ToArray(), exFiles = excludeFiles.ToArray();
 
         return Task.Run<List<long>?>(() =>
         {
             var sizes = new List<long>(sources.Count);
             var deadline = DateTime.UtcNow + cap;
-            var opts = new EnumerationOptions
-            {
-                IgnoreInaccessible = true,
-                RecurseSubdirectories = true,
-                AttributesToSkip = FileAttributes.ReparsePoint,
-            };
             foreach (var src in sources)
             {
                 long sum = 0;
                 try
                 {
-                    if (src.Length > 0 && Directory.Exists(src))
-                    {
-                        foreach (var file in new DirectoryInfo(src).EnumerateFiles("*", opts))
-                        {
-                            try { sum += file.Length; } catch { }
-                            if (ct.IsCancellationRequested || DateTime.UtcNow > deadline) return null;
-                        }
-                    }
+                    if (src.Length > 0 && Directory.Exists(src)
+                        && !TrySumTree(src, exDirs, exFiles, deadline, ct, ref sum))
+                        return null;
                 }
                 catch { }
                 sizes.Add(sum);
             }
             return sizes;
         }, ct);
+    }
+
+    // Walks one source tree adding file sizes to total, honouring the exclusion
+    // tokens the generated script passes to robocopy (/XD folder names, /XF file
+    // patterns; wildcards allowed) and skipping reparse points like /XJ, so both
+    // size figures track what robocopy would copy. The source root itself is
+    // never name-matched (robocopy /XD only excludes subdirectories). Returns
+    // false when the deadline or token cut the walk short (total holds a partial
+    // sum); inaccessible directories are skipped, not fatal.
+    private static bool TrySumTree(string src, string[] exDirs, string[] exFiles,
+        DateTime deadline, CancellationToken ct, ref long total)
+    {
+        var stack = new Stack<DirectoryInfo>();
+        stack.Push(new DirectoryInfo(src));
+        while (stack.Count > 0)
+        {
+            if (ct.IsCancellationRequested || DateTime.UtcNow > deadline) return false;
+            var dir = stack.Pop();
+            try
+            {
+                foreach (var f in dir.EnumerateFiles())
+                {
+                    if ((f.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    if (MatchesAny(f.Name, exFiles)) continue;
+                    total += f.Length;
+                    if (DateTime.UtcNow > deadline) return false;
+                }
+                foreach (var d in dir.EnumerateDirectories())
+                {
+                    if ((d.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    if (MatchesAny(d.Name, exDirs)) continue;
+                    stack.Push(d);
+                }
+            }
+            catch { }
+        }
+        return true;
+    }
+
+    private static bool MatchesAny(string name, string[] patterns)
+    {
+        foreach (var p in patterns)
+            if (FileSystemName.MatchesSimpleExpression(p, name, ignoreCase: true)) return true;
+        return false;
     }
 
     public static string FormatBytes(long bytes)

@@ -62,13 +62,32 @@ public static class AppInventory
                     l.IndexOf("Version", StringComparison.Ordinal) >= 0)
                 { hi = i; break; }
             }
+            if (hi < 0)
+            {
+                // Localized winget translates the column words, so the English
+                // match fails; the all-dash separator under the header is
+                // locale-neutral, and the header above it keeps the same column
+                // ORDER (Name, Id, ...) in every locale.
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    var t = lines[i].Trim();
+                    if (t.Length >= 10 && IsAllDashes(t)) { hi = i - 1; break; }
+                }
+            }
             if (hi >= 0)
             {
+                // The Id column starts at the header's "Id" word or, on a
+                // localized header, at its second whitespace-delimited word.
                 int idStart = lines[hi].IndexOf("Id", StringComparison.Ordinal);
+                if (idStart < 0)
+                {
+                    var m = Regex.Match(lines[hi], @"^\S+\s+(\S)");
+                    idStart = m.Success ? m.Groups[1].Index : -1;
+                }
                 int start = hi + 1;
                 if (start < lines.Length && lines[start].TrimStart().StartsWith("---")) start++;
 
-                for (int i = start; i < lines.Length; i++)
+                for (int i = start; idStart > 0 && i < lines.Length; i++)
                 {
                     string row = lines[i];
                     if (row.Trim().Length == 0) continue;
@@ -109,6 +128,12 @@ public static class AppInventory
         ordered.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
         result.Apps = ordered;
         return result;
+    }
+
+    private static bool IsAllDashes(string s)
+    {
+        foreach (char c in s) if (c != '-') return false;
+        return true;
     }
 
     private sealed class RegInfo

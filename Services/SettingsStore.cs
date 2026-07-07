@@ -257,7 +257,7 @@ public static class SettingsStore
         sb.AppendLine("[AppList]");
         sb.AppendLine("Dest=" + cfg.AppListDest);
         sb.AppendLine("ExportSettings=" + (cfg.ExportAppSettings ? "1" : "0"));
-        File.WriteAllText(GuardPaths.IniPath, sb.ToString());
+        AtomicFile.WriteAllText(GuardPaths.IniPath, sb.ToString());
     }
 
     // Legacy multi-line exclude values were stored with line breaks collapsed

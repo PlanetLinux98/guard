@@ -60,6 +60,6 @@ public static class AppPrefsStore
         // Prefs save on every Settings-page change (no Save button), so a
         // read-only folder (GUARD run from a locked location) must not crash the
         // change handler; the preference simply doesn't persist.
-        try { File.WriteAllText(GuardPaths.PrefsPath, sb.ToString()); } catch { }
+        try { AtomicFile.WriteAllText(GuardPaths.PrefsPath, sb.ToString()); } catch { }
     }
 }

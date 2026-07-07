@@ -38,8 +38,7 @@ public static class ProcessRunner
     // benign, so swallowed.
     public static int RunWingetInstall(string id, Action<string> onLine, CancellationToken ct = default)
     {
-        var psi = new ProcessStartInfo("winget",
-            "install --id \"" + id + "\" -e --silent --accept-package-agreements --accept-source-agreements")
+        var psi = new ProcessStartInfo("winget")
         {
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -48,6 +47,12 @@ public static class ProcessRunner
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
+        // ArgumentList, not a concatenated string: the id comes from an imported
+        // app-list.json (hand-editable), so a quote in it must be escaped as data
+        // rather than splice extra arguments into the command line.
+        foreach (var a in new[] { "install", "--id", id, "-e", "--silent",
+                 "--accept-package-agreements", "--accept-source-agreements" })
+            psi.ArgumentList.Add(a);
         using var p = new Process { StartInfo = psi };
         p.OutputDataReceived += (_, e) => { if (e.Data != null) onLine(e.Data + "\r\n"); };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) onLine(e.Data + "\r\n"); };

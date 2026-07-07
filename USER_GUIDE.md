@@ -100,7 +100,8 @@ steps work for any folders and any destination.
 1. Start GUARD. It opens on the **File Backup** tab.
 2. In **Backup destination** (Alt+D), type the folder your backups go to, for
    example `E:\Backups`, or use **Browse...** to pick it. Click **Test** to
-   confirm GUARD can reach it; Test creates the folder if it does not exist yet.
+   confirm GUARD can reach it; if the folder does not exist yet, Test offers to
+   create it.
 3. Click **Add Folder...** (Alt+A). Set **Source folder** to your Documents
    folder, set **Destination subfolder** to a name like `Documents` (the folder
    created under your destination to hold this source's files), and click **OK**.
@@ -130,9 +131,9 @@ external drive, or a network share (a UNC path like `\\server\share\Backups`
 works). Each folder you back up gets its own subfolder under this root.
 
 - **Browse...** (Alt+B) opens a folder picker.
-- **Test** checks the destination is reachable and creates it if it does
-  not exist yet. Use it after plugging in a drive or before trusting a network
-  path.
+- **Test** checks the destination is reachable and, if the folder does not
+  exist yet, offers to create it. Use it after plugging in a drive or before
+  trusting a network path.
 
 ### Folders to back up
 
@@ -200,6 +201,10 @@ source:
 
 If you are unsure, use Additive. **Preview** shows any deletions Mirror would
 make before anything happens.
+
+In Mirror mode, every folder needs its own destination subfolder: folders that
+share a subfolder (or nest one inside another) would delete each other's files
+on every run, so GUARD refuses to save such a setup.
 
 ### Keep dated backup versions
 

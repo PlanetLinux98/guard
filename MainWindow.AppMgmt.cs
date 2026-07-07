@@ -560,70 +560,83 @@ public sealed partial class MainWindow : Window
 
         int ok = 0, fail = 0, attempted = 0;
         AppSettingsRestoreStats? rstats = null;
-        await System.Threading.Tasks.Task.Run(() =>
+        string outcome;
+        // try/finally like RunScript's: without it an unexpected exception in the
+        // worker (this method is async void upstream) would leave _reinstalling
+        // stuck true and the page's buttons disabled for the rest of the session.
+        try
         {
-            // ---- Install phase ----
-            for (int i = 0; i < targets.Count; i++)
+            await System.Threading.Tasks.Task.Run(() =>
             {
-                if (ct.IsCancellationRequested) break;
-                var app = targets[i];
-                string installing = "Installing: " + app.Name + " (" + (i + 1) + " of " + targets.Count + ")";
-                SetProgress(AppProgress, AppProgressLabel, totalSteps, i, installing);
-                // First item only, like the backup run's start announcement.
-                if (i == 0) AnnounceSettled(installing);
-                AppendOut(TxtAppOutput, "\r\n=== Installing " + app.Name + "  [" + app.Id + "] ===\r\n");
-                int code;
-                try { code = ProcessRunner.RunWingetInstall(app.Id, s => AppendOut(TxtAppOutput, s), ct); }
-                catch (Exception ex) { AppendOut(TxtAppOutput, "ERROR: " + ex.Message + "\r\n"); code = -1; }
-                // A cancel mid-install kills winget, which surfaces as a nonzero
-                // exit code; do not count a killed item as a failure.
-                if (ct.IsCancellationRequested) break;
-                attempted++;
-                if (code == 0) ok++; else fail++;
-                SetProgress(AppProgress, AppProgressLabel, totalSteps, attempted, "");
-            }
-
-            // ---- Restore phase (after the installs, so an app's freshly
-            // installed defaults are overwritten with the restored settings, and
-            // a cancel during installs skips restore entirely). Per-folder
-            // progress updates the bar silently, like the export copy. ----
-            if (!ct.IsCancellationRequested && restore != null)
-            {
-                AppendOut(TxtAppOutput, "\r\n=== Restoring app settings ===\r\n");
-                int baseStep = targets.Count;
-                int done = 0;
-                rstats = AppSettingsRestore.RestoreCandidates(restore, msg =>
+                // ---- Install phase ----
+                for (int i = 0; i < targets.Count; i++)
                 {
-                    int step = baseStep + done;
-                    done++;
-                    SetProgress(AppProgress, AppProgressLabel, totalSteps, step, msg);
-                    AppendOut(TxtAppOutput, msg + "\r\n");
-                    // When there is no install phase, the restore start is the
-                    // job's first spoken line (the install loop spoke otherwise).
-                    if (targets.Count == 0 && step == 0) AnnounceSettled(msg);
-                }, ct);
-            }
-        });
+                    if (ct.IsCancellationRequested) break;
+                    var app = targets[i];
+                    string installing = "Installing: " + app.Name + " (" + (i + 1) + " of " + targets.Count + ")";
+                    SetProgress(AppProgress, AppProgressLabel, totalSteps, i, installing);
+                    // First item only, like the backup run's start announcement.
+                    if (i == 0) AnnounceSettled(installing);
+                    AppendOut(TxtAppOutput, "\r\n=== Installing " + app.Name + "  [" + app.Id + "] ===\r\n");
+                    int code;
+                    try { code = ProcessRunner.RunWingetInstall(app.Id, s => AppendOut(TxtAppOutput, s), ct); }
+                    catch (Exception ex) { AppendOut(TxtAppOutput, "ERROR: " + ex.Message + "\r\n"); code = -1; }
+                    // A cancel mid-install kills winget, which surfaces as a nonzero
+                    // exit code; do not count a killed item as a failure.
+                    if (ct.IsCancellationRequested) break;
+                    attempted++;
+                    if (code == 0) ok++; else fail++;
+                    SetProgress(AppProgress, AppProgressLabel, totalSteps, attempted, "");
+                }
+
+                // ---- Restore phase (after the installs, so an app's freshly
+                // installed defaults are overwritten with the restored settings, and
+                // a cancel during installs skips restore entirely). Per-folder
+                // progress updates the bar silently, like the export copy. ----
+                if (!ct.IsCancellationRequested && restore != null)
+                {
+                    AppendOut(TxtAppOutput, "\r\n=== Restoring app settings ===\r\n");
+                    int baseStep = targets.Count;
+                    int done = 0;
+                    rstats = AppSettingsRestore.RestoreCandidates(restore, msg =>
+                    {
+                        int step = baseStep + done;
+                        done++;
+                        SetProgress(AppProgress, AppProgressLabel, totalSteps, step, msg);
+                        AppendOut(TxtAppOutput, msg + "\r\n");
+                        // When there is no install phase, the restore start is the
+                        // job's first spoken line (the install loop spoke otherwise).
+                        if (targets.Count == 0 && step == 0) AnnounceSettled(msg);
+                    }, ct);
+                }
+            });
+            outcome = BuildReinstallOutcome(ct.IsCancellationRequested, targets.Count, attempted, ok, fail, rstats);
+        }
+        catch (Exception ex)
+        {
+            outcome = "Reinstall failed: " + ex.Message;
+        }
+        finally
+        {
+            _reinstalling = false;
+            _reinstallCts.Dispose();
+            _reinstallCts = null;
+            // Re-enable the launchers and put focus back on the launcher before
+            // Stop greys out, so focus never lands somewhere arbitrary.
+            SetAppBusy(false);
+            if (launcher != null && ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnAppStop))
+                launcher.Focus(FocusState.Programmatic);
+            BtnAppStop.IsEnabled = false;
+            ShowStatusBarProgress(1, false);
+        }
 
         // Back on the UI thread; the DispatcherQueue is FIFO, so everything the
         // worker enqueued (output, progress) has already landed by now and the
-        // summary below always prints last.
-        string outcome = BuildReinstallOutcome(ct.IsCancellationRequested, targets.Count, attempted, ok, fail, rstats);
+        // summary always prints last. Announced last (after the focus events
+        // above) so the focus announcement cannot cancel the summary speech.
         AppProgressLabel.Text = outcome;
         Progress(1, p => p.Text = outcome);
         AppendOut(TxtAppOutput, "\r\n--- " + outcome + " ---\r\n");
-
-        _reinstalling = false;
-        _reinstallCts.Dispose();
-        _reinstallCts = null;
-        // Re-enable the launchers and put focus back on the launcher before Stop
-        // greys out, then announce last (after the focus events) so the focus
-        // announcement cannot cancel the summary speech.
-        SetAppBusy(false);
-        if (launcher != null && ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnAppStop))
-            launcher.Focus(FocusState.Programmatic);
-        BtnAppStop.IsEnabled = false;
-        ShowStatusBarProgress(1, false);
         AnnounceSettled(outcome, 2000);
     }
 

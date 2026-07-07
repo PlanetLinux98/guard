@@ -80,7 +80,8 @@ public sealed partial class MainWindow : Window
         UpdateImageSaveEnabled();
         if (announce && _activePage == 2 && _imageStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
-        _lastAnnouncedStatus = _imageStatusText;
+        // Page-scoped like RefreshScriptStatus: see the comment there.
+        if (_activePage == 2) _lastAnnouncedStatus = _imageStatusText;
     }
 
     // Mirror of UpdateSaveEnabled for the System Image page: disable Save once the
@@ -106,7 +107,8 @@ public sealed partial class MainWindow : Window
         UpdateStatusBar();
         if (announce && _activePage == 2 && _imageStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
-        _lastAnnouncedStatus = _imageStatusText;
+        // Page-scoped like RefreshScriptStatus: see the comment there.
+        if (_activePage == 2) _lastAnnouncedStatus = _imageStatusText;
     }
 
     // ---- dirty tracking ----
