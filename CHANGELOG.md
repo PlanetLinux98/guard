@@ -15,8 +15,39 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   many PCs have no program associated with, leaving Help at a "how do you want
   to open this file?" prompt. On update, the old `USER_GUIDE.md` left in the
   GUARD folder is cleaned up automatically.
+- The backup size estimate and the in-run byte progress now honour the
+  exclusions (presets and custom), so the size figure reflects what a run
+  actually copies instead of overstating it - which could raise false
+  "space may be too low" warnings when large excluded trees (like
+  `node_modules`) sat inside a source.
+- The Test buttons no longer create a missing destination folder silently;
+  they now ask before creating it (and still report reachable/not reachable
+  as before).
+- Settings files and the generated scripts are now written crash-safe (to a
+  temp file swapped into place), so a crash or power cut mid-save can no
+  longer leave a truncated `backup-settings.ini`, `guard-prefs.ini`, or
+  backup/image script behind.
+- The installed-app scan's winget enrichment now also recognizes the list
+  header on localized (non-English) Windows, where every app was previously
+  reported as "Manual".
 
 ### Fixed
+- Save Settings now refuses a Mirror-mode setup in which two folders share a
+  destination subfolder, nest one inside another, or map to the destination
+  root: each run's mirror pass deleted the other folder's files as "extras",
+  so the backup silently ended up holding only the later folder.
+- Save Settings now requires at least one ticked folder; previously a
+  fully-unticked list saved (and scheduled) a backup that copied nothing while
+  reporting success.
+- An unexpected error during an app reinstall or settings restore no longer
+  leaves the App Management page's buttons permanently disabled; the job now
+  cleans up and reports the failure like the backup and image runs do.
+- A winget id containing quotes in an imported `app-list.json` could break the
+  reinstall command line; ids are now passed as data, never spliced into a
+  command string.
+- Silent status repaints from a background page no longer disturb the active
+  page's screen-reader announcement tracking, which could re-announce an
+  unchanged status or drop a changed one.
 - Corrected out-of-date details in the manual: the Windows App SDK version, the
   Help item's location, a broken Troubleshooting link, and the portability
   table now also lists the system-image, recovery-media, and on-connect files.

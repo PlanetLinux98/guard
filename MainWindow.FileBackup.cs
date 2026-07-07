@@ -78,6 +78,16 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "The backup destination cannot contain quote (\") characters.");
             return false;
         }
+        // A script with zero included folders copies nothing yet reports
+        // FINISHED OK (and still registers the scheduled tasks), so a user could
+        // believe they are protected while backing up nothing.
+        bool anyIncluded = false;
+        foreach (var f in _cfg.Folders) if (f.Include) { anyIncluded = true; break; }
+        if (!anyIncluded)
+        {
+            await ShowMessageAsync("GUARD", "Tick at least one folder to back up.\n\nEvery folder in the list is unticked, so the backup would copy nothing.");
+            return false;
+        }
         if (_cfg.ScheduleEnabled && _cfg.ScheduleDays.Count == 0)
         {
             await ShowMessageAsync("GUARD", "Pick at least one day for the scheduled backup, or turn the schedule off.");
@@ -93,6 +103,18 @@ public sealed partial class MainWindow : Window
         {
             await ShowMessageAsync("GUARD", DescribeOverlap(_cfg.Dest, overlapping));
             return false;
+        }
+        // In Mirror mode, pairs whose destination subfolders coincide or nest
+        // purge each other's output on every run (see MirrorSubfolderConflicts),
+        // so like the overlap above this can never produce a good backup.
+        if (_cfg.Mode == "Mirror")
+        {
+            var conflicts = SaveValidation.MirrorSubfolderConflicts(_cfg.Folders);
+            if (conflicts.Count > 0)
+            {
+                await ShowMessageAsync("GUARD", DescribeSubfolderConflicts(conflicts));
+                return false;
+            }
         }
         // Settings and script are written synchronously (fast, and the ground
         // truth the rest of the app reads), then everything slow runs off the UI
@@ -165,7 +187,8 @@ public sealed partial class MainWindow : Window
         string baseText = _fileStatusText;
         SetFileStatusText(baseText + " Calculating backup size and destination space...", announce);
 
-        var estimateTask = SaveValidation.EstimateBackupSizeAsync(_cfg.Folders, SaveValidation.EstimateCap);
+        var estimateTask = SaveValidation.EstimateBackupSizeAsync(
+            _cfg.Folders, _cfg.EffectiveExcludeDirs(), _cfg.EffectiveExcludeFiles(), SaveValidation.EstimateCap);
         var freeTask = System.Threading.Tasks.Task.Run(() => SaveValidation.TryGetFreeSpace(_cfg.Dest));
         long? free = await freeTask;
         var est = await estimateTask;
@@ -206,7 +229,8 @@ public sealed partial class MainWindow : Window
         UpdateStatusBar();
         if (announce && _activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
-        _lastAnnouncedStatus = _fileStatusText;
+        // Page-scoped like RefreshScriptStatus: see the comment there.
+        if (_activePage == 0) _lastAnnouncedStatus = _fileStatusText;
     }
 
     private static string DescribeMissingSources(List<string> missing)
@@ -215,6 +239,16 @@ public sealed partial class MainWindow : Window
         return missing.Count == 1
             ? "this source folder is not currently reachable:" + list
             : "these source folders are not currently reachable:" + list;
+    }
+
+    private static string DescribeSubfolderConflicts(List<string> conflicts)
+    {
+        return "Cannot save these settings. In Mirror mode, these destination subfolders overlap:\n\n"
+            + string.Join("\n", conflicts)
+            + "\n\nMirror deletes anything at a folder's destination subfolder that is not in "
+            + "that folder's own source, so folders sharing or nesting subfolders would erase "
+            + "each other's backups on every run. Give each folder its own separate subfolder, "
+            + "or switch to Additive mode.";
     }
 
     // Spells out which source(s) overlap the destination and how to fix it,
@@ -404,7 +438,8 @@ public sealed partial class MainWindow : Window
             try
             {
                 var sizes = await SaveValidation.MeasureIncludedFolderSizesAsync(
-                    _cfg.Folders, SaveValidation.RunSizeCap, ct);
+                    _cfg.Folders, _cfg.EffectiveExcludeDirs(), _cfg.EffectiveExcludeFiles(),
+                    SaveValidation.RunSizeCap, ct);
                 if (sizes != null && sizes.Count > 0)
                 {
                     long tot = 0;

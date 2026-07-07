@@ -65,7 +65,7 @@ public static class SystemImageScript
         // Propagate wbadmin's exit code: the elevated launcher reads it as the
         // authoritative success/failure signal (the log tail is just for display).
         sb.AppendLine("endlocal & exit /b %RC%");
-        File.WriteAllText(GuardPaths.SystemImageScriptPath, sb.ToString());
+        AtomicFile.WriteAllText(GuardPaths.SystemImageScriptPath, sb.ToString());
     }
 
     // wbadmin -backupTarget wants "E:" for a local disk (drive letter + colon, no

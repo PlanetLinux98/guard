@@ -223,7 +223,7 @@ public static class BackupScript
         // never fires - a double-clicked run's window then closes instantly.
         sb.AppendLine("if defined PAUSEATEND pause");
         sb.AppendLine("endlocal");
-        File.WriteAllText(GuardPaths.ScriptPath, sb.ToString());
+        AtomicFile.WriteAllText(GuardPaths.ScriptPath, sb.ToString());
     }
 
     // A quoted path argument must never end in a backslash: robocopy parses \"

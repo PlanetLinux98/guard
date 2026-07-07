@@ -492,7 +492,10 @@ public sealed partial class MainWindow : Window
         // text (File Backup active); the bar repaints silently on a page switch.
         if (announce && _activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
             Announce(StatusBarText);
-        _lastAnnouncedStatus = _fileStatusText;
+        // Only while this page owns the bar: a silent repaint from an inactive
+        // page must not clobber the marker, or the active page's next identical
+        // status would be re-announced (or a new one suppressed).
+        if (_activePage == 0) _lastAnnouncedStatus = _fileStatusText;
     }
 
     // Save Settings is redundant once the on-disk script already matches the
@@ -783,6 +786,13 @@ public sealed partial class MainWindow : Window
         try
         {
             if (Directory.Exists(path)) { await ShowMessageAsync("GUARD", "Reachable:\n" + path); return; }
+            // Creating the folder here is how a typed-but-new destination gets
+            // materialized (neither Save nor the script creates it; the script
+            // aborts when it is missing) - but a "test" must not write silently,
+            // so ask first.
+            if (!await ShowConfirmAsync("GUARD",
+                "Not found:\n" + path + "\n\nCreate this folder now so it can be used as a destination?"))
+                return;
             Directory.CreateDirectory(path);
             await ShowMessageAsync("GUARD", "Created and reachable:\n" + path);
         }
