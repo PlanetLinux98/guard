@@ -489,6 +489,9 @@ Other controls here:
 
 Two practical notes:
 
+- **winget missing on the new PC?** If the ticked apps need winget and it is not
+  installed, GUARD offers to install it right there and then carries on with the
+  reinstall; see [Installing winget](#installing-winget).
 - **Administrator rights:** most installers need admin rights to install
   machine-wide. If reinstalls fail with an access or permission error, close
   GUARD and run `GUARD.exe` as Administrator (right-click, "Run as
@@ -496,6 +499,35 @@ Two practical notes:
 - **Portable apps** that run from a folder without an installer do not appear in
   the Windows registry, so GUARD cannot detect them. Keep those in a backed-up
   folder instead.
+
+### Installing winget
+
+winget (Windows' app package manager, also called App Installer) is preinstalled
+on most current Windows PCs, but not on all of them: LTSC and Server editions,
+and systems where the Microsoft Store has been removed, ship without it. Those
+are exactly the PCs a fresh restore tends to happen on, so GUARD can install
+winget for you:
+
+- When the app scan finds winget missing, a notice appears just above the status
+  bar with an **Install winget** button; **Ctrl+I** activates it from anywhere
+  while the notice is showing. The same button lives on the
+  [Settings page](#the-settings-page).
+- If you import a list and start a reinstall while winget is missing, GUARD
+  offers the install first and, once it succeeds, carries straight on with the
+  reinstall.
+
+Whichever way you start it, the same dialog opens and explains what will happen;
+choose **Install** (Alt+I) to proceed. GUARD downloads Microsoft's App Installer
+package (roughly 300 MB) from the official winget release on GitHub and installs
+it for your user account. No Administrator approval is needed, nothing else on
+the PC is changed, and Windows itself verifies the package's Microsoft signature
+during installation. The dialog shows download progress and announces each step;
+you can cancel during the download (nothing is changed), but not during the
+brief install step at the end.
+
+Once installed, winget stays current on its own: on PCs with the Microsoft Store
+it is updated by the Store like any other app, and anywhere else
+`winget upgrade Microsoft.AppInstaller` updates it in place.
 
 ## The Settings page
 
@@ -546,6 +578,12 @@ or pin GUARD to **Light** or **Dark** regardless of the system.
 
 **Page shown when GUARD opens** (Alt+P) picks which page is selected at launch:
 File Backup (the default), System Image, or App Management.
+
+### App reinstalls
+
+This card appears only when winget is missing from the PC. **Install winget**
+(Alt+W) opens the same install dialog as the notice on the App Management tab;
+see [Installing winget](#installing-winget).
 
 ## The status bar
 
@@ -684,9 +722,11 @@ running program or paths needing permissions your account lacks; the log names
 each failing file. Junction points such as the hidden "My Music" links inside
 Documents are skipped automatically and are not errors.
 
-**winget is reported as not installed.** Scanning and exporting still work. To get
-automatic reinstalls, install "App Installer" from the Microsoft Store, which
-provides winget on Windows 10 and 11.
+**winget is reported as not installed.** Scanning and exporting still work. To
+get automatic reinstalls, press **Ctrl+I** (or use the **Install winget** button
+on the notice above the status bar, or on the Settings page); GUARD downloads
+Microsoft's App Installer package and sets winget up for your user account. See
+[Installing winget](#installing-winget).
 
 **Reinstalls fail with an access error.** Run GUARD as Administrator and try
 again; see the admin note in

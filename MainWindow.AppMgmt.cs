@@ -30,7 +30,13 @@ public sealed partial class MainWindow : Window
     // =====================================================================
     private void OnRefreshApps(object sender, RoutedEventArgs e) { _appScanned = true; ScanApps(announceStart: true); }
 
-    private void ScanApps(bool announceStart)
+    // notifyCompletion: announce the completion summary as a settled UIA
+    // notification instead of the live region. The post-install rescan needs
+    // it: its summary lands right after the winget dialog's close (focus
+    // churn) and the queued "winget is now installed" notification, and a
+    // live-region change there is dropped (see AnnounceNotification's note),
+    // so NVDA never heard the new counts.
+    private void ScanApps(bool announceStart, bool notifyCompletion = false)
     {
         if (_scanning) return;
         _scanning = true;
@@ -48,22 +54,48 @@ public sealed partial class MainWindow : Window
             catch (Exception ex) { err = ex.Message; }
             DispatcherQueue.TryEnqueue(() =>
             {
+                bool wingetHint = false;
                 if (err != null) { _appStatusText = "Scan failed: " + err; }
                 else if (res != null)
                 {
                     _wingetAvailable = res.WingetAvailable;
+                    _wingetChecked = true;
                     _allApps.Clear();
                     _allApps.AddRange(res.Apps);
                     int auto = 0, man = 0;
                     foreach (var a in res.Apps) { if (a.CanAuto) auto++; else man++; }
                     if (_wingetAvailable)
+                    {
                         _appStatusText = res.Apps.Count + " apps found. " + auto + " reinstallable via winget, " + man + " manual.";
+                        HideWingetOffer();
+                    }
                     else
-                        _appStatusText = res.Apps.Count + " apps found. winget is not installed, so apps cannot be reinstalled automatically. You can still export the list for reference.";
+                    {
+                        _appStatusText = res.Apps.Count + " apps found. winget is not installed, so apps cannot be reinstalled automatically.";
+                        ShowWingetOffer();
+                        wingetHint = true;
+                    }
                     ApplyFilter();
                 }
                 _scanning = false; SetAppBusy(false);
-                AnnounceAppStatus();
+                if (wingetHint)
+                {
+                    // The Ctrl+I hint rides in the speech only, like the update
+                    // notice's Ctrl+U line; the persistent status stays short.
+                    UpdateStatusBar();
+                    if (_activePage == 1)
+                        AnnounceNotification(_appStatusText + " Press Control+I to install it.");
+                }
+                else if (notifyCompletion)
+                {
+                    // 2000ms so the "winget is now installed" notification (at
+                    // its own 2000ms settle) finishes first even when the scan
+                    // comes back quickly; ImportantMostRecent would otherwise
+                    // cut it off mid-sentence.
+                    UpdateStatusBar();
+                    if (_activePage == 1) AnnounceSettled(_appStatusText, 2000);
+                }
+                else AnnounceAppStatus();
             });
         }) { IsBackground = true };
         th.Start();
@@ -541,6 +573,29 @@ public sealed partial class MainWindow : Window
         // Belt-and-suspenders: SetAppBusy already disables Import while a run is
         // live, so this path should be unreachable during one.
         if (_reinstalling) return;
+
+        // winget gate: the install phase needs winget, and a fresh PC restoring
+        // a saved list is exactly where it is missing. _wingetAvailable can be
+        // stale in both directions (installed outside GUARD since the scan), so
+        // re-probe cheaply before offering the install dialog. Restore-only
+        // runs (no targets) never need winget and skip the gate.
+        if (targets.Count > 0 && !_wingetAvailable)
+        {
+            if (await System.Threading.Tasks.Task.Run(WingetBootstrap.Probe))
+            {
+                _wingetAvailable = true;
+                _wingetChecked = true;
+                HideWingetOffer();
+            }
+            else if (!await ShowWingetInstallDialogAsync(targets.Count == 1
+                         ? "The ticked app needs winget to reinstall automatically. GUARD will install winget first, then reinstall the app."
+                         : targets.Count + " ticked apps need winget to reinstall automatically. GUARD will install winget first, then reinstall them."))
+            {
+                _appStatusText = "Reinstall cancelled: winget is not installed.";
+                AnnounceAppStatus();
+                return;
+            }
+        }
         _reinstalling = true;
         _reinstallCts = new CancellationTokenSource();
         var ct = _reinstallCts.Token;

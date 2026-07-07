@@ -8,6 +8,17 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+- GUARD can now install winget itself on PCs that lack it (LTSC and Server
+  editions, or systems without the Microsoft Store). When the app scan finds
+  winget missing, an "Install winget" notice appears above the status bar
+  (Ctrl+I activates it; the Settings page gains the same button), and
+  reinstalling from a saved list
+  offers it first and then carries on with the reinstall. GUARD downloads
+  Microsoft's signed App Installer package from the official winget release on
+  GitHub and installs it for the current user; no Administrator approval is
+  needed, and Windows verifies the package's signature during installation.
+
 ### Changed
 - The offline manual now ships as `USER_GUIDE.html` (styled, self-contained, and
   following the system's light or dark mode), so Help (F1) opens it in the
