@@ -7,6 +7,13 @@ namespace GuardWui3.Models;
 public sealed class Settings
 {
     public string Dest = "";                       // any folder: local drive, external disk, or network share
+    // The destination volume's serial (8 hex digits) and label, recorded at
+    // save time when Dest is drive-letter-rooted. USB drives change letters
+    // between plugs; the generated script re-finds the volume by serial when
+    // the saved letter is unreachable, and a save re-anchors Dest to the new
+    // letter. Empty for UNC destinations or when the volume was unreadable.
+    public string DestVolumeSerial = "";
+    public string DestVolumeLabel = "";
     public string Mode = "Additive";               // Additive | Mirror
     // Versioned mode: each run copies into Dest\YYYY-MM-DD\ and the script prunes
     // oldest dated folders beyond VersionsToKeep. Off by default so the script

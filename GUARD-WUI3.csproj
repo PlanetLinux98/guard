@@ -34,6 +34,10 @@
          "Value does not fall within the expected range" (E_INVALIDARG)
          (CsWinRT1030). Harmless for the ReadyToRun build. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Program.cs supplies Main: it adds the headless scheduled-run mode
+         (GUARD.exe is a GUI-subsystem exe, so scheduled backups run with no
+         console window) and the single-instance check before any XAML loads. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <AssemblyName>GUARD</AssemblyName>
     <!-- Embedded as the exe's Win32 icon group (Explorer, taskbar); MainWindow
          extracts it at runtime for the title bar / Alt-Tab, so no loose .ico
@@ -61,7 +65,9 @@
     <!-- Assets\ holds the icon sources (SVG masters, generator script, .ico);
          the .ico reaches the exe via ApplicationIcon (a property, not an item),
          so none of the folder belongs in the default None glob / bundle. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe;GUARD.zip;SHA256SUMS;GUARD\**;*.cmd;*.md;LICENSE;.gitignore;Assets\**</DefaultItemExcludes>
+    <!-- Tests\ is its own project (GUARD.Tests.csproj); without the exclude
+         the app's default Compile glob swallows its .cs files. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);GUARD.exe;GUARD.zip;SHA256SUMS;GUARD\**;*.cmd;*.md;LICENSE;.gitignore;Assets\**;Tests\**</DefaultItemExcludes>
     <!-- Versioning is driven by MinVer from git tags (releases are tagged vX.Y.Z),
          so the version is never hand-edited; do not add a <Version> property here,
          it would override MinVer's computed value. Untagged commits get the next

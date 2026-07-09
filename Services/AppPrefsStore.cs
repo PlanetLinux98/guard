@@ -39,6 +39,8 @@ public static class AppPrefsStore
                 // Any tag is accepted here; the startup combo falls back to the
                 // first page when the tag no longer matches a nav item.
                 case "App.StartupPage": p.StartupPage = val; break;
+                case "Notifications.OnFailure": p.NotifyFailure = val == "1"; break;
+                case "Notifications.OnSuccess": p.NotifySuccess = val == "1"; break;
             }
         }
         return p;
@@ -57,6 +59,10 @@ public static class AppPrefsStore
         sb.AppendLine("[App]");
         sb.AppendLine("Theme=" + p.Theme);
         sb.AppendLine("StartupPage=" + p.StartupPage);
+        sb.AppendLine();
+        sb.AppendLine("[Notifications]");
+        sb.AppendLine("OnFailure=" + (p.NotifyFailure ? "1" : "0"));
+        sb.AppendLine("OnSuccess=" + (p.NotifySuccess ? "1" : "0"));
         // Prefs save on every Settings-page change (no Save button), so a
         // read-only folder (GUARD run from a locked location) must not crash the
         // change handler; the preference simply doesn't persist.

@@ -12,4 +12,9 @@ public sealed class AppPrefs
     public string LastUpdateCheck = "";  // yyyy-MM-dd of the last successful check
     public string Theme = "System";      // System | Light | Dark
     public string StartupPage = "file";  // Tag of the nav page shown at launch
+    // Windows toasts for unattended (scheduled / on-connect) backup runs.
+    // Failures on, successes off by default: a failure needs acting on, a
+    // nightly success toast is noise most people will not want.
+    public bool NotifyFailure = true;
+    public bool NotifySuccess = false;
 }

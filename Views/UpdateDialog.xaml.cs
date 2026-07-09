@@ -22,6 +22,11 @@ public sealed partial class UpdateDialog : ContentDialog
     // Path of the staged apply script once Install succeeded, else null.
     public string? StagedScript { get; private set; }
     public bool SkipRequested { get; private set; }
+    // True once Install was clicked at all. Staging begins by wiping the
+    // staging folder, so a failed or cancelled attempt has also destroyed any
+    // EARLIER staged script (the auto-install-on-exit one); the caller must
+    // know to stop pointing at it.
+    public bool DownloadAttempted { get; private set; }
 
     public UpdateDialog(GitHubRelease release)
     {
@@ -51,6 +56,7 @@ public sealed partial class UpdateDialog : ContentDialog
         args.Cancel = true;               // keep the dialog up while downloading
         if (_downloading) return;
         _downloading = true;
+        DownloadAttempted = true;
         IsPrimaryButtonEnabled = false;
         IsSecondaryButtonEnabled = false; // Close stays enabled: it cancels the download
         DownloadBar.Visibility = Visibility.Visible;

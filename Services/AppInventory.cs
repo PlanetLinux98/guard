@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using GuardWui3.Models;
 using Microsoft.Win32;
 
@@ -49,78 +48,54 @@ public static class AppInventory
 
         if (result.WingetAvailable && raw != null)
         {
-            // winget prints a CR-only spinner preamble; split on both CR and LF
-            // (dropping empties) so the header line stands alone.
-            string[] lines = raw.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-            int hi = -1;
-            for (int i = 0; i < lines.Length; i++)
+            foreach (var row in WingetListParser.Parse(raw))
             {
-                var l = lines[i];
-                if (l.IndexOf("Name", StringComparison.Ordinal) >= 0 &&
-                    l.IndexOf("Id", StringComparison.Ordinal) >= 0 &&
-                    l.IndexOf("Version", StringComparison.Ordinal) >= 0)
-                { hi = i; break; }
-            }
-            if (hi < 0)
-            {
-                // Localized winget translates the column words, so the English
-                // match fails; the all-dash separator under the header is
-                // locale-neutral, and the header above it keeps the same column
-                // ORDER (Name, Id, ...) in every locale.
-                for (int i = 1; i < lines.Length; i++)
+                // Store rows carry their real source so the UI can label them
+                // "Store" and an exported list is honest about needing the
+                // Store on the target PC. Sourceless auto rows default to
+                // winget (older winget builds omitted the Source column).
+                string source = row.Source == "msstore" ? "msstore" : "winget";
+
+                // A truncated name cannot match its registry entry exactly, so
+                // fall back to a prefix match; only a UNIQUE prefix hit is
+                // trusted (an ambiguous one would enrich the wrong app). This
+                // is what created duplicate rows: the truncated winget row
+                // missed the registry entry and was added as a second app.
+                AppEntry? target;
+                if (!byName.TryGetValue(row.Name, out target) && row.NameTruncated)
+                    target = UniquePrefixMatch(ordered, row.Name);
+
+                if (target != null)
                 {
-                    var t = lines[i].Trim();
-                    if (t.Length >= 10 && IsAllDashes(t)) { hi = i - 1; break; }
-                }
-            }
-            if (hi >= 0)
-            {
-                // The Id column starts at the header's "Id" word or, on a
-                // localized header, at its second whitespace-delimited word.
-                int idStart = lines[hi].IndexOf("Id", StringComparison.Ordinal);
-                if (idStart < 0)
-                {
-                    var m = Regex.Match(lines[hi], @"^\S+\s+(\S)");
-                    idStart = m.Success ? m.Groups[1].Index : -1;
-                }
-                int start = hi + 1;
-                if (start < lines.Length && lines[start].TrimStart().StartsWith("---")) start++;
-
-                for (int i = start; idStart > 0 && i < lines.Length; i++)
-                {
-                    string row = lines[i];
-                    if (row.Trim().Length == 0) continue;
-
-                    string name = (idStart <= row.Length ? row.Substring(0, idStart) : row).Trim();
-                    name = name.TrimEnd('…').Trim();   // strip trailing ellipsis
-                    if (name.Length == 0) continue;
-
-                    string tail = row.Length > idStart ? row.Substring(idStart) : "";
-                    var toks = Regex.Matches(tail, "\\S+");
-                    string id = toks.Count > 0 ? toks[0].Value : "";
-                    string ver = toks.Count > 1 ? toks[1].Value : "";
-                    if (ver == "…") ver = "";
-                    bool auto = id.Length > 0 && !id.StartsWith("ARP\\") && id.IndexOf('\\') < 0 && !id.EndsWith("…");
-
-                    if (byName.TryGetValue(name, out var existing))
+                    // Prefer winget over msstore when both know the app: a
+                    // winget-source id reinstalls anywhere winget runs, while
+                    // an msstore id also needs the Store (absent on LTSC and
+                    // similar); never downgrade winget to msstore.
+                    if (row.CanAuto &&
+                        (!target.CanAuto || (target.Source == "msstore" && source == "winget")))
                     {
-                        if (auto && !existing.CanAuto) { existing.Source = "winget"; existing.Id = id; }
-                        if (existing.Version.Length == 0 && ver.Length > 0) existing.Version = ver;
+                        target.Source = source;
+                        target.Id = row.Id;
                     }
-                    else if (auto)
+                    if (target.Version.Length == 0 && row.Version.Length > 0)
+                        target.Version = row.Version;
+                }
+                else if (row.CanAuto && (!row.NameTruncated || !AnyPrefixMatch(ordered, row.Name)))
+                {
+                    // Unknown to the registry scan: add it. A truncated name
+                    // with MULTIPLE registry candidates is skipped instead -
+                    // it is almost certainly one of them, and a second row
+                    // with a chopped name helps nobody.
+                    var e = new AppEntry
                     {
-                        var e = new AppEntry
-                        {
-                            Name = name,
-                            Version = ver,
-                            Source = "winget",
-                            Id = id,
-                            Include = true
-                        };
-                        byName[name] = e;
-                        ordered.Add(e);
-                    }
+                        Name = row.Name,
+                        Version = row.Version,
+                        Source = source,
+                        Id = row.Id,
+                        Include = true
+                    };
+                    byName[row.Name] = e;
+                    ordered.Add(e);
                 }
             }
         }
@@ -130,10 +105,23 @@ public static class AppInventory
         return result;
     }
 
-    private static bool IsAllDashes(string s)
+    private static AppEntry? UniquePrefixMatch(List<AppEntry> apps, string prefix)
     {
-        foreach (char c in s) if (c != '-') return false;
-        return true;
+        AppEntry? found = null;
+        foreach (var a in apps)
+        {
+            if (!a.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            if (found != null) return null; // ambiguous
+            found = a;
+        }
+        return found;
+    }
+
+    private static bool AnyPrefixMatch(List<AppEntry> apps, string prefix)
+    {
+        foreach (var a in apps)
+            if (a.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
     }
 
     private sealed class RegInfo

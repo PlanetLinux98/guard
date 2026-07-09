@@ -57,6 +57,8 @@ public static class SettingsStore
             switch (section + "." + key)
             {
                 case "General.Dest": cfg.Dest = val; break;
+                case "General.DestVolumeSerial": cfg.DestVolumeSerial = val.Trim(); break;
+                case "General.DestVolumeLabel": cfg.DestVolumeLabel = val; break;
                 case "General.Mode": cfg.Mode = val; break;
                 case "General.ExcludeDirs": legacyDirs = Unescape(val); break;
                 case "General.ExcludeFiles": legacyFiles = Unescape(val); break;
@@ -174,6 +176,8 @@ public static class SettingsStore
     {
         var s = Load();
         s.Dest = live.Dest;
+        s.DestVolumeSerial = live.DestVolumeSerial;
+        s.DestVolumeLabel = live.DestVolumeLabel;
         s.Mode = live.Mode;
         s.ExcludePresets = live.ExcludePresets;
         s.Excludes = live.Excludes;
@@ -218,6 +222,8 @@ public static class SettingsStore
         sb.AppendLine("; GUARD settings - generated file. Edit via GUARD.exe.");
         sb.AppendLine("[General]");
         sb.AppendLine("Dest=" + cfg.Dest);
+        sb.AppendLine("DestVolumeSerial=" + cfg.DestVolumeSerial);
+        sb.AppendLine("DestVolumeLabel=" + cfg.DestVolumeLabel);
         sb.AppendLine("Mode=" + cfg.Mode);
         sb.AppendLine("ExcludePresets=" + string.Join(",", cfg.ExcludePresets));
         sb.AppendLine("Versioned=" + (cfg.Versioned ? "1" : "0"));

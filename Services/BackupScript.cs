@@ -8,9 +8,18 @@ namespace GuardWui3.Services;
 
 // Generates guard-backup.cmd, a fully standalone Robocopy script that runs the
 // same from the app, Task Scheduler, or a double-click.
+//
+// Exit codes (the headless helper maps these to toasts; see
+// HeadlessBackupRunner): 0 = finished cleanly, 1 = finished with errors,
+// 2 = could not run (destination unreachable / setup failure), 3 = nothing to
+// do (on-connect gate, or another backup already holds the run lock).
 public static class BackupScript
 {
     public static void Write(Settings cfg)
+        => AtomicFile.WriteAllText(GuardPaths.ScriptPath, Generate(cfg));
+
+    // Split from Write so the generated text is testable without touching disk.
+    public static string Generate(Settings cfg)
     {
         string mirror = cfg.Mode == "Mirror" ? "/MIR" : "/E";
         // Mirror the SettingsStore load clamp: keep must never reach the script
@@ -32,6 +41,11 @@ public static class BackupScript
         // a longer log on interactive runs only.
         string optsCompact = optsCommon + " /NFL" + optsTail;
         string optsUi = optsCommon + " /BYTES" + optsTail;
+        string dest = DestValue(cfg.Dest);
+        // Drive-letter drift: only a letter-rooted destination with a recorded
+        // volume serial gets the re-find prologue (UNC paths have no letter to
+        // drift, and without a serial there is nothing to search by).
+        bool drift = cfg.DestVolumeSerial.Length > 0 && dest.Length >= 2 && dest[1] == ':';
 
         var sb = new StringBuilder();
         sb.AppendLine("@echo off");
@@ -48,13 +62,24 @@ public static class BackupScript
         sb.AppendLine("REM                              silent; backs up only if the destination is");
         sb.AppendLine("REM                              reachable and no backup succeeded yet today");
         sb.AppendLine("REM                              (used by the on-connect scheduled task)");
+        sb.AppendLine("REM");
+        sb.AppendLine("REM  EXIT CODES: 0 ok, 1 finished with errors, 2 could not run,");
+        sb.AppendLine("REM              3 nothing to do (on-connect skip, or already running).");
         sb.AppendLine("REM ===========================================================================");
         sb.AppendLine();
-        sb.AppendLine("set \"DEST=" + DestValue(cfg.Dest) + "\"");
+        sb.AppendLine("set \"DEST=" + dest + "\"");
+        if (drift)
+        {
+            // Split so a re-found drive letter can be spliced onto the same
+            // tail; DESTROOT keeps the old letter for the log note.
+            sb.AppendLine("set \"DESTROOT=" + dest.Substring(0, 2) + "\"");
+            sb.AppendLine("set \"DESTTAIL=" + dest.Substring(2) + "\"");
+        }
         if (cfg.Versioned)
             sb.AppendLine("set \"KEEP=" + keep + "\"");
         sb.AppendLine("set \"LOGDIR=%~dp0Logs\"");
         sb.AppendLine("set \"LOG=%LOGDIR%\\backup_last.log\"");
+        sb.AppendLine("set \"LOCKFILE=%LOGDIR%\\backup-running.lock\"");
         sb.AppendLine();
         sb.AppendLine("set \"DRY=\"");
         sb.AppendLine("set \"PAUSEATEND=1\"");
@@ -63,6 +88,28 @@ public static class BackupScript
         sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"PAUSEATEND=\"");
         sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"ONCONNECT=1\"");
         sb.AppendLine();
+        if (drift)
+        {
+            // USB drives change letters between plugs. When the saved letter is
+            // gone, one PowerShell CIM lookup re-finds the volume by the serial
+            // recorded at save time; the happy path (letter still valid) stays
+            // PowerShell-free, so the every-15-minutes on-connect check remains
+            // cheap whenever the drive is actually there. Runs BEFORE the
+            // on-connect gate so that gate probes the drive's real location.
+            sb.AppendLine("REM The saved drive letter can change between plugs; if it is gone, find");
+            sb.AppendLine("REM the same volume by its serial number and follow it.");
+            sb.AppendLine("if exist \"%DEST%\\\" goto :driftdone");
+            sb.AppendLine("set \"NEWDRIVE=\"");
+            sb.AppendLine("for /f \"delims=\" %%L in ('powershell -NoProfile -EncodedCommand "
+                + DriftLookupEncoded(cfg.DestVolumeSerial) + "') do set \"NEWDRIVE=%%L\"");
+            sb.AppendLine("if defined NEWDRIVE if /I not \"%NEWDRIVE%\"==\"%DESTROOT%\" (");
+            sb.AppendLine("   set \"DEST=%NEWDRIVE%%DESTTAIL%\"");
+            sb.AppendLine("   set \"DRIFTED=1\"");
+            sb.AppendLine("   echo NOTE: backup drive found at %NEWDRIVE% instead of %DESTROOT%; using it.");
+            sb.AppendLine(")");
+            sb.AppendLine(":driftdone");
+            sb.AppendLine();
+        }
         // On-connect gate: the periodic task fires this every few minutes, so it
         // must cost nothing when there's nothing to do. Exit silently (before the
         // log header, so the last real backup log is never overwritten) when the
@@ -70,12 +117,13 @@ public static class BackupScript
         // today. The stamp holds %DATE% verbatim; findstr /x compares it as
         // written, so locale date formats are irrelevant. A failed run doesn't
         // update the stamp (see the HADERR branch), so the next check retries
-        // instead of skipping the day.
+        // instead of skipping the day. Exit code 3 = "nothing to do", so the
+        // hidden helper never mistakes a quiet skip for a failure.
         sb.AppendLine("set \"OCSTAMP=%~dp0onconnect-stamp.txt\"");
         sb.AppendLine("if not defined ONCONNECT goto :checked");
-        sb.AppendLine("if not exist \"%DEST%\\\" exit /b 0");
+        sb.AppendLine("if not exist \"%DEST%\\\" exit /b 3");
         sb.AppendLine("findstr /l /x /c:\"%DATE%\" \"%OCSTAMP%\" >nul 2>&1");
-        sb.AppendLine("if not errorlevel 1 exit /b 0");
+        sb.AppendLine("if not errorlevel 1 exit /b 3");
         sb.AppendLine(":checked");
         sb.AppendLine();
         sb.AppendLine("set \"OPTS=" + optsCompact + "\"");
@@ -85,6 +133,28 @@ public static class BackupScript
         sb.AppendLine();
         sb.AppendLine("if not exist \"%LOGDIR%\" md \"%LOGDIR%\"");
         sb.AppendLine();
+        // Single-run lock: fd 9 holds LOCKFILE open for the whole of :main, so
+        // a scheduled fire during an in-app run (or vice versa) cannot corrupt
+        // the shared log or race robocopy - the loser's redirect fails, :main
+        // never runs, RC stays undefined, and it bows out as "nothing to do".
+        // The 2>nul only hides cmd's sharing-violation complaint from that
+        // losing attempt. A killed run releases the handle with the process,
+        // and the leftover lock FILE is harmless (only openability matters).
+        sb.AppendLine("set \"RC=\"");
+        sb.AppendLine("2>nul ( 9>\"%LOCKFILE%\" call :main )");
+        sb.AppendLine("if not defined RC (");
+        sb.AppendLine("   echo Another backup is already running - this run was skipped.");
+        sb.AppendLine("   set \"RC=3\"");
+        sb.AppendLine(")");
+        sb.AppendLine("echo.");
+        // The pause must run BEFORE endlocal: PAUSEATEND is set inside the
+        // setlocal scope, so endlocal discards it and a pause placed after
+        // never fires - a double-clicked run's window then closes instantly.
+        // %RC% on the same line expands before endlocal clears it.
+        sb.AppendLine("if defined PAUSEATEND pause");
+        sb.AppendLine("endlocal & exit /b %RC%");
+        sb.AppendLine();
+        sb.AppendLine(":main");
         if (cfg.Versioned)
         {
             // %date% is locale-formatted and wmic is removed from current
@@ -97,7 +167,8 @@ public static class BackupScript
             sb.AppendLine("if not defined STAMP (");
             sb.AppendLine("   echo ERROR: could not compute the date stamp for the versioned backup - aborting.");
             sb.AppendLine("   >\"%LOG%\" echo ERROR: could not compute the date stamp for the versioned backup - aborting.");
-            sb.AppendLine("   goto :end");
+            sb.AppendLine("   set \"RC=2\"");
+            sb.AppendLine("   goto :eof");
             sb.AppendLine(")");
             sb.AppendLine("set \"RUNDEST=%DEST%\\%STAMP%\"");
             sb.AppendLine();
@@ -107,6 +178,8 @@ public static class BackupScript
         // %DEST% is quoted wherever echo re-expands it: unquoted, a & < > | or ^
         // in the path would be parsed as a cmd operator mid-message.
         sb.AppendLine(">>\"%LOG%\" echo  Destination: \"%DEST%\"");
+        if (drift)
+            sb.AppendLine("if defined DRIFTED >>\"%LOG%\" echo  NOTE: destination drive found at %NEWDRIVE% ^(was %DESTROOT%^); it changed drive letters.");
         if (cfg.Versioned)
             sb.AppendLine(">>\"%LOG%\" echo  Version folder: %STAMP%  (keeping the newest %KEEP%)");
         sb.AppendLine("if defined DRY >>\"%LOG%\" echo  *** PREVIEW MODE - no changes made ***");
@@ -123,7 +196,8 @@ public static class BackupScript
         sb.AppendLine("if not exist \"%DEST%\\\" (");
         sb.AppendLine("   echo ERROR: destination not reachable at \"%DEST%\"  - aborting.");
         sb.AppendLine("   >>\"%LOG%\" echo ERROR: destination not reachable at \"%DEST%\" - aborting.");
-        sb.AppendLine("   goto :end");
+        sb.AppendLine("   set \"RC=2\"");
+        sb.AppendLine("   goto :eof");
         sb.AppendLine(")");
         sb.AppendLine();
         sb.AppendLine("set \"HADERR=\"");
@@ -151,6 +225,7 @@ public static class BackupScript
         sb.AppendLine("   >>\"%LOG%\" echo FINISHED WITH ERRORS   %date% %time%");
         sb.AppendLine("   echo.");
         sb.AppendLine("   echo Backup finished, but some folders reported errors - see the log.");
+        sb.AppendLine("   set \"RC=1\"");
         sb.AppendLine(") else (");
         sb.AppendLine("   >>\"%LOG%\" echo FINISHED OK   %date% %time%");
         sb.AppendLine("   echo.");
@@ -160,6 +235,7 @@ public static class BackupScript
         // expands at the finish, so a run crossing midnight stamps the new day as
         // covered.
         sb.AppendLine("   if defined ONCONNECT if not defined DRY >\"%OCSTAMP%\" echo %DATE%");
+        sb.AppendLine("   set \"RC=0\"");
         sb.AppendLine(")");
         if (cfg.Versioned)
         {
@@ -167,7 +243,7 @@ public static class BackupScript
             sb.AppendLine("REM version may be incomplete, so keeping extra old versions is safer.");
             sb.AppendLine("if not defined DRY if not defined HADERR call :prune");
         }
-        sb.AppendLine("goto :end");
+        sb.AppendLine("goto :eof");
         sb.AppendLine();
         sb.AppendLine(":backup");
         sb.AppendLine("if not exist \"%~1\" (");
@@ -216,14 +292,25 @@ public static class BackupScript
             sb.AppendLine("goto :eof");
             sb.AppendLine();
         }
-        sb.AppendLine(":end");
-        sb.AppendLine("echo.");
-        // The pause must run BEFORE endlocal: PAUSEATEND is set inside the
-        // setlocal scope, so endlocal discards it and a pause placed after
-        // never fires - a double-clicked run's window then closes instantly.
-        sb.AppendLine("if defined PAUSEATEND pause");
-        sb.AppendLine("endlocal");
-        AtomicFile.WriteAllText(GuardPaths.ScriptPath, sb.ToString());
+        return sb.ToString();
+    }
+
+    // The one-line PowerShell that maps the recorded volume serial back to its
+    // current drive letter ("F:"), base64-encoded (UTF-16, -EncodedCommand) at
+    // generation time so no quoting survives into the batch line. CIM's
+    // Win32_LogicalDisk.VolumeSerialNumber is the same 8-hex-digit value
+    // VolumeInfo records.
+    private static string DriftLookupEncoded(string serialHex)
+    {
+        string safe = new StringBuilder().Append(serialHex.Trim().ToUpperInvariant()).ToString();
+        // Serial is hex digits only by construction; strip anything else so a
+        // hand-edited ini value cannot smuggle script into the command.
+        var sb = new StringBuilder();
+        foreach (char c in safe)
+            if (c is (>= '0' and <= '9') or (>= 'A' and <= 'F')) sb.Append(c);
+        string ps = "$d = (Get-CimInstance Win32_LogicalDisk -Filter \"VolumeSerialNumber='" + sb +
+                    "'\" | Select-Object -First 1).DeviceID; if ($d) { Write-Output $d }";
+        return Convert.ToBase64String(Encoding.Unicode.GetBytes(ps));
     }
 
     // A quoted path argument must never end in a backslash: robocopy parses \"

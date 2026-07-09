@@ -9,6 +9,9 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        // Last-chance crash record: a fail-fast or unhandled XAML exception
+        // otherwise vanishes without a trace on end-user machines.
+        UnhandledException += (_, e) => Services.DebugLog.Crash(e.Exception, "XAML");
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
