@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Text;
 using System.Threading;
 
@@ -9,6 +8,23 @@ namespace GuardWui3.Services;
 
 public static class ProcessRunner
 {
+    // Hard deadline for the capture helpers: a hung winget or powershell would
+    // otherwise pin the caller's job flag for the whole session (the app scan
+    // stuck on "Scanning...", a save that never returns). Generous, because a
+    // cold winget or the ScheduledTasks module import can legitimately take
+    // tens of seconds. On expiry the tree is killed and the helper throws;
+    // every caller already routes exceptions to its own failure path.
+    private static readonly TimeSpan CaptureTimeout = TimeSpan.FromMinutes(5);
+
+    private static void WaitOrKill(Process p, string what, TimeSpan timeout)
+    {
+        if (p.WaitForExit((int)timeout.TotalMilliseconds)) return;
+        try { p.Kill(entireProcessTree: true); } catch { }
+        p.WaitForExit();
+        throw new TimeoutException(what + " did not finish within "
+            + (int)timeout.TotalMinutes + " minutes and was stopped.");
+    }
+
     // Capture stdout of a console tool (used for `winget list`). Throws when the
     // executable is not on PATH, which the caller treats as "winget missing".
     public static string RunCapture(string exe, string args)
@@ -26,7 +42,7 @@ public static class ProcessRunner
         // blocks on the other pipe's full buffer deadlocks both sides.
         var so = p.StandardOutput.ReadToEndAsync();
         var se = p.StandardError.ReadToEndAsync();
-        p.WaitForExit();
+        WaitOrKill(p, exe, CaptureTimeout);
         se.GetAwaiter().GetResult();
         return so.GetAwaiter().GetResult();
     }
@@ -87,7 +103,7 @@ public static class ProcessRunner
         // Concurrent drain; see RunCapture for the deadlock reasoning.
         var so = p.StandardOutput.ReadToEndAsync();
         var se = p.StandardError.ReadToEndAsync();
-        p.WaitForExit();
+        WaitOrKill(p, "PowerShell", CaptureTimeout);
         se.GetAwaiter().GetResult();
         return so.GetAwaiter().GetResult();
     }
@@ -95,7 +111,10 @@ public static class ProcessRunner
     // Run a PowerShell script FILE non-elevated, returning the exit code with
     // stdout and stderr combined. Unlike RunPowerShellCapture the caller can
     // tell a failed run from a quiet success, and stderr carries the error
-    // text (Add-AppxPackage reports deployment failures there).
+    // text (Add-AppxPackage reports deployment failures there). Double the
+    // capture deadline: the winget bundle deployment this runs is legitimately
+    // slow on a weak disk, and killing a transactional install too early
+    // helps nobody.
     public static int RunPowerShellFileCapture(string scriptPath, out string output)
     {
         var psi = new ProcessStartInfo("powershell.exe",
@@ -110,7 +129,7 @@ public static class ProcessRunner
         // Concurrent drain; see RunCapture for the deadlock reasoning.
         var so = p.StandardOutput.ReadToEndAsync();
         var se = p.StandardError.ReadToEndAsync();
-        p.WaitForExit();
+        WaitOrKill(p, "PowerShell", CaptureTimeout + CaptureTimeout);
         string e = se.GetAwaiter().GetResult().Trim();
         string o = so.GetAwaiter().GetResult().Trim();
         output = o.Length > 0 && e.Length > 0 ? o + "\n" + e : o + e;
@@ -128,20 +147,23 @@ public static class ProcessRunner
     // output redirects to a log the caller tails; the exit code still crosses
     // (the parent reads the child's ExitCode even through runas). Returns an
     // Elevation* sentinel and sets error when the process could not start.
+    //
+    // -EncodedCommand, not a temp .ps1 file: the script stays data with no
+    // encoding guesswork (the file needed a UTF-8 BOM or non-ASCII paths
+    // corrupted it), and there is no on-disk file in user-writable %TEMP% that
+    // another same-user process could swap in the instant before Administrator
+    // approval, turning the elevation into its own. Command-line length is not
+    // a concern: the largest script (the recovery-media build) encodes to
+    // ~15 KB, well under the 32 KB command-line cap. No timeout here: elevated
+    // jobs (a full system image) legitimately run for hours.
     public static int RunPowerShellElevatedCode(string script, out string? error)
     {
         error = null;
-        string ps1 = Path.Combine(Path.GetTempPath(), "guard_" + Guid.NewGuid().ToString("N") + ".ps1");
         try
         {
-            // Encoding.UTF8 (not the 2-arg WriteAllText overload, which omits
-            // the BOM) so Windows PowerShell reads the file as UTF-8 instead of
-            // guessing the system codepage; without a BOM, a non-ASCII path
-            // (e.g. an accented Windows username) gets misread and corrupts
-            // the script's quoted arguments.
-            File.WriteAllText(ps1, script, Encoding.UTF8);
+            string b64 = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
             var psi = new ProcessStartInfo("powershell.exe",
-                "-NoProfile -ExecutionPolicy Bypass -File \"" + ps1 + "\"")
+                "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + b64)
             {
                 UseShellExecute = true,
                 Verb = "runas",
@@ -163,10 +185,6 @@ public static class ProcessRunner
         {
             error = ex.Message;
             return ElevationLaunchFailed;
-        }
-        finally
-        {
-            try { File.Delete(ps1); } catch { }
         }
     }
 

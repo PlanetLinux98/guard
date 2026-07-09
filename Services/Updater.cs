@@ -141,22 +141,23 @@ public static class Updater
         await GitHubDownloads.DownloadAssetAsync(Http, zipAsset, zipPath,
             done => { if (total > 0) progress?.Report((double)done / total); }, ct);
 
-        // Releases before the updater shipped carry no SHA256SUMS; those are
-        // never the LATEST release once this code runs, so in practice the
-        // manifest is always there - but a missing one only skips verification
-        // rather than failing an otherwise good download.
-        if (sumAsset is not null)
-        {
-            string sums = await Http.GetStringAsync(sumAsset.DownloadUrl, ct);
-            string? expected = ParseChecksum(sums, ZipAssetName);
-            if (expected is null)
-                throw new InvalidOperationException("The release's SHA256SUMS has no entry for " + ZipAssetName + ".");
-            string actual;
-            using (var f = File.OpenRead(zipPath))
-                actual = Convert.ToHexString(await SHA256.HashDataAsync(f, ct));
-            if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The downloaded file failed its integrity check.");
-        }
+        // Releases before the updater shipped carry no SHA256SUMS, but those
+        // can never be the LATEST release once this code runs - so a missing
+        // manifest means a mis-published release, and the update refuses to
+        // install unverified rather than silently skipping the check (which
+        // would hide the mistake forever).
+        if (sumAsset is null)
+            throw new InvalidOperationException("This release has no " + ChecksumAssetName
+                + " file, so the download cannot be verified. The release may still be publishing; try again later.");
+        string sums = await Http.GetStringAsync(sumAsset.DownloadUrl, ct);
+        string? expected = ParseChecksum(sums, ZipAssetName);
+        if (expected is null)
+            throw new InvalidOperationException("The release's SHA256SUMS has no entry for " + ZipAssetName + ".");
+        string actual;
+        using (var f = File.OpenRead(zipPath))
+            actual = Convert.ToHexString(await SHA256.HashDataAsync(f, ct));
+        if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The downloaded file failed its integrity check.");
 
         return WriteApplyScript(zipPath, relaunch);
     }

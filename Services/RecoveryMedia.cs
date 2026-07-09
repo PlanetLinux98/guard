@@ -130,7 +130,11 @@ public static class RecoveryMedia
         sb.AppendLine("$partMB = [math]::Min($diskMB - 50, 30000)");
         sb.AppendLine("if ($partMB -lt 7000) { Dismount-DiskImage -ImagePath $iso | Out-Null; Log 'ERROR: the USB drive is too small; use an 8 GB or larger drive.'; exit 7 }");
         sb.AppendLine("Log ('Formatting disk ' + $disk + ' (' + $d.FriendlyName + ')...')");
-        sb.AppendLine("$dpFile = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'guard_dp_' + [Guid]::NewGuid().ToString('N') + '.txt')");
+        // %SystemRoot%\Temp, not the user temp: this elevated script's diskpart
+        // input must not sit where a non-elevated same-user process could swap
+        // it between the write and diskpart reading it (it selects which disk
+        // gets wiped). Standard users cannot write under %SystemRoot%\Temp.
+        sb.AppendLine("$dpFile = [IO.Path]::Combine($env:SystemRoot, 'Temp', 'guard_dp_' + [Guid]::NewGuid().ToString('N') + '.txt')");
         // Each diskpart line must be its own array element, built with string
         // interpolation. Do NOT write '...' + $x inside @(...): the , / + operator
         // precedence folds the whole array into ONE string, so diskpart received a

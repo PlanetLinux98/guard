@@ -1206,6 +1206,10 @@ public sealed partial class MainWindow : Window
             // Don't Save falls through and discards the edits.
         }
 
+        // Recomputed, not the snapshot from above: the save prompt can sit open
+        // while a job finishes, and a stale snapshot would then warn about a
+        // job that is no longer running.
+        busy = _backupRunning || _reinstalling || _imageRunning || _exporting || _imageListing || _scanning;
         if (busy)
         {
             // The elevated image cannot be cancelled from this un-elevated

@@ -91,6 +91,9 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - The System Image destination caption now says that a folder typed after a
   local drive letter is ignored (wbadmin always writes to the drive's root,
   into WindowsImageBackup).
+- An update now refuses to install when the release has no SHA256SUMS
+  checksum file, instead of quietly installing unverified; a missing manifest
+  means a mis-published release.
 
 ### Fixed
 - Several ways GUARD could crash or lock up: a failed settings save (e.g.
@@ -113,11 +116,21 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   dialogs, and an imported app-settings bundle's manifest can no longer name
   folders outside the bundle or outside the settings roots it restores to.
 - Elevated actions (System Image, Recovery Media, scheduled-task
-  registration) are more reliable: the script handed to PowerShell now
-  declares its text encoding, so a non-ASCII account or install path can no
-  longer corrupt it; an apostrophe in GUARD's folder path no longer breaks
-  Create Image Now; and a launch failure is only reported as "Administrator
-  approval was declined" when that is what happened.
+  registration) are more reliable and safer: the script now travels inside
+  the PowerShell command itself rather than through a temp file, which
+  removes both the encoding trap that corrupted non-ASCII account and
+  install paths and the brief window in which another program could have
+  tampered with the file before Administrator approval (the elevated
+  scripts' own diskpart and schtasks work files moved out of user-writable
+  temp for the same reason). An apostrophe in GUARD's folder path no longer
+  breaks Create Image Now, and a launch failure is only reported as
+  "Administrator approval was declined" when that is what happened.
+- A hung winget or PowerShell no longer pins its page's job for the rest of
+  the session (a scan stuck on "Scanning...", a save that never finished):
+  captured helper processes now have a hard deadline and are stopped and
+  reported when they exceed it.
+- The close-time "a job is still running" warning no longer appears for a
+  job that finished while the unsaved-changes prompt was open.
 - Skipping an offered update now also cancels a copy of that version that
   auto-install had already staged (it previously installed on exit despite
   the skip); a failed or cancelled re-download clears the stale staged
