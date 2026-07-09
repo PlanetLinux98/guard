@@ -264,10 +264,21 @@ public sealed partial class MainWindow : Window
         _imageSaving = true;
         try
         {
-            // Section-scoped: never commits the File Backup page's unsaved
-            // edits (see SettingsStore.SaveSystemImage).
-            SettingsStore.SaveSystemImage(_cfg);
-            SystemImageScript.Write(_cfg);
+            try
+            {
+                // Section-scoped: never commits the File Backup page's unsaved
+                // edits (see SettingsStore.SaveSystemImage).
+                SettingsStore.SaveSystemImage(_cfg);
+                SystemImageScript.Write(_cfg);
+            }
+            catch (Exception ex)
+            {
+                // Same guard as SaveAllAsync: a failed write must not escape
+                // this async-void path and crash GUARD.
+                await ShowMessageAsync("GUARD", "Could not save the settings:\n\n" + ex.Message
+                    + "\n\nGUARD writes its settings and image script into the folder GUARD.exe is in, so that folder must be writable.");
+                return false;
+            }
             _imageDirty = false;
             // Explicit confirmation, like SaveAllAsync's: the health line
             // returns at the next launch, page revisit, or run end.
@@ -401,8 +412,10 @@ public sealed partial class MainWindow : Window
         {
             // Output can't cross the elevation boundary (see RunPowerShellElevated),
             // so the elevated script writes to the log and we tail it for progress
-            // while it runs; the exit code is the authoritative result.
-            string elevated = "& cmd.exe /c '\"" + GuardPaths.SystemImageScriptPath + "\"'; exit $LASTEXITCODE";
+            // while it runs; the exit code is the authoritative result. PsQuote:
+            // the path sits in a single-quoted PowerShell string, so an apostrophe
+            // in the install path would otherwise end the string and kill the run.
+            string elevated = "& cmd.exe /c '\"" + PsQuote(GuardPaths.SystemImageScriptPath) + "\"'; exit $LASTEXITCODE";
             var runTask = System.Threading.Tasks.Task.Run(() => ProcessRunner.RunPowerShellElevated(elevated, out err));
             while (!runTask.IsCompleted)
             {

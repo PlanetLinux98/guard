@@ -59,6 +59,24 @@ public class SaveValidationTests
     }
 
     [Fact]
+    public void UnresolvedPercentPathsFlagOnlyNonVariablePercents()
+    {
+        var pairs = new List<FolderPair>
+        {
+            new(true, @"%USERPROFILE%\Documents", "Docs"),  // resolves: fine
+            new(true, @"C:\Data\100%", "Data"),             // literal %: flagged
+            new(false, @"C:\Skip\50%", "Skip"),             // unticked: ignored
+        };
+        var bad = SaveValidation.UnresolvedPercentPaths(@"D:\Backup", pairs);
+        Assert.Single(bad);
+        Assert.Equal(@"C:\Data\100%", bad[0]);
+
+        // The destination is checked too; a percent-free setup flags nothing.
+        Assert.Single(SaveValidation.UnresolvedPercentPaths(@"D:\100% Backups", new List<FolderPair>()));
+        Assert.Empty(SaveValidation.UnresolvedPercentPaths(@"D:\Backup", new List<FolderPair>()));
+    }
+
+    [Fact]
     public void MirrorConflictsCatchDuplicateNestedAndRootSubfolders()
     {
         var dup = new List<FolderPair>
@@ -89,6 +107,54 @@ public class SaveValidationTests
         };
         Assert.Empty(SaveValidation.MirrorSubfolderConflicts(fine));
     }
+}
+
+public class AppSettingsRestoreTests
+{
+    // The manifest is hand-editable JSON; folder/destRelativePath values that
+    // are rooted or climb with ".." must be dropped, or a doctored bundle
+    // could read from or restore over arbitrary folders.
+    [Fact]
+    public void BuildCandidatesDropsEntriesThatEscapeTheBundleOrAnchor()
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "guard-test-" + Guid.NewGuid().ToString("N"));
+        string bundle = System.IO.Path.Combine(root, "bundle");
+        string outside = System.IO.Path.Combine(root, "outside");
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(bundle, @"AppSettings\AppData\GoodApp"));
+        System.IO.Directory.CreateDirectory(outside);
+        try
+        {
+            const string goodRel = @"AppSettings\AppData\GoodApp";
+            var manifest = new AppSettingsManifest
+            {
+                Entries = new[]
+                {
+                    Entry("GoodApp", goodRel),          // kept
+                    Entry("GoodApp", @"..\outside"),    // exists, but escapes the bundle
+                    Entry("GoodApp", outside),          // rooted source outside the bundle
+                    Entry("..", goodRel),               // folder climbs out of the anchor
+                    Entry(".", goodRel),                // folder IS the anchor root
+                    Entry(@"Sub\Inner", goodRel),       // folder is not a bare name
+                    Entry(@"C:\evil", goodRel),         // rooted folder
+                },
+            };
+            var rows = AppSettingsRestore.BuildCandidates(manifest, bundle);
+            Assert.Single(rows);
+            Assert.Equal("GoodApp", rows[0].FolderName);
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static AppSettingsManifestEntry Entry(string folder, string rel) => new()
+    {
+        Folder = folder,
+        RootAnchor = "%APPDATA%",
+        DestRelativePath = rel,
+    };
 }
 
 public class UpdaterVersionTests

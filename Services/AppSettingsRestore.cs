@@ -51,12 +51,24 @@ public static class AppSettingsRestore
     {
         var list = new List<AppSettingsRestoreCandidate>();
         if (manifest.Entries == null) return list;
+        // The manifest is hand-editable JSON, so its path fields get the same
+        // distrust as a hand-edited ini: Folder must be a bare name (or the
+        // target escapes the anchor root - Path.Combine returns a rooted second
+        // argument verbatim), and the copied-source path must resolve to inside
+        // the bundle folder.
+        string bundleRoot;
+        try { bundleRoot = WithTrailingSeparator(listDir); }
+        catch { return list; }
         foreach (var e in manifest.Entries)
         {
             if (string.IsNullOrEmpty(e.Folder) || string.IsNullOrEmpty(e.RootAnchor)
                 || string.IsNullOrEmpty(e.DestRelativePath)) continue;
+            if (!IsSafeFolderName(e.Folder)) continue;
 
-            string source = Path.Combine(listDir, e.DestRelativePath);
+            string source;
+            try { source = Path.GetFullPath(Path.Combine(listDir, e.DestRelativePath)); }
+            catch { continue; }
+            if (!source.StartsWith(bundleRoot, StringComparison.OrdinalIgnoreCase)) continue;
             if (!Directory.Exists(source)) continue;
 
             string expandedRoot = Environment.ExpandEnvironmentVariables(e.RootAnchor);
@@ -121,6 +133,22 @@ public static class AppSettingsRestore
             catch { stats.SkippedFolders++; }
         }
         return stats;
+    }
+
+    // A bare folder name only: no separators or drive colon, and not a
+    // relative-navigation name ("." would make the restore rename the anchor
+    // root itself aside; ".." would climb out of it).
+    private static bool IsSafeFolderName(string name)
+    {
+        string t = name.Trim();
+        return t.Length > 0 && t != "." && t != ".."
+            && t.IndexOfAny(new[] { '\\', '/', ':' }) < 0;
+    }
+
+    private static string WithTrailingSeparator(string dir)
+    {
+        string full = Path.GetFullPath(dir);
+        return full.EndsWith(Path.DirectorySeparatorChar) ? full : full + Path.DirectorySeparatorChar;
     }
 
     // A timestamped sibling name for the displaced folder, made unique so two

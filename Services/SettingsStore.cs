@@ -131,16 +131,19 @@ public static class SettingsStore
         if (source.Trim().Length == 0 || subFolder.Trim().Length == 0) return false;
         if (source.Contains('"') || source.Contains('|')) return false;
         foreach (char c in subFolder)
-            if (c is '"' or '|' or '<' or '>' or ':' or '?' or '*' or '/') return false;
+            if (c is '"' or '|' or '<' or '>' or ':' or '?' or '*' or '/' or '%') return false;
         foreach (var seg in subFolder.Split('\\'))
             if (seg.Trim() == "..") return false;
         return true;
     }
 
     // A quote would break the generated robocopy line; a pipe the ini's own
-    // Excludes format. Blank pattern is rejected too, matching ExcludeDialog.
+    // Excludes format; the cmd operator/expansion characters (& ^ < > %) act
+    // as operators when the unquotable OPTS variable expands on the robocopy
+    // line. Blank pattern is rejected too, matching ExcludeDialog.
+    private static readonly char[] UnsafePatternChars = { '"', '|', '&', '^', '<', '>', '%' };
     private static bool IsValidExcludePattern(string pattern)
-        => pattern.Trim().Length > 0 && !pattern.Contains('"') && !pattern.Contains('|');
+        => pattern.Trim().Length > 0 && pattern.IndexOfAny(UnsafePatternChars) < 0;
 
     // Fold a pre-preset ini's free-text exclude lines into the preset/custom
     // model: a preset is ticked when any of its patterns appears among the legacy

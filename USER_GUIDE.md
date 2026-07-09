@@ -7,10 +7,11 @@ installed applications, with their settings, so you can rebuild a PC after a
 clean Windows install. It can also create full system images of the whole PC, so
 you can restore everything (Windows, programs and settings) after a disk failure.
 
-There is no installation needed, and the app is fully portable to move between PC's 
+There is no installation needed, and the app is fully portable to move between PCs 
 or system reinstalls. You extract one folder and run the exe inside it. GUARD writes 
-no program files outside its own folder (the one optional exception is the Windows scheduled
-task it can create for you).
+no program files outside its own folder (the optional exceptions are the Windows
+scheduled tasks it can create for you, and a one-time notification registration if
+you use notifications).
 
 GUARD is built to be fully usable with either the keyboard or the mouse, and to
 read cleanly with a screen reader. Most controls have an Alt access key, and
@@ -44,10 +45,11 @@ open this manual from inside the app at any time.
 
 - Windows 10 version 1809 (build 17763) or later, including Windows 11.
 - Nothing else to install. The .NET runtime and everything GUARD needs are
-  bundled inside `GUARD.exe`.
+  bundled in GUARD's folder.
 - Optional: **winget** (the Windows Package Manager, preinstalled on current
   Windows) enables automatic app reinstalls. Without it you can still scan and
-  export your app list.
+  export your app list, and GUARD can install winget for you (see
+  [Installing winget](#installing-winget)).
 
 ### Install with winget
 
@@ -162,12 +164,15 @@ then use Edit Folder or Remove Folder.
 ### Exclusions
 
 Things the backup should skip wherever it finds them. Most cases need no typing:
-tick any of the four presets, which cover the common clutter:
+tick any of the four presets, which cover the common clutter (a fresh install
+starts with only System clutter ticked):
 
 - **Temporary files** (`*.tmp`, `*.bak`, `~$*` lock files)
 - **System clutter** (Thumbs.db, desktop.ini, .DS_Store, $RECYCLE.BIN, System
   Volume Information)
-- **Developer folders** (node_modules, .git, bin, obj, .vs)
+- **Developer folders** (node_modules, .git, bin, obj, .vs). Note this skips
+  *every* folder with those names, wherever it appears; leave it unticked
+  unless you know your backed-up folders hold code projects.
 - **Caches and disc images** (`cache` and `.cache` folders, `*.iso`, `*.img`)
 
 For anything else, select **Add Exclusion...** (Alt+U in the exclusions area). The
@@ -267,7 +272,9 @@ Two situations GUARD handles for you:
   change takes effect until you save. The save runs in the background and confirms inline in the status bar; it also reports the
   destination's free space, a rough size for a first full backup, and any
   included source folders that are not currently reachable (those are simply
-  skipped at run time). A dialog appears if there is a problem saving. If you
+  skipped at run time). It warns if a path contains a `%` sign that is not an
+  environment variable, since Windows command scripts treat `%` specially and
+  the backup could misread the path. A dialog appears if there is a problem saving. If you
   close GUARD with changes you have not saved, it asks whether to save them
   first, with Save, Don't Save, and Cancel.
 - **Run Now** (Alt+N) saves any unsaved changes, then runs the backup
@@ -277,8 +284,9 @@ Two situations GUARD handles for you:
   preview after switching to Mirror or changing exclusions.
 - **Stop Backup** (Alt+T) cancels a running backup (the whole script and robocopy
   process tree is stopped). It is available only while a backup is running.
-- **Open Last Log** (Alt+L) opens the log of the most recent run
-  (`Logs\backup_last.log`), including scheduled runs.
+- **Open Last Log** (Alt+L) opens the log of the most recent real backup
+  (`Logs\backup_last.log`), including scheduled runs. Previews keep their own
+  separate log, so a dry run never poses as the last real backup.
 - **Open Destination** (Alt+O) opens the backup destination in File Explorer.
 
 ### Progress, output, and the run summary
@@ -677,13 +685,16 @@ Everything GUARD knows lives in its own folder, next to `GUARD.exe`:
 | `guard-backup.cmd` | The generated backup script. Regenerated on every Save Settings. Theoretically you could run this script portably from anywhere to do an on-demand backup. |
 | `guard-system-image.cmd` | The generated system-image script, if you use the System Image tab. |
 | `onconnect-stamp.txt` | Records the last day an on-connect backup ran, so it runs at most once a day. Only appears if that option is on. |
-| `Logs\backup_last.log` | The log of the most recent backup or preview run. |
+| `Logs\backup_last.log` | The log of the most recent real backup run. |
+| `Logs\backup_preview.log` | The log of the most recent Preview (dry run), kept separate so a preview never overwrites the real backup log. |
 | `Logs\backup-running.lock` | Present while a backup runs (it stops two backups running at once); an empty leftover is harmless. |
 | `Logs\system-image_last.log` | The log of the most recent system image. |
-| `Logs\image-versions_last.log` | The output of the most recent View Existing Images query. |
+| `Logs\image-versions_last.log` | The output of the most recent List Images query. |
 | `Logs\recovery-media_last.log` | The log of the most recent recovery-media (bootable USB) build. |
+| `Logs\app-update_last.log` | The output of the most recent Update All Apps run. |
 | `Logs\update_last.log` | The log of the most recent self-update. |
 | `Logs\crash_last.log` | Written only if GUARD ever crashes; include it when reporting a problem. |
+| `Logs\debug_last.log` | Optional diagnostics, written only when a `debug.flag` file sits next to GUARD.exe. |
 | `USER_GUIDE.html` | This manual; the Help button (F1) opens it in your browser. |
 
 Because everything is in one folder, **moving the folder moves the app and its
@@ -719,7 +730,7 @@ screen reader. A few specifics worth knowing:
   matches; typing several letters quickly matches a longer prefix.
 - **Focus is remembered:** tabbing back into a list returns you to the row you
   were last on, not the top.
-- The **Mode** radio options follow the same  expected convention:
+- The **Mode** radio options follow the same expected convention:
   arrow keys move and select at once.
 - **Alt access keys** reach the important controls directly (the access key for
   each control is given in parentheses throughout this manual), and **F1** opens
@@ -743,9 +754,10 @@ serious bug; please report it on the
 No. GUARD has no telemetry, no account, and no cloud component. Backups and exports 
 go only to the destination you choose. The only internet-reaching network (WAN) 
 activity GUARD can cause is winget contacting its official package sources during 
-an app reinstall, and the update check asking GitHub for the newest release number 
-(which sends nothing about you or your PC, and can be turned off on the Settings 
-page).
+app reinstalls and updates, the optional winget install downloading Microsoft's 
+package from the official winget release, and the update check asking GitHub for 
+the newest release number (which sends nothing about you or your PC, and can be 
+turned off on the Settings page).
 
 **What happens if my destination drive is unplugged at backup time?**
 The backup safely does nothing: the script checks the destination first and, if
@@ -765,9 +777,11 @@ Save Settings, so hand edits are lost. Change the settings in GUARD instead.
 If you plan to use the script elsewhere, without GUARD in any way, then you could edit the script before running it.
 
 **How do I "uninstall" GUARD?**
-Turn off any scheduled backup (untick the schedule options and Save Settings, or
-delete the GUARD tasks in Task Scheduler), then delete the `GUARD` folder. GUARD
-stores nothing elsewhere. Your backups at the destination are untouched.
+Turn off any scheduled backup and image (untick the schedule options and Save
+Settings on each page, or delete the GUARD tasks in Task Scheduler), then delete
+the `GUARD` folder. GUARD stores nothing else, apart from the one-time
+notification registration (a single per-user registry entry, harmless to leave).
+Your backups at the destination are untouched.
 
 **Why does reinstalling apps need Administrator rights?**
 Most applications install into protected locations like `C:\Program Files`, which
@@ -794,7 +808,7 @@ anyway**. See [Download manually](#download-manually).
 ticked. Tick at least one day, or turn the schedule off.
 
 **The scheduled backup did not run.** Check that the PC was on at the scheduled
-time, that **Next run** shows a  time after saving, and look in Task Scheduler
+time, that **Next run** shows a time after saving, and look in Task Scheduler
 for **GUARD Backup**. If you moved the GUARD folder, Save Settings again so the
 task points at the new location. **Open Last Log** shows whether a run happened.
 

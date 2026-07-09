@@ -139,7 +139,11 @@ public static class ScheduledTasks
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
         sb.AppendLine("$b64 = '" + b64 + "'");
         sb.AppendLine("$xml = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($b64))");
-        sb.AppendLine("$tmp = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'guard_si_' + [Guid]::NewGuid().ToString('N') + '.xml')");
+        // %SystemRoot%\Temp, not the user temp: schtasks reads this XML to
+        // register a SYSTEM task, so it must not sit where a non-elevated
+        // same-user process could swap it before schtasks reads it. Standard
+        // users cannot write under %SystemRoot%\Temp.
+        sb.AppendLine("$tmp = [IO.Path]::Combine($env:SystemRoot, 'Temp', 'guard_si_' + [Guid]::NewGuid().ToString('N') + '.xml')");
         sb.AppendLine("[IO.File]::WriteAllText($tmp, $xml, [Text.Encoding]::Unicode)");
         sb.AppendLine("schtasks /Create /TN '" + GuardPaths.SystemImageTaskName + "' /XML \"$tmp\" /F | Out-Null");
         sb.AppendLine("$code = $LASTEXITCODE");

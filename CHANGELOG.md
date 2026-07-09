@@ -14,33 +14,35 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   the status bar (Ctrl+I) when the app scan finds it missing, the Settings
   page has the same button, and reinstalling from a saved list offers it
   first. GUARD sideloads Microsoft's signed App Installer package from the
-  official winget GitHub release for the current user - no Administrator
-  approval needed, and Windows verifies the signature.
+  official winget release for the current user; no Administrator approval
+  needed, and Windows verifies the signature.
 - Backup health in the status bar: the File Backup and System Image pages now
   report how and when the last run ended (e.g. "Last backup succeeded
   yesterday at 02:00") instead of just "settings saved". The status dot turns
   amber if the last run failed or didn't complete, a scheduled run is
-  overdue, or an on-connect backup hasn't run in over a week; the
-  size-and-space figures still show before the first run and after each save.
+  overdue, or an on-connect backup hasn't run in over a week.
 - Windows toast notifications for unattended backups: failures notify by
   default, successes are opt-in (Settings > Notifications). Runs started from
-  inside GUARD stay silent (the app already announces them); the scheduled
-  system image reports through the status line instead, since Windows doesn't
-  deliver notifications from SYSTEM tasks. The first notification registers
-  GUARD's name with Windows (one per-user registry entry).
+  inside GUARD stay silent, and the scheduled system image reports through
+  the status line instead (Windows doesn't deliver notifications from SYSTEM
+  tasks). The first notification registers GUARD's name with Windows (one
+  per-user registry entry).
 - The backup destination now follows its drive if the letter changes: saving
   records the volume's serial number, the generated script re-finds it by
   serial at run time if the saved letter is gone (logging the change), and
   the next save re-anchors the destination to the new letter.
 - Update All Apps (App Management page) runs `winget upgrade --all` with one
   upfront Administrator approval, so all-user and Store-delivered packages
-  (like WSL) can update - a per-app prompt can't install those. Output
-  streams to the Output details area, followed by a quiet rescan.
+  (like WSL) can update too. Output streams to the Output details area,
+  followed by a quiet rescan.
 - Ctrl+1 to Ctrl+4 switch pages from anywhere in the window (File Backup,
   System Image, App Management, Settings).
 - List Images (beside the System Image destination field) lists existing
   images on that destination via `wbadmin get versions` (one Administrator
   approval per use).
+- Save Settings and Run Now warn when the destination or a source path
+  contains a % that is not an environment variable: Windows command scripts
+  treat % specially, so the generated script would silently misread the path.
 - Optional diagnostics: a `debug.flag` file next to GUARD.exe (or
   GUARD_DEBUG=1) logs background failures GUARD normally swallows to
   `Logs\debug_last.log`; a crash always writes `Logs\crash_last.log`.
@@ -49,22 +51,24 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   parser, update version comparison, schedule arithmetic, and save validation.
 
 ### Changed
+- Fresh installs no longer pre-tick the "Developer folders" exclusion preset:
+  it skips every folder named bin, obj, .git or node_modules anywhere in the
+  backup, and those names ("bin" especially) can carry real user data.
+  Existing saved settings keep whatever presets they have.
 - The offline manual now ships as `USER_GUIDE.html` (styled, self-contained,
   follows system light/dark mode) instead of `USER_GUIDE.md`, so Help (F1)
-  opens it in the default browser instead of a "how do you want to open this
-  file?" prompt on PCs with no program associated with .md. Updating cleans
-  up the old `USER_GUIDE.md` automatically.
-- The backup size estimate and in-run byte progress now honour exclusions
-  (presets and custom), so the figure reflects what a run actually copies
-  instead of overstating it - previously large excluded trees (like
-  `node_modules`) could trigger false "space may be too low" warnings.
+  opens it in the default browser rather than a "how do you want to open this
+  file?" prompt on PCs with nothing associated with .md. Updating cleans up
+  the old `USER_GUIDE.md` automatically.
+- The backup size estimate and in-run byte progress now honour exclusions, so
+  the figure reflects what a run actually copies; previously large excluded
+  trees (like `node_modules`) could trigger false "space may be too low"
+  warnings.
 - The Test buttons now ask before creating a missing destination folder
-  instead of creating it silently (still reports reachable/not reachable as
-  before).
+  instead of creating it silently.
 - Settings files and the generated scripts are now written crash-safe (to a
   temp file swapped into place), so a crash or power cut mid-save can no
-  longer leave a truncated `backup-settings.ini`, `guard-prefs.ini`, or
-  backup/image script behind.
+  longer leave a truncated ini or script behind.
 - The installed-app scan's winget enrichment now recognizes the list header
   on localized (non-English) Windows, where every app was previously reported
   as "Manual".
@@ -87,95 +91,101 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - The System Image destination caption now says that a folder typed after a
   local drive letter is ignored (wbadmin always writes to the drive's root,
   into WindowsImageBackup).
+- An update now refuses to install when the release has no SHA256SUMS
+  checksum file, instead of quietly installing unverified; a missing manifest
+  means a mis-published release.
 
 ### Fixed
-- Save Settings now refuses a Mirror-mode setup in which two folders share a
-  destination subfolder, nest one inside another, or map to the destination
-  root: each run's mirror pass deleted the other folder's files as "extras",
-  so the backup silently ended up holding only the later folder.
-- Save Settings now requires at least one ticked folder; previously a
-  fully-unticked list saved (and scheduled) a backup that copied nothing while
-  reporting success.
-- An unexpected error during an app reinstall or settings restore no longer
-  leaves the App Management page's buttons permanently disabled; the job now
-  cleans up and reports the failure like the backup and image runs do.
-- A winget id containing quotes in an imported `app-list.json` could break the
-  reinstall command line; ids are now passed as data, never spliced into a
-  command string.
+- Several ways GUARD could crash or lock up: a failed settings save (e.g.
+  GUARD run from a read-only folder) crashed instead of showing an error;
+  clicking Run Now or Preview again before the first click's setup finished
+  could start two backups at once; a failed folder or file picker crashed
+  instead of failing the browse; and an unexpected error during a reinstall
+  or settings restore left the App Management buttons disabled for the rest
+  of the session.
+- Save Settings now blocks two setups that could never produce a good backup:
+  a Mirror-mode configuration whose folders share, nest, or root their
+  destination subfolders (each run purged the other's files as "extras"), and
+  a fully-unticked folder list, which saved and scheduled a backup that
+  copied nothing while reporting success.
+- Custom exclusions can no longer contain characters cmd treats as operators
+  (& ^ < > %), which corrupted the generated script's robocopy options, and
+  destination subfolder names likewise reject %.
+- Values loaded from hand-editable files are now re-validated: folder and
+  exclusion entries in backup-settings.ini get the same checks as the add
+  dialogs, and an imported app-settings bundle's manifest can no longer name
+  folders outside the bundle or outside the settings roots it restores to.
+- Elevated actions (System Image, Recovery Media, scheduled-task
+  registration) are more reliable and safer: the script now travels inside
+  the PowerShell command itself rather than through a temp file, which
+  removes both the encoding trap that corrupted non-ASCII account and
+  install paths and the brief window in which another program could have
+  tampered with the file before Administrator approval (the elevated
+  scripts' own diskpart and schtasks work files moved out of user-writable
+  temp for the same reason). An apostrophe in GUARD's folder path no longer
+  breaks Create Image Now, and a launch failure is only reported as
+  "Administrator approval was declined" when that is what happened.
+- A hung winget or PowerShell no longer pins its page's job for the rest of
+  the session (a scan stuck on "Scanning...", a save that never finished):
+  captured helper processes now have a hard deadline and are stopped and
+  reported when they exceed it.
+- The close-time "a job is still running" warning no longer appears for a
+  job that finished while the unsaved-changes prompt was open.
+- Skipping an offered update now also cancels a copy of that version that
+  auto-install had already staged (it previously installed on exit despite
+  the skip); a failed or cancelled re-download clears the stale staged
+  install; and each portable copy of GUARD stages updates in its own temp
+  folder, so two copies can no longer apply each other's update.
+- A moved or renamed GUARD folder no longer silently breaks scheduled
+  backups: the backup and on-connect tasks re-register against the new
+  location at launch, and the System Image page flags its SYSTEM task for
+  repointing at the next save (with the usual Administrator approval).
+- Preview no longer overwrites the real backup log: it writes to its own log
+  file, so a preview can no longer be mistaken for the last real backup in
+  the status bar or Open Last Log.
+- Run Backup Now now reports a scheduled-task registration problem from the
+  save it performs, as Save Settings already did; the on-connect task now
+  notifies when the backup script itself is missing instead of failing
+  silently every check.
+- Progress and error lines tailed from the elevated system-image and
+  recovery-media logs are no longer lost when a line arrives split across two
+  reads, which could drop the ERROR line explaining a failed USB build.
+- The app scan no longer shows an app twice when winget truncated its name
+  (the truncated row now merges into the matching installed app), and an app
+  with an empty winget Version cell no longer picks up the next column's
+  value as its version.
+- A winget id containing quotes in an imported `app-list.json` can no longer
+  splice extra arguments into the reinstall command; ids are passed as data.
+- Exporting the app list now writes it the same crash-safe way as every other
+  GUARD-generated file, so an interrupted export can no longer leave a
+  corrupt app-list.json.
+- Closing GUARD while exporting the app list, scanning installed apps, or
+  listing existing system images now prompts like a running backup does,
+  instead of closing silently mid-job.
+- A USB drive was silently left out of the Recovery Media wizard's drive list
+  if its manufacturer-supplied name happened to contain a "|" character.
+- Toggling a checkbox or radio button with its Alt access key went
+  unannounced by NVDA, unlike Tab+Space: the access key toggled the control
+  without moving keyboard focus to it, so every access-keyed toggle now moves
+  focus first. The Recovery Media wizard's Back button also collided with
+  Browse on Alt+B and is now Alt+P.
 - Silent status repaints from a background page no longer disturb the active
   page's screen-reader announcement tracking, which could re-announce an
   unchanged status or drop a changed one.
 - Keyboard focus now starts on the navigation at launch instead of the empty
   pane, so a screen-reader user isn't left on "GUARD, pane" needing an extra
   Tab.
-- Corrected out-of-date details in the manual: the Windows App SDK version, the
-  Help item's location, a broken Troubleshooting link, and the portability
-  table now also lists the system-image, recovery-media, and on-connect files.
-  The README's outgrown Planned Features section is removed, and its top now
-  leads with a links line (User Manual, Releases, Changelog).
-- Skipping an offered update now also cancels a copy of that same version that
-  auto-install had already staged, which previously installed itself when
-  GUARD exited despite the skip. A failed or cancelled re-download likewise
-  clears the stale staged install instead of leaving a dead "will install on
-  exit" promise, and each portable copy of GUARD stages updates in its own
-  temp folder so two copies can no longer overwrite each other's staged
-  update.
-- The app scan no longer shows an app twice when winget truncated its name
-  with an ellipsis (the truncated row now merges into the matching installed
-  app), and an app with an empty winget Version cell no longer picks up the
-  next column's value as its version.
-- Progress and error lines tailed from the elevated system-image and
-  recovery-media logs are no longer lost when a line arrives split across two
-  reads, which could drop a percent update or the ERROR line explaining a
-  failed USB build.
-- Run Backup Now now reports a scheduled-task registration problem from the
-  save it performs, as Save Settings already did.
-- A moved or renamed GUARD folder no longer silently breaks scheduled
-  backups: GUARD re-registers the backup and on-connect tasks against the new
-  location at launch. The SYSTEM image task needs elevation to fix, so the
-  System Image page flags it and the next Save Settings (with its usual
-  Administrator approval) repoints it.
-- Preview no longer overwrites the real backup log: it now writes to its own
-  log file, so a preview run can no longer be mistaken for the last real
-  backup in the status bar or in Open Last Log.
-- Clicking Run Now or Preview a second time before the first click's setup
-  work finished could start two backups at once and, rarely, crash GUARD; the
-  buttons now disable immediately on the first click.
-- A failed folder or file picker (the Browse buttons, and Import in App
-  Management) no longer crashes GUARD; it now shows an error message instead.
-- Closing GUARD while exporting the app list, scanning installed apps, or
-  listing existing system images now prompts like a running backup does,
-  instead of closing silently mid-job.
-- Folder and exclusion entries loaded from a hand-edited or corrupted
-  backup-settings.ini are now re-validated on load, matching the checks
-  already enforced when adding them through the app.
-- Exporting the app list now writes it the same crash-safe way as every other
-  GUARD-generated file, so an interrupted export can no longer leave a
-  corrupt app-list.json.
-- The on-connect backup task now notifies when the backup script itself is
-  missing, instead of failing silently every time it checks.
-- Elevated actions (System Image, Recovery Media, scheduled-task
-  registration) are more reliable: the script handed to PowerShell now
-  carries the marker that tells it which text encoding to use, so a
-  non-ASCII Windows account name or install path can no longer corrupt it;
-  and a launch failure is only reported as "Administrator approval was
-  declined" when that's actually what happened, rather than for any other
-  error (e.g. a missing PowerShell).
-- A USB drive was silently left out of the Recovery Media wizard's drive list
-  if its manufacturer-supplied name happened to contain a "|" character.
 - The Open Manual button in the System Image restore-help dialog, and the
   Project Page link in the About dialog, now show an error message instead of
   doing nothing when there is no program available to open them.
 - The default window is now 840 DIP tall instead of 900, so it's less likely
-  to run under the taskbar on smaller or scaled displays even when already
-  positioned at the top of the screen.
-- The Recovery Media wizard's "Browse..." button and its "Back" button both
-  used Alt+B; Back is now Alt+P so both work on the Choose ISO step.
-- Toggling a checkbox or radio button with its Alt access key (e.g. "Run a
-  scheduled backup", or the Additive/Mirror mode choice) went unannounced by
-  NVDA, unlike Tab+Space: the access key toggled the control without moving
-  keyboard focus to it. Every checkbox and radio button with an access key
-  now moves focus there first, matching Tab+Space.
+  to run under the taskbar on smaller or scaled displays.
+- Corrected out-of-date details in the manual: the Windows App SDK version,
+  the Help item's location, a broken Troubleshooting link, and the
+  portability table now also lists the system-image, recovery-media, and
+  on-connect files. The README's outgrown Planned Features section is
+  removed; its top now leads with a links line (User Manual, Releases,
+  Changelog).
 
 ## [0.5.0] - 2026-07-02
 

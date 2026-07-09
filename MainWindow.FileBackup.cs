@@ -153,6 +153,9 @@ public sealed partial class MainWindow : Window
                 return false;
             }
         }
+        // Pure string work, so it stays inline like the overlap checks; the
+        // result is advisory (see the field's note).
+        _percentPaths = SaveValidation.UnresolvedPercentPaths(_cfg.Dest, _cfg.Folders);
         // Settings and script are written synchronously (fast, and the ground
         // truth the rest of the app reads), then everything slow runs off the UI
         // thread so the window never freezes: the scheduled-task state applies in
@@ -164,10 +167,21 @@ public sealed partial class MainWindow : Window
         _saving = true;
         try
         {
-            // Section-scoped: never commits the image page's unsaved edits
-            // (see SettingsStore.SaveFileBackup).
-            SettingsStore.SaveFileBackup(_cfg);
-            BackupScript.Write(_cfg);
+            try
+            {
+                // Section-scoped: never commits the image page's unsaved edits
+                // (see SettingsStore.SaveFileBackup).
+                SettingsStore.SaveFileBackup(_cfg);
+                BackupScript.Write(_cfg);
+            }
+            catch (Exception ex)
+            {
+                // A read-only install folder or a locked file must fail the save
+                // with a dialog, not escape this async-void path and crash GUARD.
+                await ShowMessageAsync("GUARD", "Could not save the settings:\n\n" + ex.Message
+                    + "\n\nGUARD writes its settings and backup script into the folder GUARD.exe is in, so that folder must be writable.");
+                return false;
+            }
             _dirty = false;
             // Explicit confirmation, not the resting health line: the user
             // just pressed Save and must hear that it took. The health line
@@ -209,6 +223,8 @@ public sealed partial class MainWindow : Window
         if (_missingSources.Count > 0)
             await ShowMessageAsync("GUARD", "Settings saved. Note: " + DescribeMissingSources(_missingSources)
                 + "\n\nThey will be skipped if still unreachable when the backup runs.");
+        if (_percentPaths.Count > 0)
+            await ShowMessageAsync("GUARD", "Settings saved. Warning: " + DescribePercentPaths(_percentPaths));
 
         StartSpaceStatusCheck();
     }
@@ -276,6 +292,16 @@ public sealed partial class MainWindow : Window
         return missing.Count == 1
             ? "this source folder is not currently reachable:" + list
             : "these source folders are not currently reachable:" + list;
+    }
+
+    private static string DescribePercentPaths(List<string> paths)
+    {
+        string list = "\n" + string.Join("\n", paths);
+        return (paths.Count == 1
+                ? "this path contains a % that is not an environment variable:" + list
+                : "these paths contain a % that is not an environment variable:" + list)
+            + "\n\nWindows command scripts treat % specially, so the backup may read or write "
+            + "the wrong folder. Renaming the folder to avoid % is the reliable fix.";
     }
 
     private static string DescribeSubfolderConflicts(List<string> conflicts)
@@ -487,6 +513,7 @@ public sealed partial class MainWindow : Window
                 _destDriftNote = null;
                 _missingSources = await System.Threading.Tasks.Task.Run(
                     () => SaveValidation.UnreachableSources(_cfg.Folders));
+                _percentPaths = SaveValidation.UnresolvedPercentPaths(_cfg.Dest, _cfg.Folders);
             }
             string script = GuardPaths.ScriptPath;
             if (!File.Exists(script))
@@ -506,6 +533,8 @@ public sealed partial class MainWindow : Window
             if (_missingSources.Count > 0)
                 AppendOut(TxtOutput, "WARNING: " + DescribeMissingSources(_missingSources).Replace("\n", "\r\n  ")
                     + "\r\nThey will be skipped if still unreachable.\r\n");
+            if (_percentPaths.Count > 0)
+                AppendOut(TxtOutput, "WARNING: " + DescribePercentPaths(_percentPaths).Replace("\n", "\r\n  ") + "\r\n");
             _progTotal = 0;
             _progByBytes = false;
             _progSizes = null;
