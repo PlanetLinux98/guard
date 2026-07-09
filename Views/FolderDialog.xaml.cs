@@ -76,7 +76,11 @@ public sealed partial class FolderDialog : ContentDialog
     // load). The subfolder also becomes path segments under the destination, so
     // it must hold no other invalid-filename characters (backslash stays
     // allowed for nesting) and no ".." segment that would climb out of the
-    // destination root.
+    // destination root. A % is rejected in the subfolder only: cmd expands
+    // %...% at parse time in the generated script, and unlike a source (where
+    // %USERPROFILE% is a feature) an environment variable makes no sense in a
+    // new folder name. A literal % in a SOURCE stays legal and gets a save-time
+    // warning instead (SaveValidation.UnresolvedPercentPaths).
     private string? Validate()
     {
         if (SourcePath.Length == 0 || SubFolder.Length == 0)
@@ -84,8 +88,8 @@ public sealed partial class FolderDialog : ContentDialog
         if (SourcePath.Contains('"') || SourcePath.Contains('|'))
             return "The source folder cannot contain quote (\") or pipe (|) characters.";
         foreach (char c in SubFolder)
-            if (c is '"' or '|' or '<' or '>' or ':' or '?' or '*' or '/')
-                return "The subfolder name cannot contain the characters \" | < > : ? * or /.";
+            if (c is '"' or '|' or '<' or '>' or ':' or '?' or '*' or '/' or '%')
+                return "The subfolder name cannot contain the characters \" | < > : ? * / or %.";
         foreach (var seg in SubFolder.Split('\\'))
             if (seg.Trim() == "..")
                 return "The subfolder name cannot contain a \"..\" segment.";

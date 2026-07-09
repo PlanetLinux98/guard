@@ -21,9 +21,11 @@ public sealed class Settings
     public bool Versioned = false;
     public int VersionsToKeep = 5;
     // Exclusions: ticked preset ids (see ExcludePreset.All) plus custom entries.
-    // Fresh install starts with the system-clutter and developer presets on
-    // (matching the old free-text defaults).
-    public List<string> ExcludePresets = new() { "system", "dev" };
+    // Fresh install starts with only the system-clutter preset. The developer
+    // preset is opt-in: it skips every folder named bin, obj, .git or
+    // node_modules anywhere in the backup, and "bin" especially is a name real
+    // user data can carry, so pre-ticking it silently dropped such folders.
+    public List<string> ExcludePresets = new() { "system" };
     public ObservableCollection<ExcludeItem> Excludes = new();
     // Off by default: don't register a scheduled task until the user opts in.
     public bool ScheduleEnabled = false;

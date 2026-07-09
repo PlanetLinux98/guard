@@ -98,6 +98,28 @@ public static class SaveValidation
         return conflicts;
     }
 
+    // Destination and included sources holding a % that does not resolve as an
+    // environment variable. cmd expands %...% at parse time in the generated
+    // script, so an unresolved percent silently rewrites the path (a lone
+    // trailing % is dropped, an accidental %pair% vanishes) and the backup can
+    // read or write the wrong folder. Advisory, like UnreachableSources: the
+    // name is legal on disk, so the save proceeds with a warning.
+    public static List<string> UnresolvedPercentPaths(string? dest, IEnumerable<FolderPair> folders)
+    {
+        var bad = new List<string>();
+        Check(dest);
+        foreach (var f in folders)
+            if (f.Include) Check(f.Source);
+        return bad;
+
+        void Check(string? raw)
+        {
+            string p = (raw ?? "").Trim();
+            if (p.Contains('%') && Environment.ExpandEnvironmentVariables(p).Contains('%'))
+                bad.Add(p);
+        }
+    }
+
     // Full path, env-expanded, normalized, and forced to end in a separator so a
     // StartsWith prefix test compares whole path segments. Empty for a blank or
     // unparseable path so the caller skips it rather than guessing at overlap.

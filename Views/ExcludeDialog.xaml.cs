@@ -9,6 +9,10 @@ namespace GuardWui3.Views;
 // extension becomes *.ext automatically).
 public sealed partial class ExcludeDialog : ContentDialog
 {
+    // Kept in step with SettingsStore.IsValidExcludePattern, which re-applies
+    // this check to hand-edited ini values at load.
+    private static readonly char[] UnsafePatternChars = { '"', '|', '&', '^', '<', '>', '%' };
+
     public bool IsFolder => RbFolder.IsChecked == true;
     public string Pattern { get; private set; } = "";
 
@@ -69,8 +73,12 @@ public sealed partial class ExcludeDialog : ContentDialog
                 : "Type the file name or pattern to exclude (for example *.tmp).";
         }
         // Quotes would break the generated robocopy line; pipes the ini format.
-        if (problem == null && (t.Contains('"') || t.Contains('|')))
-            problem = "The name cannot contain quote (\") or pipe (|) characters.";
+        // The cmd operator/expansion characters (& ^ < > %) cannot be made safe
+        // either: the pattern lands in the script's set "OPTS=..." line, whose
+        // outer quotes invert the polarity of any inner quoting, so when %OPTS%
+        // expands on the robocopy line these characters act as operators.
+        if (problem == null && t.IndexOfAny(UnsafePatternChars) >= 0)
+            problem = "The name cannot contain any of these characters: \" | & ^ < > %";
 
         if (problem != null)
         {

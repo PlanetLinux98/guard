@@ -94,6 +94,11 @@ public sealed partial class MainWindow : Window
     // output box instead so the run is not interrupted by a modal.
     private List<string> _missingSources = new();
 
+    // Destination/source paths from the last save whose % does not resolve as
+    // an environment variable; cmd would silently mangle them in the generated
+    // script. Advisory, surfaced the same two ways as _missingSources.
+    private List<string> _percentPaths = new();
+
     // The App Management scan/import summary; the status bar is its only home
     // (an in-place copy under the list was removed as redundant), so it lives
     // here for repainting the bar on tab switches.

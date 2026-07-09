@@ -47,7 +47,10 @@ targets **.NET 10 + Windows App SDK 2.2.0** (WinUI 3).
 - **App Management**: lists your installed apps from the Windows registry, marks
   the ones winget can reinstall, and exports the list (optionally bundled with
   the apps' settings folders) as a dated export. Importing a saved list back
-  onto a fresh PC reinstalls the apps and can restore their settings.
+  onto a fresh PC reinstalls the apps and can restore their settings. Update
+  All Apps upgrades everything winget knows in one elevated pass, and GUARD can
+  install winget itself on editions that ship without it (LTSC, Server, no
+  Store).
 - **System Image** (whole-PC, bare-metal): captures a full image of Windows and
   all your programs and settings with the built-in `wbadmin` engine, to a local or
   external disk (keeping several past images) or a network share, on demand or on a
@@ -57,7 +60,12 @@ targets **.NET 10 + Windows App SDK 2.2.0** (WinUI 3).
   IP address rather than name). Needs a Windows edition that includes `wbadmin`
   (so not Home), and refuses a destination on the Windows drive itself.
 - **Stop buttons** for both long-running jobs and a persistent status bar
-  surfacing progress and the last run's outcome.
+  surfacing progress and backup health (how and when the last run ended, and
+  whether a scheduled run is overdue).
+- **Built-in updater**: a daily check against GitHub Releases offers new
+  versions (with readable release notes), verifies the download against the
+  release's checksum, and can optionally install updates on exit; Windows
+  notifications report unattended backup outcomes (failures by default).
 - **Dark / light Mica theming** that follows the Windows setting automatically.
 - **Screen-reader-first design** is the reason this app exists; accessibility is
   woven through every control. See the [User Manual](USER_GUIDE.md) for details.
@@ -67,10 +75,11 @@ targets **.NET 10 + Windows App SDK 2.2.0** (WinUI 3).
 - Windows 10 version 1809 (build 17763) or later, including Windows 11. Note
   that Windows 10 reached end of support on October 14, 2025; GUARD still runs
   there, but it is outside Microsoft's support window for the Windows App SDK.
-- **Nothing to install to run it.** The `GUARD.exe` inside the release zip is
-  self-contained: the .NET 10 runtime and Windows App SDK are bundled inside it.
+- **Nothing to install to run it.** The release zip's `GUARD\` folder is
+  self-contained: the .NET 10 runtime and Windows App SDK are bundled in it.
 - winget (optional) for automatic app reinstalls. Without it, the app list is
-  still read from the registry and can be exported for reference.
+  still read from the registry and can be exported for reference, and GUARD
+  offers to install winget itself where it is missing.
 - To **build from source** you need the .NET 10 SDK (see [Building](#building)).
 
 ## Building
@@ -127,8 +136,9 @@ shipped artifact, but a working build for anyone without the C++ tools AOT needs
 |---|---|
 | `Models/` | FolderPair, AppEntry, Settings, AppListFile, exclude and app-settings models (+ System.Text.Json source-gen context) |
 | `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, app-settings export/restore, system-image + recovery-media scripting, the updater, JSON I/O, process helpers |
-| `MainWindow.xaml(.cs)` | All four pages and all wiring |
-| `Views/` | The ContentDialogs (folder, exclude, about, app-import, app-settings export/restore, recovery-media, restore-help, update) and the status-bar host |
+| `MainWindow.xaml(.cs)` | All four pages and all wiring (code-behind split into per-page partial files) |
+| `Views/` | The ContentDialogs (folder, exclude, about, app-import, app-settings export/restore, recovery-media, restore-help, update, winget-install) and the status-bar host |
+| `Tests/` | Linked-source unit tests (`GUARD.Tests.csproj`, not shipped) |
 | `Assets/` | App icon: SVG masters, `make-icon.py`, and the committed `GUARD.ico` + 256 px PNG |
 | `publish-release.cmd` | Build the shipping NativeAOT `GUARD` and stage it into `GUARD.zip` |
 | `publish-aot.cmd` | Quick NativeAOT build, no packaging (see [NativeAOT](#nativeaot)) |
