@@ -4,7 +4,6 @@ using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,28 +29,14 @@ public static class Updater
     public const string ZipAssetName = "GUARD.zip";
     private const string ChecksumAssetName = "SHA256SUMS";
 
-    private static readonly HttpClient Http = CreateClient();
-
-    private static HttpClient CreateClient()
-    {
-        var c = new HttpClient();
-        // GitHub's API rejects requests with no User-Agent.
-        c.DefaultRequestHeaders.UserAgent.ParseAdd("GUARD-Updater/" + GuardPaths.AppVersion);
-        c.Timeout = TimeSpan.FromMinutes(5);
-        return c;
-    }
+    private static readonly HttpClient Http = GitHubDownloads.CreateClient(TimeSpan.FromMinutes(5));
 
     // Null on any failure (offline, rate-limited, bad response); callers treat
     // that as "could not check", never as "up to date".
     public static async Task<GitHubRelease?> FetchLatestAsync(CancellationToken ct = default)
     {
-        try
-        {
-            string json = await Http.GetStringAsync(ApiLatest, ct);
-            var rel = JsonSerializer.Deserialize(json, GuardJsonContext.Default.GitHubRelease);
-            return string.IsNullOrEmpty(rel?.TagName) ? null : rel;
-        }
-        catch { return null; }
+        var rel = await GitHubDownloads.FetchLatestAsync(Http, ApiLatest, ct);
+        return string.IsNullOrEmpty(rel?.TagName) ? null : rel;
     }
 
     // Release bodies are GitHub markdown; shown raw, a screen reader speaks the
@@ -114,7 +99,22 @@ public static class Updater
         catch { return false; }
     }
 
-    private static string StageDir => Path.Combine(Path.GetTempPath(), "GUARD-update");
+    // Keyed to the install folder: a shared staging dir let a second portable
+    // copy overwrite this copy's staged zip and apply script, so an exit here
+    // applied the other install's update (or a dead script).
+    private static string StageDir =>
+        Path.Combine(Path.GetTempPath(), "GUARD-update-" + GuardPaths.InstallId);
+
+    // Startup housekeeping: remove a leftover staging folder from a previous
+    // session (an applied update, or a stage that never got launched). Called
+    // only while nothing is staged this session. Best effort - the apply
+    // script from a just-relaunched update still holds its own .cmd open for
+    // a moment, and that leftover simply goes on the next launch.
+    public static void CleanupStage()
+    {
+        try { if (Directory.Exists(StageDir)) Directory.Delete(StageDir, recursive: true); }
+        catch (Exception ex) { DebugLog.Log("updater", "stage cleanup failed", ex); }
+    }
 
     // Downloads GUARD.zip into a fresh staging folder, verifies it against the
     // release's SHA256SUMS asset, and writes the apply script. Returns the
@@ -137,22 +137,9 @@ public static class Updater
         Directory.CreateDirectory(StageDir);
         string zipPath = Path.Combine(StageDir, ZipAssetName);
 
-        using (var resp = await Http.GetAsync(zipAsset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct))
-        {
-            resp.EnsureSuccessStatusCode();
-            long total = resp.Content.Headers.ContentLength ?? zipAsset.Size;
-            using var src = await resp.Content.ReadAsStreamAsync(ct);
-            using var dst = File.Create(zipPath);
-            var buf = new byte[81920];
-            long done = 0;
-            int n;
-            while ((n = await src.ReadAsync(buf, ct)) > 0)
-            {
-                await dst.WriteAsync(buf.AsMemory(0, n), ct);
-                done += n;
-                if (total > 0) progress?.Report((double)done / total);
-            }
-        }
+        long total = zipAsset.Size;
+        await GitHubDownloads.DownloadAssetAsync(Http, zipAsset, zipPath,
+            done => { if (total > 0) progress?.Report((double)done / total); }, ct);
 
         // Releases before the updater shipped carry no SHA256SUMS; those are
         // never the LATEST release once this code runs, so in practice the

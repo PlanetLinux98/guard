@@ -112,8 +112,8 @@ public static class AppSettingsRestore
                     stats.Replaced++;
                 }
 
-                var folderStats = new AppSettingsRestoreStats();
-                CopyTree(new DirectoryInfo(c.SourcePath), c.TargetPath, folderStats);
+                var folderStats = new TreeCopyStats();
+                FileTreeCopy.Copy(new DirectoryInfo(c.SourcePath), c.TargetPath, folderStats);
                 stats.Folders++;
                 stats.Files += folderStats.Files;
                 stats.SkippedFiles += folderStats.SkippedFiles;
@@ -134,33 +134,4 @@ public static class AppSettingsRestore
         return aside;
     }
 
-    private static void CopyTree(DirectoryInfo src, string dest, AppSettingsRestoreStats stats)
-    {
-        // Junctions/symlinks are skipped rather than followed (the export should
-        // not have copied any, but a hand-edited bundle might contain one).
-        if (IsReparse(src)) return;
-        try { Directory.CreateDirectory(dest); }
-        catch { stats.SkippedFiles++; return; }
-        try
-        {
-            foreach (var f in src.EnumerateFiles())
-            {
-                try
-                {
-                    f.CopyTo(Path.Combine(dest, f.Name), true);
-                    stats.Files++;
-                }
-                catch { stats.SkippedFiles++; }
-            }
-            foreach (var sub in src.EnumerateDirectories())
-                CopyTree(sub, Path.Combine(dest, sub.Name), stats);
-        }
-        catch { stats.SkippedFiles++; }
-    }
-
-    private static bool IsReparse(DirectoryInfo d)
-    {
-        try { return (d.Attributes & FileAttributes.ReparsePoint) != 0; }
-        catch { return true; }
-    }
 }

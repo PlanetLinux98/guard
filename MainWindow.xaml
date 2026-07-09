@@ -41,6 +41,16 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- Window-wide page jumps: Ctrl+1 File Backup, Ctrl+2 System Image,
+             Ctrl+3 App Management, Ctrl+4 Settings. On the root Grid so they
+             fire from anywhere; one handler maps the key to the nav item. -->
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="Number1" Invoked="OnPageAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="Number2" Invoked="OnPageAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="Number3" Invoked="OnPageAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="Number4" Invoked="OnPageAccelerator" />
+        </Grid.KeyboardAccelerators>
+
         <!-- Left navigation replaces the old Pivot: it reclaims the oversized tab
              header strip, keeps the two sections one keystroke apart, and puts
              Help / About in the footer as invoke-only items (SelectsOnInvoked is
@@ -534,6 +544,12 @@
                                             <Button Content="Test"
                                                     ToolTipService.ToolTip="Test the image destination"
                                                     Click="OnTestImageTarget" />
+                                            <!-- Lives beside the destination it queries, not on the
+                                                 action bar - the bar already runs the window's full
+                                                 width and an eighth button clipped off the right edge. -->
+                                            <Button x:Name="BtnViewImages" Content="List Images" AccessKey="V"
+                                                    ToolTipService.ToolTip="List the system images already on this destination (needs Administrator approval)"
+                                                    Click="OnViewExistingImages" />
                                         </StackPanel>
                                     </Grid>
                                     <!-- The destination kind is derived from the path, not chosen
@@ -811,8 +827,11 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- Output details. Hidden by default, like the File Backup page. -->
-                            <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                            <!-- Output details. Hidden by default, like the File Backup page;
+                                 Update All Apps opens it on start (the winget stream is that
+                                 job's only progress, so a collapsed console left it invisible). -->
+                            <Expander x:Name="AppOutputExpander"
+                                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                       Header="Output details">
                                 <StackPanel Spacing="2">
                                     <!-- No AutomationProperties.Name; see FileProgressLabel: the live
@@ -846,10 +865,14 @@
                             <Button x:Name="BtnAppImport" Content="Import List" AccessKey="I"
                                     ToolTipService.ToolTip="Open a saved app list to reinstall its apps (and optionally restore their settings)"
                                     Click="OnImportApps" />
-                            <!-- Enabled only while a reinstall runs; same discoverability
-                                 reasoning as Stop Backup. -->
+                            <Button x:Name="BtnAppUpdateAll" Content="Update All Apps" AccessKey="U"
+                                    ToolTipService.ToolTip="Ask winget to update every app it knows to the latest version"
+                                    Click="OnUpdateAllApps" />
+                            <!-- Enabled only while a reinstall or update-all runs; its label
+                                 tracks which job it would stop (accessible name = visible
+                                 label). Same discoverability reasoning as Stop Backup. -->
                             <Button x:Name="BtnAppStop" Content="Stop Reinstall" AccessKey="T" IsEnabled="False"
-                                    ToolTipService.ToolTip="Stop the running reinstall; apps already installed stay installed"
+                                    ToolTipService.ToolTip="Stop the running job; apps already installed or updated stay that way"
                                     Click="OnStopReinstall" />
                             <Border Width="1" Margin="4,2" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                             <Button Content="Open Folder" AccessKey="O"
@@ -924,6 +947,40 @@
                                                   AutomationProperties.Name="Page shown when GUARD opens"
                                                   SelectionChanged="OnStartupPageChanged" />
                                     </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Notifications: outcomes of UNATTENDED backup runs only (the
+                                 scheduled task and the on-connect check). Runs started inside
+                                 GUARD announce through the screen reader instead, and the
+                                 scheduled system image runs as SYSTEM in session 0, which
+                                 cannot reach the desktop with a toast - its outcome surfaces
+                                 in the System Image status line at launch. -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Notifications" Style="{StaticResource CardTitle}" />
+                                    <!-- Raw + group Name (the exclusions-list pattern): the intro is
+                                         the group's accessible name, so a screen reader speaks it once
+                                         when focus enters the checkboxes and stays quiet while moving
+                                         between them, instead of it being an orphan paragraph. -->
+                                    <TextBlock TextWrapping="Wrap"
+                                               AutomationProperties.AccessibilityView="Raw"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="Show a Windows notification when a scheduled or on-connect backup finishes:" />
+                                    <StackPanel Spacing="6"
+                                                AutomationProperties.Name="Show a Windows notification when a scheduled or on-connect backup finishes">
+                                        <CheckBox x:Name="ChkNotifyFailure" AccessKey="F"
+                                                  Content="When it fails or cannot run"
+                                                  ToolTipService.ToolTip="Notify when an unattended backup finishes with errors, or a scheduled backup cannot reach its destination"
+                                                  Checked="OnNotifyPrefChanged" Unchecked="OnNotifyPrefChanged" />
+                                        <CheckBox x:Name="ChkNotifySuccess" AccessKey="G"
+                                                  Content="When it succeeds"
+                                                  ToolTipService.ToolTip="Also notify when an unattended backup finishes cleanly; off by default so a working nightly backup stays quiet"
+                                                  Checked="OnNotifyPrefChanged" Unchecked="OnNotifyPrefChanged" />
+                                    </StackPanel>
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="These cover backups run by the schedule or the on-connect check, not ones you start inside GUARD. The first notification registers GUARD's name with Windows (a one-time entry for your user account)." />
                                 </StackPanel>
                             </Border>
 

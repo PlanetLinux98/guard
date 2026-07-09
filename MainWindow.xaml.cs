@@ -83,6 +83,11 @@ public sealed partial class MainWindow : Window
     // null if it succeeded; surfaced by OnSave after the save completes.
     private string? _taskError;
 
+    // Set by SaveAllAsync when the destination volume was re-found under a new
+    // drive letter and the destination was re-anchored to it; OnSave shows it
+    // as a dialog, RunScript as an output line.
+    private string? _destDriftNote;
+
     // Included sources that were unreachable at the last save. Advisory only:
     // the generated script SKIPs them at run time, so a save never blocks on
     // them. OnSave folds these into its dialog; RunScript prints them in the
@@ -113,7 +118,7 @@ public sealed partial class MainWindow : Window
     private bool _imageAvailable = true;   // wbadmin present (false on Home etc.)
     private bool _imageStopRequested;
     private int _imageSpaceSeq;
-    private long _imageLogPos;
+    private LogTail? _imageTail;
     // wbadmin reports progress per volume; these fold the per-volume percents into
     // one monotonic overall figure so the bar never falsely reaches 100% when an
     // early small volume (the EFI partition) finishes before the next one starts.
@@ -124,6 +129,10 @@ public sealed partial class MainWindow : Window
     private Brush? _imageStatusBrush;
     private string? _imageTaskError;
     private Control? _imageRunLauncher;
+    // The registered SYSTEM image task points at a previous install path (the
+    // folder moved); only an elevated save can fix it, so it rides the status
+    // line until then. See CheckScheduledTasksAtLaunch.
+    private bool _imageTaskStale;
     // Last-applied schedule signature: registering the SYSTEM task needs a UAC
     // prompt, so a save only re-applies (prompts) when one of these changed.
     private string _lastImageScheduleSig = "";
@@ -248,7 +257,7 @@ public sealed partial class MainWindow : Window
 
         WireFolderDirty();
         WireExcludeDirty();
-        RefreshNextRun();
+        CheckScheduledTasksAtLaunch();
 
         // Initial population fired the dirty handlers; reset so the status
         // reflects the on-disk script.
@@ -260,12 +269,14 @@ public sealed partial class MainWindow : Window
         RefreshImageStatus(announce: false);
         RefreshScriptStatus(announce: false);
 
-        // If settings are already saved, surface the backup size and destination
-        // space on launch too, not only after a manual save. Silent and
-        // off-thread (announce:false), so it never speaks over the opening window
-        // or blocks it. The image page checks lazily on first visit instead (see
-        // CheckImageAvailability), where its wbadmin probe already runs.
-        if (File.Exists(GuardPaths.ScriptPath) && !_dirty)
+        // Before the first-ever run, the size-vs-space figures are the useful
+        // launch info, so surface them like a save does. Once backups have
+        // run, the status line carries the last run's health instead (see
+        // RefreshScriptStatus) and the figures only refresh on a manual save.
+        // Silent and off-thread (announce:false), so it never speaks over the
+        // opening window or blocks it.
+        if (File.Exists(GuardPaths.ScriptPath) && !_dirty
+            && BackupHealth.ReadLog(GuardPaths.LogPath) is null)
             StartSpaceStatusCheck(announce: false);
 
         // Settings page (guard-prefs.ini): seed its controls and apply the theme.
@@ -284,8 +295,33 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             ApplyStartupPage();
+            // Land keyboard focus on the selected page item in the nav, not the
+            // bare pane: NVDA otherwise announces only "GUARD, pane" and the
+            // user must Tab once before the nav is reachable.
+            (Nav.SelectedItem as Control)?.Focus(FocusState.Programmatic);
             _ = AutoUpdateCheckAsync();
         });
+    }
+
+    // Ctrl+1..4 jump straight to a page from anywhere in the window (the nav is
+    // otherwise several Tabs away). Wired as accelerators on the root Grid, so
+    // they fire regardless of where focus sits. Setting SelectedItem runs the
+    // normal page-switch path; focusing the item makes a screen reader follow.
+    private void OnPageAccelerator(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender,
+        Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        object? item = sender.Key switch
+        {
+            Windows.System.VirtualKey.Number1 => NavFile,
+            Windows.System.VirtualKey.Number2 => NavImage,
+            Windows.System.VirtualKey.Number3 => NavApps,
+            Windows.System.VirtualKey.Number4 => Nav.SettingsItem,
+            _ => null,
+        };
+        if (item is null) return;
+        Nav.SelectedItem = item;
+        (item as Control)?.Focus(FocusState.Programmatic);
     }
 
     // =====================================================================
@@ -466,39 +502,107 @@ public sealed partial class MainWindow : Window
     private static readonly Color StatusGreen = Color.FromArgb(0xFF, 0x3F, 0xB9, 0x50);
     private static readonly Color StatusAmber = Color.FromArgb(0xFF, 0xD2, 0x99, 0x22);
 
+    // Shared tail for every File Backup / System Image status update: repaint
+    // the bar, announce only while that page owns it AND the text actually
+    // changed (or toggling a checkbox would re-read the status on top of the
+    // box's own state), and record the last-announced text page-scoped - a
+    // silent repaint from an inactive page must not clobber the marker, or the
+    // active page's next identical status would be re-announced (or a new one
+    // suppressed).
+    private void CommitPageStatus(int page, bool announce)
+    {
+        UpdateStatusBar();
+        string text = page == 2 ? _imageStatusText : _fileStatusText;
+        if (announce && _activePage == page && text != _lastAnnouncedStatus)
+            Announce(StatusBarText);
+        if (_activePage == page) _lastAnnouncedStatus = text;
+    }
+
+    // Shared run-busy focus discipline (File Backup, System Image, and the App
+    // page's reinstall/update jobs): enable Stop and hand it focus BEFORE the
+    // launchers grey out, and put focus back on the launcher before Stop greys
+    // out. Disabling a focused button lets WinUI throw focus at an arbitrary
+    // neighbour, and a screen reader cancels what it is speaking on a focus
+    // event - which ate the end-of-run summary. Returns the launcher to
+    // restore, or null when focus was elsewhere (then it is left alone).
+    private Control? BeginRunBusy(Button stop, params Control[] launcherCandidates)
+    {
+        stop.IsEnabled = true;
+        var focused = FocusManager.GetFocusedElement(Content.XamlRoot) as Control;
+        Control? launcher = focused != null && Array.IndexOf(launcherCandidates, focused) >= 0
+            ? focused : null;
+        if (launcher != null) stop.Focus(FocusState.Programmatic);
+        return launcher;
+    }
+
+    // Call AFTER the launchers are re-enabled, so the focus restore lands on a
+    // live control.
+    private void EndRunBusy(Button stop, Control? launcher)
+    {
+        if (launcher != null &&
+            ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), stop))
+            launcher.Focus(FocusState.Programmatic);
+        stop.IsEnabled = false;
+    }
+
     private void RefreshScriptStatus(bool announce = true)
     {
         if (StatusBarText == null) return;
+        // Status texts stay TERSE throughout: the bar is one line, so a
+        // sentence too many visually truncates the part that matters (and pads
+        // every screen-reader announcement). Detail belongs in the manual.
         if (!File.Exists(GuardPaths.ScriptPath))
         {
             _fileStatusBrush = new SolidColorBrush(StatusAmber);
-            // Wording parallels the System Image page's "No system image
-            // settings saved yet..." so each page names which settings it means.
-            _fileStatusText = "No file backup settings saved yet. Click Save Settings before running a backup.";
+            _fileStatusText = "No backup settings saved yet - click Save Settings first.";
         }
         else if (_dirty)
         {
             _fileStatusBrush = new SolidColorBrush(StatusAmber);
-            _fileStatusText = "You have unsaved changes. Click Save Settings to apply them.";
+            _fileStatusText = "Unsaved changes - click Save Settings to apply them.";
         }
         else
         {
-            _fileStatusBrush = new SolidColorBrush(StatusGreen);
-            _fileStatusText = "File backup settings saved. Last updated " +
-                File.GetLastWriteTime(GuardPaths.ScriptPath).ToString("yyyy-MM-dd HH:mm") + ".";
+            // Saved and clean (the resting state, shown at launch, page
+            // revisits and run ends; a just-pressed Save shows its own
+            // explicit confirmation instead - see SaveAllAsync): the useful
+            // fact here is not that settings are saved but whether backups
+            // are actually happening.
+            var now = DateTime.Now;
+            var last = BackupHealth.ReadLog(GuardPaths.LogPath);
+            if (last is null)
+            {
+                _fileStatusBrush = new SolidColorBrush(StatusGreen);
+                _fileStatusText = "Backup settings saved. No backup has run yet.";
+            }
+            else
+            {
+                string when = BackupHealth.FriendlyWhen(last.When, now);
+                var expected = _cfg.ScheduleEnabled
+                    ? BackupHealth.PreviousScheduledRun(_cfg.ScheduleDays, _cfg.ScheduleTime, now)
+                    : null;
+                bool amber = true;
+                string text;
+                if (last.Outcome == RunOutcome.Errors)
+                    text = "Last backup had errors (" + when + ") - open the last log.";
+                else if (last.Outcome == RunOutcome.DidNotComplete)
+                    text = "Last backup did not complete (" + when + ") - open the last log.";
+                else if (BackupHealth.IsOverdue(last, expected, now))
+                    text = "Backup overdue - last succeeded " + when + ".";
+                else if (_cfg.TriggerOnConnect && !_cfg.ScheduleEnabled
+                         && now - last.When > BackupHealth.OnConnectStale)
+                    text = "Last backup was over a week ago (" + when + ") - connect your backup drive.";
+                else
+                {
+                    amber = false;
+                    text = "Last backup succeeded " + when + ".";
+                }
+                _fileStatusBrush = new SolidColorBrush(amber ? StatusAmber : StatusGreen);
+                _fileStatusText = text;
+            }
         }
-        UpdateStatusBar();
         UpdateSaveEnabled();
-        // Only re-announce when the message actually changed; otherwise toggling
-        // each day checkbox would re-read the status line on top of the box's own
-        // checked/unchecked state. Announce only while the bar is showing this
-        // text (File Backup active); the bar repaints silently on a page switch.
-        if (announce && _activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
-            Announce(StatusBarText);
-        // Only while this page owns the bar: a silent repaint from an inactive
-        // page must not clobber the marker, or the active page's next identical
-        // status would be re-announced (or a new one suppressed).
-        if (_activePage == 0) _lastAnnouncedStatus = _fileStatusText;
+        CommitPageStatus(0, announce);
     }
 
     // Save Settings is redundant once the on-disk script already matches the
@@ -559,6 +663,10 @@ public sealed partial class MainWindow : Window
         }
         // Repaint the right-hand progress from the focused page's snapshot.
         RenderStatusBar(_pageProg[_activePage]);
+        // The bar is one line, so a long status visually truncates; mirror the
+        // full text into a tooltip for mouse users (screen readers get the
+        // full text from the element regardless).
+        ToolTipService.SetToolTip(StatusBarText, StatusBarText.Text);
     }
 
     // Inventory status lives in the status bar (its single home); announce
@@ -679,6 +787,8 @@ public sealed partial class MainWindow : Window
         if (p.Max > 0) StatusBarProgress.Maximum = p.Max;
         StatusBarProgress.Value = p.Value;
         StatusBarProgressText.Text = p.Text;
+        // Same truncation safety net as the main status text.
+        ToolTipService.SetToolTip(StatusBarProgressText, p.Text);
     }
 
     // Advances only the backup bar's value (in-page bar + the page's snapshot),
@@ -1069,6 +1179,8 @@ public sealed partial class MainWindow : Window
             // continues; the backup/reinstall trees are killed below.
             string what = _imageRunning
                 ? "A system image is still running. It runs with Administrator rights, so it will keep running in the background after GUARD closes."
+                : _updateAllElevated
+                ? "An app update is still running with Administrator rights, so it will keep running in the background after GUARD closes."
                 : _reinstalling ? "An app reinstall is still running. Closing GUARD stops it."
                 : "A backup is still running. Closing GUARD stops it.";
             if (!await ShowConfirmAsync("GUARD", what + " Close anyway?")) return;

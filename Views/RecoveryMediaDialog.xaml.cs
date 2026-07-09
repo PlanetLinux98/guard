@@ -26,7 +26,7 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
     private bool _opened;
     private bool _cancelRequested;
     private bool _buildCancelled;
-    private long _buildLogPos;
+    private LogTail? _buildTail;
     private string? _buildError;
 
     public RecoveryMediaDialog()
@@ -271,12 +271,12 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
         _building = true;
         _cancelRequested = false;
         _buildCancelled = false;
-        _buildLogPos = 0;
         _buildError = null;
         try { File.Delete(GuardPaths.RecoveryMediaCancelPath); } catch { }
         // Clear any prior run's log so the tail doesn't briefly show a stale error
         // before the elevated script truncates and rewrites it.
         try { File.WriteAllText(GuardPaths.RecoveryMediaLogPath, ""); } catch { }
+        _buildTail = new LogTail(GuardPaths.RecoveryMediaLogPath, startAtEnd: false);
         BuildBar.IsIndeterminate = true;
         BuildBar.Value = 0;
         SetBuildStatus("Preparing...");
@@ -328,38 +328,28 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
     }
 
     // Tail the elevated build log for the latest status line; capture any ERROR:
-    // line to explain a failure. FileShare.ReadWrite so the writer is never blocked.
+    // line to explain a failure. LogTail handles offsets and partial lines (an
+    // ERROR: line split across two polls used to lose the failure reason).
     private void PumpBuildLog()
     {
-        try
+        if (_buildTail == null) return;
+        foreach (var raw in _buildTail.ReadNewLines())
         {
-            string path = GuardPaths.RecoveryMediaLogPath;
-            if (!File.Exists(path)) return;
-            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            if (fs.Length < _buildLogPos) _buildLogPos = 0;
-            fs.Seek(_buildLogPos, SeekOrigin.Begin);
-            using var sr = new StreamReader(fs);
-            string rest = sr.ReadToEnd();
-            _buildLogPos = fs.Length;
-            foreach (var raw in rest.Split('\n'))
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+            if (line.StartsWith("@@PCT@@"))
             {
-                var line = raw.Trim();
-                if (line.Length == 0) continue;
-                if (line.StartsWith("@@PCT@@"))
+                if (int.TryParse(line.Substring("@@PCT@@".Length).Trim(), out int pct))
                 {
-                    if (int.TryParse(line.Substring("@@PCT@@".Length).Trim(), out int pct))
-                    {
-                        BuildBar.IsIndeterminate = false;
-                        BuildBar.Value = pct;
-                    }
-                    continue;
+                    BuildBar.IsIndeterminate = false;
+                    BuildBar.Value = pct;
                 }
-                if (line.StartsWith("CANCELLED", StringComparison.OrdinalIgnoreCase)) { _buildCancelled = true; continue; }
-                if (line.StartsWith("FINISHED OK")) continue;
-                if (line.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase)) _buildError = line;
-                SetBuildStatus(line);
+                continue;
             }
+            if (line.StartsWith("CANCELLED", StringComparison.OrdinalIgnoreCase)) { _buildCancelled = true; continue; }
+            if (line.StartsWith("FINISHED OK")) continue;
+            if (line.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase)) _buildError = line;
+            SetBuildStatus(line);
         }
-        catch { }
     }
 }

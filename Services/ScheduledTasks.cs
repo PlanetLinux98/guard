@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using GuardWui3.Models;
@@ -46,14 +47,21 @@ public static class ScheduledTasks
     // fine non-elevated.
     public static ApplyResult ApplyAll(Settings cfg)
     {
+        // Actions launch GUARD.exe itself, not cmd.exe: a GUI-subsystem exe
+        // opens no console, so the nightly run and the every-15-minute
+        // on-connect check are invisible (the cmd.exe action flashed a console
+        // window each time while the user was signed in). The helper mode runs
+        // the same script hidden and raises the outcome toast; see Program /
+        // HeadlessBackupRunner. -MultipleInstances IgnoreNew plus the script's
+        // own run lock keep overlapping fires from colliding on the log.
+        string exe = PsQuote(Environment.ProcessPath ?? Path.Combine(GuardPaths.BaseDir, "GUARD.exe"));
         var sb = new StringBuilder();
         if (cfg.ScheduleEnabled)
         {
-            string arg = "/c \"" + GuardPaths.ScriptPath + "\" auto";
             sb.Append("try {")
-              .Append("$A = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '" + PsQuote(arg) + "';")
+              .Append("$A = New-ScheduledTaskAction -Execute '" + exe + "' -Argument '--run-backup auto';")
               .Append("$T = New-ScheduledTaskTrigger " + TriggerArgs(cfg) + ";")
-              .Append("$S = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;")
+              .Append("$S = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew;")
               .Append("Register-ScheduledTask -TaskName '" + GuardPaths.FileTaskName + "' -Action $A -Trigger $T -Settings $S -Force -ErrorAction Stop | Out-Null")
               .Append("} catch { Write-Output ('ERRFILE ' + $_.Exception.Message) };");
         }
@@ -64,12 +72,11 @@ public static class ScheduledTasks
         sb.Append("Unregister-ScheduledTask -TaskName '" + GuardPaths.LegacyFileTaskName + "' -Confirm:$false -ErrorAction SilentlyContinue;");
         if (cfg.TriggerOnConnect)
         {
-            string arg = "/c \"" + GuardPaths.ScriptPath + "\" onconnect";
             sb.Append("try {")
-              .Append("$A2 = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '" + PsQuote(arg) + "';")
+              .Append("$A2 = New-ScheduledTaskAction -Execute '" + exe + "' -Argument '--run-backup onconnect';")
               .Append("$T2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650);")
               .Append("$L2 = New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name);")
-              .Append("$S2 = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;")
+              .Append("$S2 = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew;")
               .Append("Register-ScheduledTask -TaskName '" + GuardPaths.OnConnectTaskName + "' -Action $A2 -Trigger $T2,$L2 -Settings $S2 -Force -ErrorAction Stop | Out-Null")
               .Append("} catch { Write-Output ('ERRCONN ' + $_.Exception.Message) };");
         }
@@ -212,6 +219,61 @@ public static class ScheduledTasks
             return "-Daily -At " + at;
         return "-Weekly -DaysOfWeek " + string.Join(",", days) + " -At " + at;
     }
+
+    public sealed record TaskActionInfo(string Name, string Execute, string Arguments);
+    public sealed record StartupState(string? NextRun, List<TaskActionInfo> Actions);
+
+    // One batched launch-time query: the file task's next run plus each GUARD
+    // task's registered action. The actions matter because GUARD is portable:
+    // the tasks embed absolute paths from save time, so a moved or renamed
+    // folder leaves them silently firing into the old location while the UI
+    // still shows a healthy next-run time. The caller compares these against
+    // the current install and re-registers what it may (see MainWindow).
+    public static StartupState QueryStartupState()
+    {
+        var sb = new StringBuilder();
+        sb.Append("try { Write-Output ('NEXT ' + (Get-ScheduledTaskInfo -TaskName '" + GuardPaths.FileTaskName +
+                  "' -ErrorAction Stop).NextRunTime.ToString('yyyy-MM-dd HH:mm')) } catch { };");
+        sb.Append("foreach ($n in @('" + GuardPaths.FileTaskName + "','" + GuardPaths.OnConnectTaskName +
+                  "','" + GuardPaths.SystemImageTaskName + "')) {")
+          .Append("try { $t = Get-ScheduledTask -TaskName $n -ErrorAction Stop; $a = $t.Actions[0];")
+          .Append("Write-Output ('ACT ' + $n + '|' + $a.Execute + '|' + $a.Arguments) } catch { } }");
+
+        string? next = null;
+        var actions = new List<TaskActionInfo>();
+        try
+        {
+            foreach (var raw in ProcessRunner.RunPowerShellCapture(sb.ToString()).Split('\n'))
+            {
+                var line = raw.Trim();
+                if (line.StartsWith("NEXT ")) next = line.Substring(5);
+                else if (line.StartsWith("ACT "))
+                {
+                    var parts = line.Substring(4).Split('|');
+                    if (parts.Length >= 3)
+                        actions.Add(new TaskActionInfo(parts[0], parts[1], parts[2]));
+                }
+            }
+        }
+        catch (Exception ex) { DebugLog.Log("tasks", "startup task query failed", ex); }
+        return new StartupState(next, actions);
+    }
+
+    // Whether a registered backup-task action launches THIS install's exe in
+    // the hidden helper form. False for a moved folder's old path and for the
+    // pre-0.6 visible cmd.exe action style; both heal by re-registering.
+    public static bool IsCurrentBackupAction(TaskActionInfo a)
+    {
+        string exe = (a.Execute ?? "").Trim().Trim('"');
+        return string.Equals(exe, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)
+            && (a.Arguments ?? "").TrimStart().StartsWith("--run-backup", StringComparison.Ordinal);
+    }
+
+    // The image task stays a cmd.exe action (it runs as SYSTEM in session 0,
+    // where no window can show), so currency means its arguments still name
+    // this install's script path.
+    public static bool IsCurrentImageAction(TaskActionInfo a)
+        => (a.Arguments ?? "").IndexOf(GuardPaths.SystemImageScriptPath, StringComparison.OrdinalIgnoreCase) >= 0;
 
     public static string? QueryNextRun(string name)
     {

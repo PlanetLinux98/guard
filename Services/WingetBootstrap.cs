@@ -5,7 +5,6 @@ using System.IO.Compression;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using GuardWui3.Models;
@@ -35,17 +34,8 @@ public static class WingetBootstrap
 {
     private const string ApiLatest = "https://api.github.com/repos/microsoft/winget-cli/releases/latest";
 
-    private static readonly HttpClient Http = CreateClient();
-
-    private static HttpClient CreateClient()
-    {
-        var c = new HttpClient();
-        // GitHub's API rejects requests with no User-Agent.
-        c.DefaultRequestHeaders.UserAgent.ParseAdd("GUARD-Updater/" + GuardPaths.AppVersion);
-        // The bundle is a couple hundred MB; give slow links headroom.
-        c.Timeout = TimeSpan.FromMinutes(30);
-        return c;
-    }
+    // The bundle is a couple hundred MB; give slow links headroom.
+    private static readonly HttpClient Http = GitHubDownloads.CreateClient(TimeSpan.FromMinutes(30));
 
     // Same "can I run it" semantic as the app scan's enrichment probe: the
     // winget alias resolving and answering is the only definition that matters.
@@ -59,14 +49,8 @@ public static class WingetBootstrap
     // callers treat that as "could not check", with their own message.
     public static async Task<GitHubRelease?> FetchLatestAsync(CancellationToken ct = default)
     {
-        try
-        {
-            string json = await Http.GetStringAsync(ApiLatest, ct);
-            var rel = JsonSerializer.Deserialize(json, GuardJsonContext.Default.GitHubRelease);
-            return rel is null || FindBundle(rel) is null ? null : rel;
-        }
-        catch (OperationCanceledException) { throw; }
-        catch { return null; }
+        var rel = await GitHubDownloads.FetchLatestAsync(Http, ApiLatest, ct);
+        return rel is null || FindBundle(rel) is null ? null : rel;
     }
 
     // Matched by extension, not full name, in case Microsoft renames the asset
@@ -114,7 +98,7 @@ public static class WingetBootstrap
         }
 
         var payload = new WingetPayload { BundlePath = Path.Combine(StageDir, bundle.Name) };
-        await DownloadFileAsync(bundle, payload.BundlePath, Report, ct);
+        await GitHubDownloads.DownloadAssetAsync(Http, bundle, payload.BundlePath, Report, ct);
         doneBase += bundle.Size;
 
         // Releases without a dependencies zip still install where the
@@ -123,7 +107,7 @@ public static class WingetBootstrap
         if (depAsset is not null)
         {
             string zipPath = Path.Combine(StageDir, depAsset.Name);
-            await DownloadFileAsync(depAsset, zipPath, Report, ct);
+            await GitHubDownloads.DownloadAssetAsync(Http, depAsset, zipPath, Report, ct);
             string depDir = Path.Combine(StageDir, "deps");
             ZipFile.ExtractToDirectory(zipPath, depDir);
 
@@ -160,24 +144,6 @@ public static class WingetBootstrap
         string ext = Path.GetExtension(path);
         return ext.Equals(".appx", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".msix", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static async Task DownloadFileAsync(
-        GitHubAsset asset, string destPath, Action<long> onBytes, CancellationToken ct)
-    {
-        using var resp = await Http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-        resp.EnsureSuccessStatusCode();
-        using var src = await resp.Content.ReadAsStreamAsync(ct);
-        using var dst = File.Create(destPath);
-        var buf = new byte[81920];
-        long done = 0;
-        int n;
-        while ((n = await src.ReadAsync(buf, ct)) > 0)
-        {
-            await dst.WriteAsync(buf.AsMemory(0, n), ct);
-            done += n;
-            onBytes(done);
-        }
     }
 
     // Runs Add-AppxPackage for the current user and confirms the winget command

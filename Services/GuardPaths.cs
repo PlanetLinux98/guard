@@ -16,6 +16,20 @@ public static class GuardPaths
     // would scatter its working files.
     public static readonly string BaseDir =
         Path.GetDirectoryName(Environment.ProcessPath)!;
+    // Short stable id for THIS install folder (paths are case-insensitive, so
+    // hash the uppercased path). Keys everything that must not collide between
+    // two portable copies: the single-instance mutex and the update staging
+    // folder in %TEMP% (a shared folder let copy B's staged zip overwrite
+    // copy A's, so A's exit applied the wrong install's update - or none).
+    public static readonly string InstallId = ComputeInstallId();
+
+    private static string ComputeInstallId()
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.Unicode.GetBytes(BaseDir.ToUpperInvariant()));
+        return Convert.ToHexString(bytes.AsSpan(0, 8));
+    }
+
     public static string IniPath => Path.Combine(BaseDir, "backup-settings.ini");
     // GUARD's own app preferences (updates, theme, startup page); separate from
     // backup-settings.ini because prefs save immediately, not via Save Settings.
@@ -34,6 +48,16 @@ public static class GuardPaths
     public static string SystemImageLogPath => Path.Combine(BaseDir, @"Logs\system-image_last.log");
     // Recovery-media (bootable USB) build log, tailed by the wizard for progress.
     public static string RecoveryMediaLogPath => Path.Combine(BaseDir, @"Logs\recovery-media_last.log");
+    // "View Existing Images" output (wbadmin get versions runs elevated, so its
+    // text comes back through a log like the image run's).
+    public static string ImageVersionsLogPath => Path.Combine(BaseDir, @"Logs\image-versions_last.log");
+    // "Update All Apps" output: winget upgrade --all runs elevated (so MSIX and
+    // machine-scope packages can install), so its output comes back via a log.
+    public static string AppUpdateLogPath => Path.Combine(BaseDir, @"Logs\app-update_last.log");
+    // Update All Apps output: the winget upgrade pass runs elevated (MSIX
+    // packages cannot be elevated per-app), so its stream comes back through a
+    // log the app tails, like the system image's.
+    public static string AppUpdatesLogPath => Path.Combine(BaseDir, @"Logs\app-updates_last.log");
     // Sentinel the wizard writes to ask the elevated build to stop at the next
     // stage boundary (the elevated process can't be killed by the un-elevated app).
     public static string RecoveryMediaCancelPath => Path.Combine(BaseDir, @"Logs\recovery-media.cancel");

@@ -204,8 +204,12 @@ public static class AppSettingsExport
             var c = picked[i];
             onFolder?.Invoke("Copying settings: " + c.DisplayPath + " (" + (i + 1) + " of " + picked.Count + ")...");
             string dest = Path.Combine(outBase, c.RootName, c.FolderName);
-            var folderStats = new AppSettingsCopyStats();
-            CopyTree(new DirectoryInfo(c.FolderPath), dest, outBase, folderStats, top: true, prog);
+            var folderStats = new TreeCopyStats();
+            // Cache subfolders are skipped (the ticked root itself never is),
+            // and the walker must never descend into our own output when the
+            // export destination sits inside a folder being copied.
+            FileTreeCopy.Copy(new DirectoryInfo(c.FolderPath), dest, folderStats,
+                skipDirName: IsCacheDir, skipFullPath: outBase, addBytes: prog.Add);
             stats.Folders++;
             stats.Files += folderStats.Files;
             stats.Bytes += folderStats.Bytes;
@@ -227,40 +231,6 @@ public static class AppSettingsExport
         WriteManifest(outBase, entries);
         WriteReadme(outBase);
         return stats;
-    }
-
-    private static void CopyTree(DirectoryInfo src, string dest, string outBase,
-        AppSettingsCopyStats stats, bool top, CopyProgress prog)
-    {
-        // Junctions/symlinks are skipped rather than followed: following them
-        // can loop forever or pull in trees the user never confirmed.
-        if (IsReparse(src)) return;
-        if (!top && IsCacheDir(src.Name)) return;
-        try { Directory.CreateDirectory(dest); }
-        catch { stats.SkippedFiles++; return; }
-        try
-        {
-            foreach (var f in src.EnumerateFiles())
-            {
-                try
-                {
-                    f.CopyTo(Path.Combine(dest, f.Name), true);
-                    stats.Files++;
-                    stats.Bytes += f.Length;
-                    prog.Add(f.Length);
-                }
-                catch { stats.SkippedFiles++; }
-            }
-            foreach (var sub in src.EnumerateDirectories())
-            {
-                // Never recurse into our own output (possible if the export
-                // destination sits inside a folder being copied).
-                if (string.Equals(sub.FullName.TrimEnd('\\'), outBase.TrimEnd('\\'),
-                        StringComparison.OrdinalIgnoreCase)) continue;
-                CopyTree(sub, Path.Combine(dest, sub.Name), outBase, stats, top: false, prog);
-            }
-        }
-        catch { stats.SkippedFiles++; }
     }
 
     private static void WriteManifest(string outBase, List<AppSettingsManifestEntry> entries)

@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>GuardWui3.Tests</RootNamespace>
+    <!-- Pins the assembly's informational version, which GuardPaths reports as
+         the running app version inside this test assembly; the Updater.IsNewer
+         tests compare against it. (The app itself versions via MinVer; this
+         project deliberately does not.) -->
+    <Version>0.5.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The app's logic compiles straight into the test assembly as linked
+         sources - a project reference to the WinUI exe would drag the XAML
+         toolchain and Windows App SDK into every test run. Only the services
+         with a WASDK dependency (toasts, the headless helper that raises
+         them) and the unsafe Win32 single-instance glue stay out. -->
+    <Compile Include="..\Models\**\*.cs" LinkBase="src\Models" />
+    <Compile Include="..\Services\**\*.cs" LinkBase="src\Services"
+             Exclude="..\Services\ToastNotifier.cs;..\Services\HeadlessBackupRunner.cs;..\Services\SingleInstance.cs" />
+  </ItemGroup>
+
+</Project>

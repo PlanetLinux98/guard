@@ -107,6 +107,7 @@ public sealed partial class MainWindow : Window
         BtnAppRefresh.IsEnabled = e;
         BtnAppExport.IsEnabled = e;
         BtnAppImport.IsEnabled = e;
+        BtnAppUpdateAll.IsEnabled = e;
         ChkExportSettings.IsEnabled = e;
         BtnAppAll.IsEnabled = e;
         BtnAppNone.IsEnabled = e;
@@ -599,13 +600,9 @@ public sealed partial class MainWindow : Window
         _reinstalling = true;
         _reinstallCts = new CancellationTokenSource();
         var ct = _reinstallCts.Token;
-        // Same focus discipline as SetFileBusy: enable Stop and hand it focus
-        // before SetAppBusy greys out the button that launched the job, so
-        // focus never gets thrown at an arbitrary neighbour.
-        BtnAppStop.IsEnabled = true;
-        var focused = FocusManager.GetFocusedElement(Content.XamlRoot) as Control;
-        Control? launcher = ReferenceEquals(focused, launcherButton) ? launcherButton : null;
-        if (launcher != null) BtnAppStop.Focus(FocusState.Programmatic);
+        // Shared focus discipline (BeginRunBusy): Stop takes focus before
+        // SetAppBusy greys out the button that launched the job.
+        Control? launcher = BeginRunBusy(BtnAppStop, launcherButton);
         SetAppBusy(true);
         TxtAppOutput.Text = "";
         int restoreCount = restore?.Count ?? 0;
@@ -676,12 +673,10 @@ public sealed partial class MainWindow : Window
             _reinstalling = false;
             _reinstallCts.Dispose();
             _reinstallCts = null;
-            // Re-enable the launchers and put focus back on the launcher before
-            // Stop greys out, so focus never lands somewhere arbitrary.
+            // Re-enable the launchers first so EndRunBusy's focus restore
+            // lands on a live control.
             SetAppBusy(false);
-            if (launcher != null && ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnAppStop))
-                launcher.Focus(FocusState.Programmatic);
-            BtnAppStop.IsEnabled = false;
+            EndRunBusy(BtnAppStop, launcher);
             ShowStatusBarProgress(1, false);
         }
 
@@ -722,4 +717,184 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnStopReinstall(object sender, RoutedEventArgs e) => _reinstallCts?.Cancel();
+
+    // =====================================================================
+    //  UPDATE ALL APPS
+    // =====================================================================
+    // Runs `winget upgrade --all` ELEVATED. A non-elevated winget can only get a
+    // per-installer UAC prompt, which some machine-scope MSI installers fail and
+    // MSIX packages (e.g. WSL) cannot use at all - they need winget itself
+    // elevated (0x80073d28 "administrator privileges required"). So GUARD asks
+    // for approval once up front and every installer inherits it. Output can't
+    // cross the elevation boundary, so winget writes to a log the run tails
+    // (the system-image pattern). An elevated run can't be killed from this
+    // non-elevated process, so there is no Stop; the confirm dialog says so.
+    private bool _updateAllElevated;
+
+    private async void OnUpdateAllApps(object sender, RoutedEventArgs e)
+    {
+        if (_reinstalling) return;
+
+        // Same winget gate as the reinstall path: probe first (the cached flag
+        // can be stale in both directions), then offer the install dialog.
+        if (!_wingetAvailable)
+        {
+            if (await System.Threading.Tasks.Task.Run(WingetBootstrap.Probe))
+            {
+                _wingetAvailable = true;
+                _wingetChecked = true;
+                HideWingetOffer();
+            }
+            else if (!await ShowWingetInstallDialogAsync(
+                "Updating apps needs winget. GUARD will install winget first, then check for app updates."))
+            {
+                _appStatusText = "Update cancelled: winget is not installed.";
+                AnnounceAppStatus();
+                return;
+            }
+        }
+
+        if (!await ShowConfirmAsync("GUARD",
+            "Update every app winget knows to its latest version now?\n\n" +
+            "GUARD asks for Administrator approval once, so apps that install for all users (and Store-delivered apps like WSL) can update too. This can take a while and cannot be stopped once it starts; some apps may briefly show their own setup windows.",
+            "Update All", "Cancel")) return;
+
+        _reinstalling = true;
+        _updateAllElevated = true;
+        // No Stop for an elevated run (it can't be killed from here), so move
+        // focus to the live output before SetAppBusy greys the launcher, and
+        // leave the Stop button disabled.
+        TxtAppOutput.Text = "";
+        AppOutputExpander.IsExpanded = true;
+        TxtAppOutput.Focus(FocusState.Programmatic);
+        SetAppBusy(true);
+        AppendOut(TxtAppOutput, "=== Updating all apps (winget upgrade --all, as Administrator) ===\r\n");
+        SetExportProgress("Updating apps (winget)...", indeterminate: true);
+        ShowStatusBarProgress(1, true);
+        AnnounceSettled("Updating every app. This needs Administrator approval and cannot be stopped once it starts; progress appears under Output details.");
+
+        string outcome;
+        try { outcome = await RunElevatedUpdateAllAsync(); }
+        catch (Exception ex) { outcome = "App updates failed: " + ex.Message; }
+        finally
+        {
+            _reinstalling = false;
+            _updateAllElevated = false;
+            SetAppBusy(false);
+            BtnAppUpdateAll.Focus(FocusState.Programmatic);
+            ShowStatusBarProgress(1, false);
+        }
+
+        SetExportOutcome(outcome);
+        AppendOut(TxtAppOutput, "\r\n--- " + outcome + " ---\r\n");
+        AnnounceSettled(outcome, 2000);
+        // Versions changed under the inventory's feet; rescan quietly so the
+        // list (and its export) reflects what is now installed.
+        if (_appScanned) ScanApps(announceStart: false);
+    }
+
+    private async System.Threading.Tasks.Task<string> RunElevatedUpdateAllAsync()
+    {
+        string log = GuardPaths.AppUpdateLogPath;
+        try { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(log)!); } catch { }
+        try { System.IO.File.WriteAllText(log, ""); } catch { }
+        var tail = new LogTail(log, startAtEnd: false);
+
+        // winget under an elevated cmd, redirecting all output to the log (cmd's
+        // redirect keeps winget's own byte stream, so the tail reads it as
+        // winget wrote it). --include-unknown so packages with an undetectable
+        // installed version are considered too. $LASTEXITCODE is winget's.
+        string inner = "winget upgrade --all --silent --include-unknown --disable-interactivity "
+            + "--accept-package-agreements --accept-source-agreements > \"" + log + "\" 2>&1";
+        string script = "& cmd.exe /c '" + PsQuote(inner) + "'\nexit $LASTEXITCODE";
+
+        string? err = null;
+        var runTask = System.Threading.Tasks.Task.Run(() => ProcessRunner.RunPowerShellElevatedCode(script, out err));
+        while (!runTask.IsCompleted)
+        {
+            await System.Threading.Tasks.Task.Delay(500);
+            PumpAppUpdateLog(tail);
+        }
+        PumpAppUpdateLog(tail);
+        int code = await runTask;
+
+        if (code == ProcessRunner.ElevationDeclined)
+            return "App updates cancelled - Administrator approval was declined.";
+        if (code == ProcessRunner.ElevationLaunchFailed)
+            return "App updates could not start" + (err != null ? " - " + err : ".");
+
+        // Name the apps that failed rather than making the user hunt the log for
+        // "failed": parse the per-app blocks winget printed. Best-effort, so on
+        // any parse miss (localized winget) we fall back to the exit-code text.
+        string logText = "";
+        try { logText = System.IO.File.ReadAllText(log); } catch { }
+        var (total, failed) = ParseUpdateAllLog(logText);
+        if (failed.Count > 0)
+        {
+            AppendOut(TxtAppOutput, "\r\nCould not update: " + string.Join(", ", failed) + "\r\n");
+            int updated = Math.Max(0, total - failed.Count);
+            string names = failed.Count <= 4
+                ? string.Join(", ", failed)
+                : string.Join(", ", failed.GetRange(0, 4)) + ", and " + (failed.Count - 4) + " more";
+            return "App updates done: " + updated + " updated, " + failed.Count
+                + " could not be updated (" + names + ").";
+        }
+        return DescribeWingetUpgradeExit(code);
+    }
+
+    private void PumpAppUpdateLog(LogTail tail)
+    {
+        foreach (var line in tail.ReadNewLines()) AppendOut(TxtAppOutput, line + "\r\n");
+    }
+
+    // Per-app success/failure from a `winget upgrade --all` log. Each app prints
+    // a "(n/m) <Found> <Name> [<Id>]" header (the bracketed id and the (n/m)
+    // counter are locale-neutral structure; the verb and result lines are not).
+    // A block counts as failed when it carries a failure marker and no success
+    // marker; anything unrecognised is left uncounted, so a localized winget
+    // just yields an empty list and the caller uses winget's exit code instead.
+    private static readonly System.Text.RegularExpressions.Regex UpdateHeaderRx =
+        new(@"^\(\d+/\d+\)\s+\S+\s+(.+?)\s+\[[^\]]+\]",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+    private static (int total, List<string> failed) ParseUpdateAllLog(string logText)
+    {
+        var failed = new List<string>();
+        var matches = UpdateHeaderRx.Matches(logText ?? "");
+        for (int i = 0; i < matches.Count; i++)
+        {
+            string name = matches[i].Groups[1].Value.Trim();
+            int start = matches[i].Index + matches[i].Length;
+            int end = i + 1 < matches.Count ? matches[i + 1].Index : logText!.Length;
+            string block = logText!.Substring(start, end - start);
+            bool ok = block.Contains("Successfully installed", StringComparison.OrdinalIgnoreCase);
+            bool bad = !ok && block.Contains("failed", StringComparison.OrdinalIgnoreCase);
+            if (bad) failed.Add(name);
+        }
+        return (matches.Count, failed);
+    }
+
+    // winget's App Installer CLI exit codes, mapped to what the user should
+    // actually do; anything unmapped shows in hex, which is what winget's own
+    // documentation and search results use (a raw decimal like -1978335188 is
+    // ungoogleable).
+    private const int WingetUpToDate = unchecked((int)0x8A15002B);      // UPDATE_NOT_APPLICABLE
+    private const int WingetSomeFailed = unchecked((int)0x8A15002C);    // UPDATE_ALL_HAS_FAILURE
+
+    // Fallback headline when the per-app parse found no named failures (e.g.
+    // localized winget): the visible output already carries the detail, so
+    // these stay self-contained and do not point back at the output box.
+    private static string DescribeWingetUpgradeExit(int code) => code switch
+    {
+        0 => "App updates finished.",
+        WingetUpToDate => "All apps are already up to date.",
+        // Common and usually benign: apps installed outside winget, pinned, or
+        // needing an interactive installer fail the --silent pass.
+        WingetSomeFailed => "App updates finished, but one or more apps could not be updated.",
+        // Positive codes are process/installer exit codes winget passes through
+        // (an installer's own error), not winget HRESULTs; show them in plain
+        // decimal. Negative winget HRESULTs show in searchable hex.
+        > 0 => "App updates finished with problems (an installer returned code " + code + ").",
+        _ => "App updates finished with problems (winget code 0x" + code.ToString("X8") + ").",
+    };
 }

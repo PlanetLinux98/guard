@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -30,13 +31,21 @@ public static class ProcessRunner
         return so.GetAwaiter().GetResult();
     }
 
-    // Runs `winget install` for one id, streaming combined output via onLine;
-    // returns the exit code. Cancelling the token kills the whole winget process
-    // tree, making WaitForExit return. Killing inside this method (not handing
-    // the Process to the caller) keeps the kill within the using scope, so a
-    // cancel can't race disposal. Kill throws if the process already exited -
-    // benign, so swallowed.
+    // Runs `winget install` for one id; see RunWinget for the mechanics.
+    // ArgumentList (via RunWinget), not a concatenated string: the id comes
+    // from an imported app-list.json (hand-editable), so a quote in it must be
+    // escaped as data rather than splice extra arguments into the command line.
     public static int RunWingetInstall(string id, Action<string> onLine, CancellationToken ct = default)
+        => RunWinget(new[] { "install", "--id", id, "-e", "--silent",
+               "--accept-package-agreements", "--accept-source-agreements" }, onLine, ct);
+
+    // Runs winget with the given arguments, streaming combined output via
+    // onLine; returns the exit code. Cancelling the token kills the whole
+    // winget process tree, making WaitForExit return. Killing inside this
+    // method (not handing the Process to the caller) keeps the kill within the
+    // using scope, so a cancel can't race disposal. Kill throws if the process
+    // already exited - benign, so swallowed.
+    public static int RunWinget(IEnumerable<string> args, Action<string> onLine, CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo("winget")
         {
@@ -47,11 +56,7 @@ public static class ProcessRunner
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
-        // ArgumentList, not a concatenated string: the id comes from an imported
-        // app-list.json (hand-editable), so a quote in it must be escaped as data
-        // rather than splice extra arguments into the command line.
-        foreach (var a in new[] { "install", "--id", id, "-e", "--silent",
-                 "--accept-package-agreements", "--accept-source-agreements" })
+        foreach (var a in args)
             psi.ArgumentList.Add(a);
         using var p = new Process { StartInfo = psi };
         p.OutputDataReceived += (_, e) => { if (e.Data != null) onLine(e.Data + "\r\n"); };
@@ -66,8 +71,12 @@ public static class ProcessRunner
 
     public static string RunPowerShellCapture(string script)
     {
+        // -EncodedCommand, not a quote-escaped -Command: the script stays data
+        // whatever quotes, carets or percent signs it contains, removing the
+        // whole cmd-vs-PowerShell quoting hazard class.
+        string b64 = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
         var psi = new ProcessStartInfo("powershell.exe",
-            "-NoProfile -ExecutionPolicy Bypass -Command \"" + script.Replace("\"", "\\\"") + "\"")
+            "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + b64)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -108,10 +117,18 @@ public static class ProcessRunner
         return p.ExitCode;
     }
 
-    // Run a PowerShell script ELEVATED (UAC prompt). Output can't cross the
-    // elevation boundary, so the script goes to a temp .ps1 and only the exit
-    // code is checked. True on success, false on failure/cancellation.
-    public static bool RunPowerShellElevated(string script, out string? error)
+    // Sentinels returned by RunPowerShellElevatedCode when the elevated process
+    // never ran (so they are distinguishable from a real winget/tool exit code;
+    // no real HRESULT lands this close to int.MinValue).
+    public const int ElevationDeclined = int.MinValue;
+    public const int ElevationLaunchFailed = int.MinValue + 1;
+
+    // Run a PowerShell script ELEVATED (UAC prompt) and return the script's exit
+    // code. Output can't cross the elevation boundary, so a script that needs its
+    // output redirects to a log the caller tails; the exit code still crosses
+    // (the parent reads the child's ExitCode even through runas). Returns an
+    // Elevation* sentinel and sets error when the process could not start.
+    public static int RunPowerShellElevatedCode(string script, out string? error)
     {
         error = null;
         string ps1 = Path.Combine(Path.GetTempPath(), "guard_" + Guid.NewGuid().ToString("N") + ".ps1");
@@ -127,26 +144,35 @@ public static class ProcessRunner
             };
             using var p = Process.Start(psi)!;
             p.WaitForExit();
-            if (p.ExitCode != 0)
-            {
-                error = "did not complete (exit code " + p.ExitCode + ").";
-                return false;
-            }
-            return true;
+            return p.ExitCode;
         }
         catch (System.ComponentModel.Win32Exception)
         {
             error = "was cancelled - Administrator approval was declined.";
-            return false;
+            return ElevationDeclined;
         }
         catch (Exception ex)
         {
             error = ex.Message;
-            return false;
+            return ElevationLaunchFailed;
         }
         finally
         {
             try { File.Delete(ps1); } catch { }
         }
+    }
+
+    // As above, reduced to success/failure for callers that only run a task and
+    // check whether it completed (system image, recovery media, wbadmin stop).
+    public static bool RunPowerShellElevated(string script, out string? error)
+    {
+        int code = RunPowerShellElevatedCode(script, out error);
+        if (code == ElevationDeclined || code == ElevationLaunchFailed) return false;
+        if (code != 0)
+        {
+            error = "did not complete (exit code " + code + ").";
+            return false;
+        }
+        return true;
     }
 }

@@ -78,6 +78,43 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "The backup destination cannot contain quote (\") characters.");
             return false;
         }
+        // Drive-letter drift, before the overlap checks so they validate the
+        // real destination. Reachable letter: record the volume's identity for
+        // the script's run-time re-find. Unreachable letter with a recorded
+        // serial: the volume may simply have come back under a new letter -
+        // re-anchor the destination to it and tell the user (via OnSave /
+        // RunScript). Off the UI thread; a dead drive query can stall.
+        _destDriftNote = null;
+        if (_cfg.Dest.Length >= 2 && _cfg.Dest[1] == ':')
+        {
+            string root = _cfg.Dest.Substring(0, 2);
+            var vol = await System.Threading.Tasks.Task.Run(() => VolumeInfo.TryGetForRoot(root + "\\"));
+            if (vol != null)
+            {
+                _cfg.DestVolumeSerial = vol.Serial;
+                _cfg.DestVolumeLabel = vol.Label;
+            }
+            else if (_cfg.DestVolumeSerial.Length > 0)
+            {
+                string? moved = await System.Threading.Tasks.Task.Run(
+                    () => VolumeInfo.FindDriveBySerial(_cfg.DestVolumeSerial));
+                if (moved != null && !moved.Equals(root, StringComparison.OrdinalIgnoreCase))
+                {
+                    _cfg.Dest = moved + _cfg.Dest.Substring(2);
+                    TxtDest.Text = _cfg.Dest;
+                    string label = _cfg.DestVolumeLabel.Length > 0 ? " (\"" + _cfg.DestVolumeLabel + "\")" : "";
+                    _destDriftNote = "Your backup drive" + label + " is now drive " + moved
+                        + " - it was " + root + " when you last saved. The destination has been updated to:\n"
+                        + _cfg.Dest;
+                }
+            }
+        }
+        else
+        {
+            // UNC and other non-letter destinations have no volume to track.
+            _cfg.DestVolumeSerial = "";
+            _cfg.DestVolumeLabel = "";
+        }
         // A script with zero included folders copies nothing yet reports
         // FINISHED OK (and still registers the scheduled tasks), so a user could
         // believe they are protected while backing up nothing.
@@ -132,7 +169,12 @@ public sealed partial class MainWindow : Window
             SettingsStore.SaveFileBackup(_cfg);
             BackupScript.Write(_cfg);
             _dirty = false;
-            RefreshScriptStatus();
+            // Explicit confirmation, not the resting health line: the user
+            // just pressed Save and must hear that it took. The health line
+            // returns at the next launch, page revisit, or run end.
+            _fileStatusBrush = new SolidColorBrush(StatusGreen);
+            SetFileStatusText("Backup settings saved.");
+            UpdateSaveEnabled();
             // Save Settings is the single source of truth for both scheduled
             // tasks: each is registered when its own option is on and removed
             // when not, so the schedule and the on-connect trigger toggle
@@ -157,6 +199,8 @@ public sealed partial class MainWindow : Window
     {
         if (!await SaveAllAsync()) return;
 
+        if (_destDriftNote != null)
+            await ShowMessageAsync("GUARD", _destDriftNote);
         if (_taskError != null)
         {
             await ShowMessageAsync("GUARD", "Settings saved, but registering a scheduled task reported a problem:\n\n" + _taskError);
@@ -185,7 +229,7 @@ public sealed partial class MainWindow : Window
         // Interim placeholder so the line never sits silently mid-check; the
         // result replaces it (rebuilt from baseText, not appended) when done.
         string baseText = _fileStatusText;
-        SetFileStatusText(baseText + " Calculating backup size and destination space...", announce);
+        SetFileStatusText(baseText + " Checking backup size and free space...", announce);
 
         var estimateTask = SaveValidation.EstimateBackupSizeAsync(
             _cfg.Folders, _cfg.EffectiveExcludeDirs(), _cfg.EffectiveExcludeFiles(), SaveValidation.EstimateCap);
@@ -204,7 +248,7 @@ public sealed partial class MainWindow : Window
         string extra;
         if (free is not long freeBytes)
         {
-            extra = " Destination space could not be checked.";
+            extra = " Free space could not be checked.";
         }
         else
         {
@@ -213,24 +257,17 @@ public sealed partial class MainWindow : Window
             if (est.Bytes > 0)
                 extra += " Backup size: " + (est.Complete ? "" : "at least ")
                     + SaveValidation.FormatBytes(est.Bytes) + ";";
-            extra += " destination available space: " + SaveValidation.FormatBytes(freeBytes) + ".";
+            extra += " free space: " + SaveValidation.FormatBytes(freeBytes) + ".";
             if (tight) _fileStatusBrush = new SolidColorBrush(StatusAmber);
         }
         SetFileStatusText(baseText + extra, announce);
     }
 
-    // Mid-flow file-status updates (the space-check placeholder and result)
-    // route through the status bar like RefreshScriptStatus does: repaint the
-    // bar, announce only while File Backup is the active page, and record the
-    // text so an unchanged status is not re-spoken.
+    // Mid-flow file-status updates (the space-check placeholder and result).
     private void SetFileStatusText(string text, bool announce = true)
     {
         _fileStatusText = text;
-        UpdateStatusBar();
-        if (announce && _activePage == 0 && _fileStatusText != _lastAnnouncedStatus)
-            Announce(StatusBarText);
-        // Page-scoped like RefreshScriptStatus: see the comment there.
-        if (_activePage == 0) _lastAnnouncedStatus = _fileStatusText;
+        CommitPageStatus(0, announce);
     }
 
     private static string DescribeMissingSources(List<string> missing)
@@ -271,12 +308,50 @@ public sealed partial class MainWindow : Window
     // pays a multi-second module import. The label keeps its "(unknown)"
     // placeholder until the answer arrives. Saves do not call this; ApplyAll
     // returns the next run from its own batched invocation.
-    private async void RefreshNextRun()
+    //
+    // Doubles as the portable-folder self-heal: the scheduled tasks embed
+    // absolute paths from save time, so after the GUARD folder is moved or
+    // renamed they keep firing into the old location while looking healthy.
+    // The two per-user backup tasks re-register silently (no elevation
+    // needed); the SYSTEM image task cannot (re-registering means a UAC
+    // prompt nobody asked for), so it flags the image page's status and the
+    // next Save re-applies it with the usual consented prompt.
+    private async void CheckScheduledTasksAtLaunch()
     {
         if (LblNextRun == null) return;
-        var next = await System.Threading.Tasks.Task.Run(
-            () => ScheduledTasks.QueryNextRun(GuardPaths.FileTaskName));
-        LblNextRun.Text = next == null ? "Next run: (no scheduled task)" : "Next run: " + next;
+        var state = await System.Threading.Tasks.Task.Run(ScheduledTasks.QueryStartupState);
+        LblNextRun.Text = state.NextRun == null ? "Next run: (no scheduled task)" : "Next run: " + state.NextRun;
+
+        bool healBackup = false;
+        bool imageStale = false;
+        foreach (var a in state.Actions)
+        {
+            if (a.Name == GuardPaths.FileTaskName && _cfg.ScheduleEnabled
+                && !ScheduledTasks.IsCurrentBackupAction(a)) healBackup = true;
+            else if (a.Name == GuardPaths.OnConnectTaskName && _cfg.TriggerOnConnect
+                && !ScheduledTasks.IsCurrentBackupAction(a)) healBackup = true;
+            else if (a.Name == GuardPaths.SystemImageTaskName && _cfg.ImageScheduleEnabled
+                && !ScheduledTasks.IsCurrentImageAction(a)) imageStale = true;
+        }
+
+        if (healBackup)
+        {
+            DebugLog.Log("tasks", "backup task actions stale (folder moved or legacy style); re-registering");
+            // On-disk settings, not _cfg: by the time this background check
+            // lands the user may already be editing the page.
+            var applied = await System.Threading.Tasks.Task.Run(
+                () => ScheduledTasks.ApplyAll(SettingsStore.Load()));
+            if (applied.Error != null)
+                DebugLog.Log("tasks", "silent re-register failed: " + applied.Error);
+            else if (applied.NextRun != null)
+                LblNextRun.Text = "Next run: " + applied.NextRun;
+        }
+        if (imageStale)
+        {
+            _imageTaskStale = true;
+            _lastImageScheduleSig = "";   // force the next save to re-apply
+            RefreshImageStatus(announce: false);
+        }
     }
 
     // Settings store the daily run time as an "HH:mm" string; the TimePicker
@@ -391,9 +466,15 @@ public sealed partial class MainWindow : Window
         if (_dirty || !File.Exists(GuardPaths.ScriptPath))
         {
             if (!await SaveAllAsync()) return;
+            // Same courtesy as RunImage: the run continues, but a scheduled-task
+            // registration failure inside that save must not vanish silently.
+            if (_taskError != null)
+                await ShowMessageAsync("GUARD", "Settings saved, but registering a scheduled task reported a problem:\n\n" + _taskError);
         }
         else
         {
+            // No save ran, so any drift note from an earlier save is stale.
+            _destDriftNote = null;
             _missingSources = await System.Threading.Tasks.Task.Run(
                 () => SaveValidation.UnreachableSources(_cfg.Folders));
         }
@@ -409,7 +490,9 @@ public sealed partial class MainWindow : Window
         AppendOut(TxtOutput, "> " + Path.GetFileName(script) + (arg.Length > 0 ? " " + arg : "") + "\r\n");
         // A modal here would interrupt the run the user just asked for; the
         // script SKIPs unreachable sources itself, so a line in the output is
-        // the right weight.
+        // the right weight. Same for the drive-drift note.
+        if (_destDriftNote != null)
+            AppendOut(TxtOutput, "NOTE: " + _destDriftNote.Replace("\n", "\r\n  ") + "\r\n");
         if (_missingSources.Count > 0)
             AppendOut(TxtOutput, "WARNING: " + DescribeMissingSources(_missingSources).Replace("\n", "\r\n  ")
                 + "\r\nThey will be skipped if still unreachable.\r\n");
@@ -520,6 +603,10 @@ public sealed partial class MainWindow : Window
             _runCts.Dispose();
             _runCts = null;
             SetFileBusy(false);
+            // The run just rewrote the log, so the health line has news; the
+            // end-of-run summary below is the spoken part, the line updates
+            // silently.
+            RefreshScriptStatus(announce: false);
         }
         string? spoken = ct.IsCancellationRequested ? "Backup cancelled." : _runDoneAnnounce;
         if (spoken != null) AnnounceSettled(spoken, 2000);
@@ -544,14 +631,7 @@ public sealed partial class MainWindow : Window
         SetNavBusy(0, busy);
         if (busy)
         {
-            // Enable Stop and hand it focus before the launchers grey out;
-            // Stop is the one action available during the run.
-            BtnStopBackup.IsEnabled = true;
-            _fileRunLauncher = FocusManager.GetFocusedElement(Content.XamlRoot) as Control;
-            if (_fileRunLauncher == BtnSave || _fileRunLauncher == BtnRunNow || _fileRunLauncher == BtnPreview)
-                BtnStopBackup.Focus(FocusState.Programmatic);
-            else
-                _fileRunLauncher = null;
+            _fileRunLauncher = BeginRunBusy(BtnStopBackup, BtnSave, BtnRunNow, BtnPreview);
             BtnSave.IsEnabled = false;
             BtnRunNow.IsEnabled = false;
             BtnPreview.IsEnabled = false;
@@ -561,13 +641,8 @@ public sealed partial class MainWindow : Window
             BtnRunNow.IsEnabled = true;
             BtnPreview.IsEnabled = true;
             UpdateSaveEnabled();
-            // Return focus to the launcher before Stop greys out, so rerunning
-            // is one keypress away and focus never lands somewhere arbitrary.
-            if (_fileRunLauncher != null &&
-                ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), BtnStopBackup))
-                _fileRunLauncher.Focus(FocusState.Programmatic);
+            EndRunBusy(BtnStopBackup, _fileRunLauncher);
             _fileRunLauncher = null;
-            BtnStopBackup.IsEnabled = false;
         }
     }
 

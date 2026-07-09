@@ -19,6 +19,10 @@ namespace GuardWui3.Services;
 public static class SystemImageScript
 {
     public static void Write(Settings cfg)
+        => AtomicFile.WriteAllText(GuardPaths.SystemImageScriptPath, Generate(cfg));
+
+    // Split from Write so the generated text is testable without touching disk.
+    public static string Generate(Settings cfg)
     {
         string target = TargetArg(cfg);
 
@@ -65,12 +69,13 @@ public static class SystemImageScript
         // Propagate wbadmin's exit code: the elevated launcher reads it as the
         // authoritative success/failure signal (the log tail is just for display).
         sb.AppendLine("endlocal & exit /b %RC%");
-        AtomicFile.WriteAllText(GuardPaths.SystemImageScriptPath, sb.ToString());
+        return sb.ToString();
     }
 
     // wbadmin -backupTarget wants "E:" for a local disk (drive letter + colon, no
-    // trailing slash) and the raw UNC for a share.
-    private static string TargetArg(Settings cfg)
+    // trailing slash) and the raw UNC for a share. Public: the View Existing
+    // Images query passes the same form to wbadmin get versions.
+    public static string TargetArg(Settings cfg)
     {
         string t = (cfg.ImageTarget ?? "").Trim();
         if (cfg.ImageTargetKind == "NetworkShare")

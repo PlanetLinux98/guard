@@ -34,6 +34,8 @@ public sealed partial class MainWindow
         _prefsLoading = true;
         ChkUpdateAutoCheck.IsChecked = _prefs.UpdateAutoCheck;
         ChkUpdateAutoInstall.IsChecked = _prefs.UpdateAutoInstall;
+        ChkNotifyFailure.IsChecked = _prefs.NotifyFailure;
+        ChkNotifySuccess.IsChecked = _prefs.NotifySuccess;
         RbThemeLight.IsChecked = _prefs.Theme == "Light";
         RbThemeDark.IsChecked = _prefs.Theme == "Dark";
         RbThemeSystem.IsChecked = _prefs.Theme != "Light" && _prefs.Theme != "Dark";
@@ -110,6 +112,16 @@ public sealed partial class MainWindow
             ChkUpdateAutoInstall.IsEnabled = ChkUpdateAutoCheck.IsChecked == true;
     }
 
+    // Read by the headless helper (HeadlessBackupRunner) at its next run; no
+    // live plumbing needed beyond persisting the preference.
+    private void OnNotifyPrefChanged(object sender, RoutedEventArgs e)
+    {
+        if (_prefsLoading) return;
+        _prefs.NotifyFailure = ChkNotifyFailure.IsChecked == true;
+        _prefs.NotifySuccess = ChkNotifySuccess.IsChecked == true;
+        AppPrefsStore.Save(_prefs);
+    }
+
     private void OnThemeChanged(object sender, RoutedEventArgs e)
     {
         if (_prefsLoading) return;
@@ -140,6 +152,11 @@ public sealed partial class MainWindow
     // background and applies on exit.
     private async System.Threading.Tasks.Task AutoUpdateCheckAsync()
     {
+        // Nothing is staged yet this session, so any leftover staging folder
+        // is a previous session's (applied or abandoned); clear it before any
+        // new stage can begin. Awaited so a fast auto-install download can
+        // never race the deletion.
+        await System.Threading.Tasks.Task.Run(Updater.CleanupStage);
         if (!_prefs.UpdateAutoCheck) return;
         string today = DateTime.Now.ToString("yyyy-MM-dd");
         if (_prefs.LastUpdateCheck == today) return;
@@ -163,10 +180,11 @@ public sealed partial class MainWindow
                     showAction: false);
                 return;
             }
-            catch
+            catch (Exception ex)
             {
                 // Background download failed; fall back to the notify-only offer
                 // (the dialog's download surfaces its errors to the user).
+                DebugLog.Log("updater", "silent auto-install stage failed", ex);
             }
         }
         ShowUpdateInfoBar("GUARD " + rel.TagName + " is available.", showAction: true);
@@ -249,6 +267,10 @@ public sealed partial class MainWindow
         {
             _prefs.SkippedVersion = rel.TagName;
             AppPrefsStore.Save(_prefs);
+            // Skip must also cancel a silently staged install-on-exit for this
+            // same version, or the version the user just skipped would apply
+            // the moment they close GUARD anyway.
+            _pendingUpdateScript = null;
             UpdateInfoBar.IsOpen = false;
         }
         else if (dlg.StagedScript is string script)
@@ -261,6 +283,15 @@ public sealed partial class MainWindow
             // actually happens (and relaunches, as they asked).
             Close();
         }
+        else if (dlg.DownloadAttempted && _pendingUpdateScript is not null)
+        {
+            // Install was tried and failed (or was cancelled). Staging starts
+            // by wiping the staging folder, so an earlier auto-staged script
+            // no longer exists; drop it and retract the install-on-exit
+            // promise the InfoBar made. Tomorrow's auto-check re-stages.
+            _pendingUpdateScript = null;
+            UpdateInfoBar.IsOpen = false;
+        }
         // Remind Me Later: nothing to do; tomorrow's auto-check re-offers.
     }
 
@@ -270,7 +301,8 @@ public sealed partial class MainWindow
     {
         if (_pendingUpdateScript is string script)
         {
-            try { Updater.LaunchApplier(script); } catch { }
+            try { Updater.LaunchApplier(script); }
+            catch (Exception ex) { DebugLog.Log("updater", "could not launch the staged apply script", ex); }
             _pendingUpdateScript = null;
         }
     }

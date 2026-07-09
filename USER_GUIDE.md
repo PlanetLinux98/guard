@@ -238,8 +238,26 @@ task is registered.
 When you save with the schedule on, GUARD registers a Windows scheduled task
 named **GUARD Backup** (and **GUARD On-Connect Backup** for the on-connect
 option); you can see them in Task Scheduler. Saving with everything off removes
-them. The task runs the generated backup script directly, so scheduled backups
-run whether or not GUARD is open. The PC does need to be on at the scheduled time.
+them. The tasks run the backup completely invisibly (no window appears, not
+even for the 15-minute on-connect check), whether or not GUARD is open. The PC
+does need to be on at the scheduled time. To hear about the outcome without
+opening GUARD, turn on notifications (see the Settings page): failures notify
+by default, successes only if you opt in. The status bar also reports the last
+run's outcome the next time you open GUARD.
+
+Two situations GUARD handles for you:
+
+- **Your backup drive changes letters.** If the destination was `E:\Backups`
+  and the drive comes back as `F:`, the backup follows it automatically (GUARD
+  remembers the drive's volume serial number, not just its letter) and notes
+  the change in the log. The next Save Settings updates the saved destination
+  to the new letter and tells you.
+- **You move or rename the GUARD folder.** The scheduled tasks point at
+  GUARD's location, so a move would silently break them; GUARD notices at its
+  next launch and re-registers the backup tasks against the new location
+  automatically. (The scheduled *system image* task needs one Save Settings
+  with Administrator approval to repoint; the System Image page tells you when
+  that is needed.)
 
 ### Action buttons
 
@@ -308,6 +326,11 @@ The destination cannot be on the same drive as Windows (an image includes the
 Windows drive, so it must be written somewhere separate). GUARD checks the free
 space after you save and warns if it looks too small.
 
+> **Note:** on a local or external disk, Windows always writes images to the
+> drive's root, in a folder named `WindowsImageBackup`. If you type or browse
+> to a folder like `E:\Images`, the folder part is ignored; the caption under
+> the destination field reminds you when that applies.
+
 ### Creating an image
 
 - **Create Image Now** makes an image straight away. Because imaging needs
@@ -316,6 +339,10 @@ space after you save and warns if it looks too small.
   details** and on the status bar.
 - **Stop Image** cancels a running image. Stopping also needs Administrator
   approval (Windows confirms the stop).
+- **List Images** (Alt+V), beside the destination field, lists the images
+  already stored on that destination, with their dates and what each contains,
+  in the Output details area. Windows only answers this question with
+  Administrator rights, so each use shows one approval prompt.
 
 ### Scheduling
 
@@ -415,6 +442,18 @@ Each app shows a **Source**:
   count beside the box shows how many apps match (for example "42 of 187 apps").
 - The **app list**: each row is a checkbox showing the application name, version,
   and source. Ticked apps are the ones included when you export or reinstall.
+  The source tells you how an app reinstalls: **Winget** apps reinstall
+  anywhere winget runs, **Store** apps also need the Microsoft Store on the
+  target PC, and **Manual** apps must be reinstalled by hand.
+- **Update All Apps** (Alt+U) asks winget to update every app it knows to the
+  latest version. It runs with Administrator rights (one approval prompt up
+  front) so that apps installed for all users, and Store-delivered packages
+  like WSL, can update - a per-app prompt cannot install those. The Output
+  details section opens automatically so you can follow winget's progress. It
+  is normal for a few apps to report failures (apps installed outside winget,
+  or ones that cannot update silently); the summary says so and the output
+  lists which. Because it runs elevated it cannot be stopped once it starts,
+  so the confirmation says as much; the list rescans itself when the run ends.
 
 ### Exporting your apps (and their settings)
 
@@ -579,6 +618,26 @@ or pin GUARD to **Light** or **Dark** regardless of the system.
 **Page shown when GUARD opens** (Alt+P) picks which page is selected at launch:
 File Backup (the default), System Image, or App Management.
 
+### Notifications
+
+These control Windows notifications (toasts) about backups that run
+*unattended* - the scheduled backup and the on-connect check. Backups you start
+inside GUARD announce themselves in the app instead.
+
+- **When it fails or cannot run** (Alt+F, on by default): a notification when
+  an unattended backup finishes with errors, or a scheduled backup cannot
+  reach its destination. This is the one worth keeping on: a silent nightly
+  failure is exactly what a backup tool must not allow.
+- **When it succeeds** (Alt+G, off by default): also confirm each clean
+  unattended run. Useful for peace of mind on a new setup; most people turn it
+  off once they trust the schedule.
+
+The scheduled *system image* runs as the SYSTEM account, which Windows does not
+deliver notifications from; its outcome shows in the System Image page's status
+line the next time you open GUARD. The first notification GUARD shows registers
+its name with Windows notifications - a one-time entry for your user account,
+and the one thing GUARD writes outside its folder besides the scheduled tasks.
+
 ### App reinstalls
 
 This card appears only when winget is missing from the PC. **Install winget**
@@ -588,11 +647,20 @@ see [Installing winget](#installing-winget).
 ## The status bar
 
 A status bar runs along the bottom of the window. It shows the active tab's
-status (the saved/unsaved line on File Backup, the scan or import summary on App
+status (the backup-health line on File Backup, the scan or import summary on App
 Management) and, while a backup or reinstall is running, a compact progress bar
 with the current action, so progress stays visible even when the in-tab progress
 area is scrolled away or another tab is active. After a job ends, the bar keeps
 that run's outcome until the next job starts.
+
+Once your settings are saved, the File Backup and System Image status lines
+answer the question that actually matters: **is this PC protected?** They
+report how the last run ended and when ("Last backup succeeded yesterday at
+02:00"), and the status dot turns amber when something needs attention: the
+last run failed or did not complete, a scheduled run is overdue, or an
+on-connect backup has not managed to run in over a week (time to plug the
+drive in). Before the first run, and after each save, the line instead shows
+the estimated backup size against the destination's free space.
 
 The status bar is exposed as an actual status bar element, so a
 screen reader's read-the-status-bar command reads it on demand, including a
@@ -610,16 +678,23 @@ Everything GUARD knows lives in its own folder, next to `GUARD.exe`:
 | `guard-system-image.cmd` | The generated system-image script, if you use the System Image tab. |
 | `onconnect-stamp.txt` | Records the last day an on-connect backup ran, so it runs at most once a day. Only appears if that option is on. |
 | `Logs\backup_last.log` | The log of the most recent backup or preview run. |
+| `Logs\backup-running.lock` | Present while a backup runs (it stops two backups running at once); an empty leftover is harmless. |
 | `Logs\system-image_last.log` | The log of the most recent system image. |
+| `Logs\image-versions_last.log` | The output of the most recent View Existing Images query. |
 | `Logs\recovery-media_last.log` | The log of the most recent recovery-media (bootable USB) build. |
 | `Logs\update_last.log` | The log of the most recent self-update. |
+| `Logs\crash_last.log` | Written only if GUARD ever crashes; include it when reporting a problem. |
 | `USER_GUIDE.html` | This manual; the Help button (F1) opens it in your browser. |
 
 Because everything is in one folder, **moving the folder moves the app and its
 settings together**: copy the `GUARD` folder to another PC or a USB stick and
-your configuration comes along. The scheduled task is the one thing tied to the
-original PC; after moving, open GUARD and click **Save Settings** once to register
-the task on the new machine.
+your configuration comes along. The scheduled tasks are the one thing tied to
+the original location, and GUARD repairs them itself: the next time you open
+GUARD from the folder's new home, the backup and on-connect tasks are
+re-registered automatically (on a different PC, that first launch registers
+them fresh). Only the scheduled system image needs you to click **Save
+Settings** once, because repointing a SYSTEM task requires Administrator
+approval - the System Image page tells you when that applies.
 
 `guard-backup.cmd` is a standalone script built from your settings. The scheduled
 task runs it, but you can also double-click it to run a backup without opening
@@ -649,6 +724,12 @@ screen reader. A few specifics worth knowing:
 - **Alt access keys** reach the important controls directly (the access key for
   each control is given in parentheses throughout this manual), and **F1** opens
   this manual from anywhere.
+- **Ctrl+1 to Ctrl+4** switch pages from anywhere in the window: Ctrl+1 File
+  Backup, Ctrl+2 System Image, Ctrl+3 App Management, Ctrl+4 Settings. Focus
+  lands on the page in the navigation, so you can arrow to a neighbouring page
+  from there.
+- **At launch, focus starts on the navigation** (the current page's item), so
+  the first thing you reach is the page list rather than an empty pane.
 - **Dark and light Mica theming** follows your Windows setting automatically,
   or can be pinned to Light or Dark on the [Settings page](#the-settings-page).
 
