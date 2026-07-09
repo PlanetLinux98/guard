@@ -8,6 +8,8 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-09
+
 ### Added
 - GUARD can now install winget itself on PCs that lack it (LTSC, Server
   editions, or no Microsoft Store): an "Install winget" notice appears above
@@ -676,7 +678,8 @@ shipping as a single self-contained `GUARD.exe`.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/PlanetLinux98/guard/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/PlanetLinux98/guard/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/PlanetLinux98/guard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/PlanetLinux98/guard/compare/v0.3.0...v0.4.0
