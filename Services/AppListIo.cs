@@ -8,8 +8,11 @@ public static class AppListIo
 {
     public static void Write(string path, AppListFile file)
     {
-        using var fs = File.Create(path);
-        JsonSerializer.Serialize(fs, file, GuardJsonContext.Default.AppListFile);
+        // Atomic like every other durable artifact: a pulled USB drive or lost
+        // power mid-write must not leave a truncated app-list.json that later
+        // silently fails to import.
+        string json = JsonSerializer.Serialize(file, GuardJsonContext.Default.AppListFile);
+        AtomicFile.WriteAllText(path, json);
     }
 
     public static AppListFile? Read(string path)

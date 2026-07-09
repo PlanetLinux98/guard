@@ -58,10 +58,18 @@ public static class RecoveryMedia
                 {
                     var line = raw.Trim();
                     if (line.Length == 0) continue;
+                    // FriendlyName (the middle field) is manufacturer-supplied
+                    // and can itself contain '|'; Number (always first) and
+                    // Size (always last) are the anchors, so anything between
+                    // them is rejoined back into the name rather than
+                    // silently dropping the drive on a stray delimiter.
                     var parts = line.Split('|');
                     if (parts.Length >= 3 && int.TryParse(parts[0].Trim(), out int n)
-                        && long.TryParse(parts[2].Trim(), out long sz))
-                        list.Add(new UsbDisk(n, parts[1].Trim(), sz));
+                        && long.TryParse(parts[^1].Trim(), out long sz))
+                    {
+                        string name = string.Join("|", parts, 1, parts.Length - 2).Trim();
+                        list.Add(new UsbDisk(n, name, sz));
+                    }
                 }
             }
             catch { }

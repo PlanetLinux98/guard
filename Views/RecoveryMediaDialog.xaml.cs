@@ -39,7 +39,11 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
         // Alt mnemonics on the dialog buttons. Back/Cancel are constant letters, so
         // a Style carries them; the primary changes (Next / Erase and Build) and is
         // restyled as the default button, so its key is set on the realized button.
-        SecondaryButtonStyle = UiHelpers.AccessKeyButtonStyle("B");
+        // Back is P (for Previous), not the classic wizard B: Step1 also shows an
+        // in-content Browse button, and Browse is Alt+B everywhere else in GUARD
+        // (File Backup, System Image, App Management, FolderDialog), so B stays
+        // Browse's and Back takes the next free letter instead.
+        SecondaryButtonStyle = UiHelpers.AccessKeyButtonStyle("P");
         CloseButtonStyle = UiHelpers.AccessKeyButtonStyle("C");
         // A screen reader does not auto-read content that swaps inside an open
         // dialog (no focus move, no live region), so announce each step's text as
@@ -216,10 +220,28 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
 
     private async void OnBrowseIso(object sender, RoutedEventArgs e)
     {
-        var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
-        picker.FileTypeFilter.Add(".iso");
-        var file = await picker.PickSingleFileAsync();
+        Windows.Storage.StorageFile? file;
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+            picker.FileTypeFilter.Add(".iso");
+            file = await picker.PickSingleFileAsync();
+        }
+        catch (Exception ex)
+        {
+            // The WinRT picker can throw in an unpackaged app; that must fail
+            // the browse, not the whole wizard.
+            var msg = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = Title,
+                Content = "Could not open the file picker:\n\n" + ex.Message,
+                CloseButtonText = "OK"
+            };
+            await msg.ShowAsync();
+            return;
+        }
         if (file != null)
         {
             _isoPath = file.Path;

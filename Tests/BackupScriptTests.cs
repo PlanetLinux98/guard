@@ -91,4 +91,15 @@ public class BackupScriptTests
         Assert.Contains("\"System Volume Information\"", s);
         Assert.Contains("$RECYCLE.BIN", s);
     }
+
+    [Fact]
+    public void PreviewRunsRedirectToASeparateLogFile()
+    {
+        // A preview (test) run must never write to backup_last.log: BackupHealth
+        // reads that file's FINISHED line and mtime for the "last backup" status,
+        // and Open Last Log opens it too - either would show a no-op preview
+        // instead of the real last backup if they shared the file.
+        string s = BackupScript.Generate(BaseSettings());
+        Assert.Contains("if defined DRY set \"LOG=%LOGDIR%\\backup_preview.log\"", s);
+    }
 }

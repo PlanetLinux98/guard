@@ -418,11 +418,20 @@ public sealed partial class MainWindow : Window
 
     private async void OnImportApps(object sender, RoutedEventArgs e)
     {
-        var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
-        picker.FileTypeFilter.Add(".json");
-        picker.FileTypeFilter.Add("*");
-        var file = await picker.PickSingleFileAsync();
+        Windows.Storage.StorageFile? file;
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+            picker.FileTypeFilter.Add(".json");
+            picker.FileTypeFilter.Add("*");
+            file = await picker.PickSingleFileAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageAsync("GUARD", "Could not open the file picker:\n\n" + ex.Message);
+            return;
+        }
         if (file == null) return;
 
         AppListFile? f;

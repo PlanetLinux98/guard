@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using GuardWui3.Services;
 using Microsoft.UI.Xaml.Controls;
@@ -35,9 +36,10 @@ public sealed partial class SystemImageRestoreHelpDialog : ContentDialog
             + " (same path, with the server's IP in place of its name).";
     }
 
-    private void OnOpenManual(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    private async void OnOpenManual(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         // Keep the dialog open; opening the manual is a side action, not a dismiss.
+        var deferral = args.GetDeferral();
         args.Cancel = true;
         try
         {
@@ -45,6 +47,17 @@ public sealed partial class SystemImageRestoreHelpDialog : ContentDialog
                 ? GuardPaths.ManualPath : GuardPaths.RepoUrl;
             Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            var msg = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = Title,
+                Content = "Could not open the manual:\n\n" + ex.Message,
+                CloseButtonText = "OK"
+            };
+            await msg.ShowAsync();
+        }
+        deferral.Complete();
     }
 }

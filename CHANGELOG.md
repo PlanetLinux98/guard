@@ -9,50 +9,37 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 ## [Unreleased]
 
 ### Added
-- GUARD can now install winget itself on PCs that lack it (LTSC and Server
-  editions, or systems without the Microsoft Store). When the app scan finds
-  winget missing, an "Install winget" notice appears above the status bar
-  (Ctrl+I activates it; the Settings page gains the same button), and
-  reinstalling from a saved list
-  offers it first and then carries on with the reinstall. GUARD downloads
-  Microsoft's signed App Installer package from the official winget release on
-  GitHub and installs it for the current user; no Administrator approval is
-  needed, and Windows verifies the package's signature during installation.
-- Backup health in the status bar: once a backup or system image has run, the
-  File Backup and System Image pages report how the last run ended and when
-  ("Last backup succeeded yesterday at 02:00") instead of only "settings
-  saved". The dot turns amber when the last run failed or did not complete,
-  when a scheduled run is overdue, or when an on-connect backup has not run in
-  over a week. The size-and-space figures still appear before the first run
-  and after each save, where they are most useful.
-- Windows notifications for unattended backups: when a scheduled or on-connect
-  backup finishes, GUARD can show a toast notification - failures on by
-  default, successes opt-in (Settings page, Notifications). Runs started
-  inside GUARD stay silent (the app already announces them), and the scheduled
-  system image reports through the status line instead, since Windows does not
+- GUARD can now install winget itself on PCs that lack it (LTSC, Server
+  editions, or no Microsoft Store): an "Install winget" notice appears above
+  the status bar (Ctrl+I) when the app scan finds it missing, the Settings
+  page has the same button, and reinstalling from a saved list offers it
+  first. GUARD sideloads Microsoft's signed App Installer package from the
+  official winget GitHub release for the current user - no Administrator
+  approval needed, and Windows verifies the signature.
+- Backup health in the status bar: the File Backup and System Image pages now
+  report how and when the last run ended (e.g. "Last backup succeeded
+  yesterday at 02:00") instead of just "settings saved". The status dot turns
+  amber if the last run failed or didn't complete, a scheduled run is
+  overdue, or an on-connect backup hasn't run in over a week; the
+  size-and-space figures still show before the first run and after each save.
+- Windows toast notifications for unattended backups: failures notify by
+  default, successes are opt-in (Settings > Notifications). Runs started from
+  inside GUARD stay silent (the app already announces them); the scheduled
+  system image reports through the status line instead, since Windows doesn't
   deliver notifications from SYSTEM tasks. The first notification registers
   GUARD's name with Windows (one per-user registry entry).
-- The backup destination now follows its drive when the letter changes:
-  saving records the destination volume's serial number, the generated script
-  re-finds the volume at run time if the saved letter is gone (noting the
-  change in the log), and the next save re-anchors the destination to the new
-  letter with a notice.
-- A moved or renamed GUARD folder no longer silently breaks the scheduled
-  backups: at launch GUARD re-registers the backup and on-connect tasks
-  against the new location automatically. The SYSTEM image task cannot be
-  fixed without elevation, so the System Image page flags it and one Save
-  Settings (with its usual Administrator approval) repoints it.
-- Update All Apps on the App Management page asks winget to update every app
-  it knows (`winget upgrade --all`). It runs with one Administrator approval up
-  front so that all-user installs and Store-delivered packages (like WSL) can
-  update - a per-app prompt cannot install those - and shows winget's output in
-  the Output details area, with a quiet rescan afterwards.
+- The backup destination now follows its drive if the letter changes: saving
+  records the volume's serial number, the generated script re-finds it by
+  serial at run time if the saved letter is gone (logging the change), and
+  the next save re-anchors the destination to the new letter.
+- Update All Apps (App Management page) runs `winget upgrade --all` with one
+  upfront Administrator approval, so all-user and Store-delivered packages
+  (like WSL) can update - a per-app prompt can't install those. Output
+  streams to the Output details area, followed by a quiet rescan.
 - Ctrl+1 to Ctrl+4 switch pages from anywhere in the window (File Backup,
-  System Image, App Management, Settings), and keyboard focus now starts on the
-  navigation at launch instead of the empty pane, so a screen-reader user is
-  not left on "GUARD, pane" needing an extra Tab.
-- List Images, beside the System Image destination field, lists the images
-  already on that destination via `wbadmin get versions` (one Administrator
+  System Image, App Management, Settings).
+- List Images (beside the System Image destination field) lists existing
+  images on that destination via `wbadmin get versions` (one Administrator
   approval per use).
 - Optional diagnostics: a `debug.flag` file next to GUARD.exe (or
   GUARD_DEBUG=1) logs background failures GUARD normally swallows to
@@ -62,42 +49,38 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   parser, update version comparison, schedule arithmetic, and save validation.
 
 ### Changed
-- The offline manual now ships as `USER_GUIDE.html` (styled, self-contained, and
-  following the system's light or dark mode), so Help (F1) opens it in the
-  default browser on any PC. Previously it shipped as `USER_GUIDE.md`, which
-  many PCs have no program associated with, leaving Help at a "how do you want
-  to open this file?" prompt. On update, the old `USER_GUIDE.md` left in the
-  GUARD folder is cleaned up automatically.
-- The backup size estimate and the in-run byte progress now honour the
-  exclusions (presets and custom), so the size figure reflects what a run
-  actually copies instead of overstating it - which could raise false
-  "space may be too low" warnings when large excluded trees (like
-  `node_modules`) sat inside a source.
-- The Test buttons no longer create a missing destination folder silently;
-  they now ask before creating it (and still report reachable/not reachable
-  as before).
+- The offline manual now ships as `USER_GUIDE.html` (styled, self-contained,
+  follows system light/dark mode) instead of `USER_GUIDE.md`, so Help (F1)
+  opens it in the default browser instead of a "how do you want to open this
+  file?" prompt on PCs with no program associated with .md. Updating cleans
+  up the old `USER_GUIDE.md` automatically.
+- The backup size estimate and in-run byte progress now honour exclusions
+  (presets and custom), so the figure reflects what a run actually copies
+  instead of overstating it - previously large excluded trees (like
+  `node_modules`) could trigger false "space may be too low" warnings.
+- The Test buttons now ask before creating a missing destination folder
+  instead of creating it silently (still reports reachable/not reachable as
+  before).
 - Settings files and the generated scripts are now written crash-safe (to a
   temp file swapped into place), so a crash or power cut mid-save can no
   longer leave a truncated `backup-settings.ini`, `guard-prefs.ini`, or
   backup/image script behind.
-- The installed-app scan's winget enrichment now also recognizes the list
-  header on localized (non-English) Windows, where every app was previously
-  reported as "Manual".
+- The installed-app scan's winget enrichment now recognizes the list header
+  on localized (non-English) Windows, where every app was previously reported
+  as "Manual".
 - Scheduled and on-connect backups now run with no visible window: the tasks
   launch GUARD.exe in a hidden helper mode instead of cmd.exe, so the
-  every-15-minutes on-connect check no longer flashes a console while you are
+  on-connect check (every 15 minutes) no longer flashes a console while
   signed in. Existing tasks migrate automatically at the next launch or save.
-- The app scan now reads winget's Source column: Microsoft Store apps are
-  labelled "Store" (previously everything reinstallable said "Winget"), so an
-  exported list is honest about which apps need the Store on the target PC.
-  When both winget and the Store carry an app, the winget id is preferred - it
-  also works on editions without the Store.
+- The app scan now reads winget's Source column, labelling Microsoft Store
+  apps as "Store" instead of "Winget", so an exported list is honest about
+  which apps need the Store. When both winget and the Store carry an app, the
+  winget id is preferred, since it also works on editions without the Store.
 - Only one backup can run at a time: the generated script takes a run lock,
-  so a scheduled run firing during an in-app run (or the reverse) skips
+  so a scheduled run firing during an in-app run (or vice versa) skips
   cleanly instead of interleaving two robocopy passes over the same log. The
-  script also reports distinct exit codes (0 ok, 1 finished with errors,
-  2 could not run, 3 nothing to do) for Task Scheduler history and the new
-  notifications.
+  script also reports distinct exit codes (0 ok, 1 errors, 2 could not run,
+  3 nothing to do) for Task Scheduler history and notifications.
 - A second GUARD.exe launched from the same folder now brings the already-open
   window to the front instead of running twice against the same settings
   files.
@@ -122,6 +105,9 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - Silent status repaints from a background page no longer disturb the active
   page's screen-reader announcement tracking, which could re-announce an
   unchanged status or drop a changed one.
+- Keyboard focus now starts on the navigation at launch instead of the empty
+  pane, so a screen-reader user isn't left on "GUARD, pane" needing an extra
+  Tab.
 - Corrected out-of-date details in the manual: the Windows App SDK version, the
   Help item's location, a broken Troubleshooting link, and the portability
   table now also lists the system-image, recovery-media, and on-connect files.
@@ -144,6 +130,52 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   failed USB build.
 - Run Backup Now now reports a scheduled-task registration problem from the
   save it performs, as Save Settings already did.
+- A moved or renamed GUARD folder no longer silently breaks scheduled
+  backups: GUARD re-registers the backup and on-connect tasks against the new
+  location at launch. The SYSTEM image task needs elevation to fix, so the
+  System Image page flags it and the next Save Settings (with its usual
+  Administrator approval) repoints it.
+- Preview no longer overwrites the real backup log: it now writes to its own
+  log file, so a preview run can no longer be mistaken for the last real
+  backup in the status bar or in Open Last Log.
+- Clicking Run Now or Preview a second time before the first click's setup
+  work finished could start two backups at once and, rarely, crash GUARD; the
+  buttons now disable immediately on the first click.
+- A failed folder or file picker (the Browse buttons, and Import in App
+  Management) no longer crashes GUARD; it now shows an error message instead.
+- Closing GUARD while exporting the app list, scanning installed apps, or
+  listing existing system images now prompts like a running backup does,
+  instead of closing silently mid-job.
+- Folder and exclusion entries loaded from a hand-edited or corrupted
+  backup-settings.ini are now re-validated on load, matching the checks
+  already enforced when adding them through the app.
+- Exporting the app list now writes it the same crash-safe way as every other
+  GUARD-generated file, so an interrupted export can no longer leave a
+  corrupt app-list.json.
+- The on-connect backup task now notifies when the backup script itself is
+  missing, instead of failing silently every time it checks.
+- Elevated actions (System Image, Recovery Media, scheduled-task
+  registration) are more reliable: the script handed to PowerShell now
+  carries the marker that tells it which text encoding to use, so a
+  non-ASCII Windows account name or install path can no longer corrupt it;
+  and a launch failure is only reported as "Administrator approval was
+  declined" when that's actually what happened, rather than for any other
+  error (e.g. a missing PowerShell).
+- A USB drive was silently left out of the Recovery Media wizard's drive list
+  if its manufacturer-supplied name happened to contain a "|" character.
+- The Open Manual button in the System Image restore-help dialog, and the
+  Project Page link in the About dialog, now show an error message instead of
+  doing nothing when there is no program available to open them.
+- The default window is now 840 DIP tall instead of 900, so it's less likely
+  to run under the taskbar on smaller or scaled displays even when already
+  positioned at the top of the screen.
+- The Recovery Media wizard's "Browse..." button and its "Back" button both
+  used Alt+B; Back is now Alt+P so both work on the Choose ISO step.
+- Toggling a checkbox or radio button with its Alt access key (e.g. "Run a
+  scheduled backup", or the Additive/Mirror mode choice) went unannounced by
+  NVDA, unlike Tab+Space: the access key toggled the control without moving
+  keyboard focus to it. Every checkbox and radio button with an access key
+  now moves focus there first, matching Tab+Space.
 
 ## [0.5.0] - 2026-07-02
 

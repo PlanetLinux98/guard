@@ -84,6 +84,11 @@ public static class BackupScript
         sb.AppendLine("set \"DRY=\"");
         sb.AppendLine("set \"PAUSEATEND=1\"");
         sb.AppendLine("if /I \"%~1\"==\"test\" set \"DRY=/L\"");
+        // Preview must never touch backup_last.log: BackupHealth reads that file's
+        // FINISHED line and mtime to show "last backup succeeded", and Open Last
+        // Log opens it too. A preview that shared it would overwrite real backup
+        // history with a no-op run's result the moment someone clicks Preview.
+        sb.AppendLine("if defined DRY set \"LOG=%LOGDIR%\\backup_preview.log\"");
         sb.AppendLine("if /I \"%~1\"==\"auto\" set \"PAUSEATEND=\"");
         sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"PAUSEATEND=\"");
         sb.AppendLine("if /I \"%~1\"==\"onconnect\" set \"ONCONNECT=1\"");

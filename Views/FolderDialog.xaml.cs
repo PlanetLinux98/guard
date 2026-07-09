@@ -27,10 +27,28 @@ public sealed partial class FolderDialog : ContentDialog
 
     private async void OnBrowse(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
-        var picker = new Windows.Storage.Pickers.FolderPicker();
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
-        picker.FileTypeFilter.Add("*");
-        var folder = await picker.PickSingleFolderAsync();
+        Windows.Storage.StorageFolder? folder;
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+            picker.FileTypeFilter.Add("*");
+            folder = await picker.PickSingleFolderAsync();
+        }
+        catch (Exception ex)
+        {
+            // Mirrors OnPrimary's own inline dialog: the WinRT picker can throw
+            // in an unpackaged app, and that must fail the browse, not the app.
+            var msg = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = Title,
+                Content = "Could not open the folder picker:\n\n" + ex.Message,
+                CloseButtonText = "OK"
+            };
+            await msg.ShowAsync();
+            return;
+        }
         if (folder != null) TxtSource.Text = folder.Path;
     }
 
