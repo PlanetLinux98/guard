@@ -36,9 +36,22 @@ public sealed partial class AboutDialog : ContentDialog
         catch { }
     }
 
-    private void OnProjectPage(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private async void OnProjectPage(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
-        try { Process.Start(new ProcessStartInfo(GuardPaths.RepoUrl) { UseShellExecute = true }); } catch { }
+        try { Process.Start(new ProcessStartInfo(GuardPaths.RepoUrl) { UseShellExecute = true }); }
+        catch (Exception ex)
+        {
+            // Mirrors MainWindow.OnHelp's handling of the same failure mode
+            // (no default browser/handler registered, or launch blocked).
+            var msg = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = Title,
+                Content = "Could not open the project page:\n\n" + ex.Message,
+                CloseButtonText = "OK"
+            };
+            await msg.ShowAsync();
+        }
     }
 
     private void OnCheckUpdates(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

@@ -40,16 +40,25 @@ public static class SettingsStore
             if (section == "Folders")
             {
                 sawFolders = true;
-                var parts = val.Split('|');
-                if (parts.Length >= 3)
+                // Capped at 3 fields: an embedded pipe in Source/SubFolder must
+                // land inside parts[2] (not spill into a 4th field), or the
+                // Contains('|') check below could never see it post-split.
+                var parts = val.Split('|', 3);
+                // Mirrors FolderDialog.Validate(): a hand-edited or tampered ini
+                // must not let a quote/pipe, an invalid path character, or a
+                // blank value reach BackupScript, which trusts Source/SubFolder
+                // are already clean and non-empty.
+                if (parts.Length == 3 && IsValidFolderEntry(parts[1], parts[2]))
                     folders.Add(new FolderPair(parts[0] == "1", parts[1], parts[2]));
                 continue;
             }
 
             if (section == "Excludes")
             {
-                var parts = val.Split('|');
-                if (parts.Length >= 2)
+                // Capped at 2 fields, same reasoning as Folders above.
+                var parts = val.Split('|', 2);
+                // Mirrors ExcludeDialog's own check.
+                if (parts.Length == 2 && IsValidExcludePattern(parts[1]))
                     excludes.Add(new ExcludeItem(parts[0] == "D", parts[1]));
                 continue;
             }
@@ -109,6 +118,29 @@ public static class SettingsStore
             MigrateLegacyExcludes(cfg, legacyDirs, legacyFiles);
         return cfg;
     }
+
+    // A quote breaks the generated script's quoted robocopy arguments; the
+    // subfolder also becomes path segments under the destination, so it must
+    // hold no other invalid-filename character and no ".." segment that would
+    // climb out of the destination root. Blank Source/SubFolder is rejected
+    // too, matching FolderDialog.Validate() - the ini parser has no other
+    // required-value check, so a hand-edited blank entry would otherwise load
+    // as a broken row that SKIPs on every run.
+    private static bool IsValidFolderEntry(string source, string subFolder)
+    {
+        if (source.Trim().Length == 0 || subFolder.Trim().Length == 0) return false;
+        if (source.Contains('"') || source.Contains('|')) return false;
+        foreach (char c in subFolder)
+            if (c is '"' or '|' or '<' or '>' or ':' or '?' or '*' or '/') return false;
+        foreach (var seg in subFolder.Split('\\'))
+            if (seg.Trim() == "..") return false;
+        return true;
+    }
+
+    // A quote would break the generated robocopy line; a pipe the ini's own
+    // Excludes format. Blank pattern is rejected too, matching ExcludeDialog.
+    private static bool IsValidExcludePattern(string pattern)
+        => pattern.Trim().Length > 0 && !pattern.Contains('"') && !pattern.Contains('|');
 
     // Fold a pre-preset ini's free-text exclude lines into the preset/custom
     // model: a preset is ticked when any of its patterns appears among the legacy

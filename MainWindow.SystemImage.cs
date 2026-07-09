@@ -349,6 +349,15 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "A system image is already running. Wait for it to finish, or press Stop Image to cancel it.");
             return;
         }
+        // wbadmin cannot run two operations against the same target at once;
+        // View Existing Images also elevates and can take several seconds, so
+        // block a launch that would race it (BtnCreateImage is disabled while
+        // listing runs, but this is a defensive second check).
+        if (_imageListing)
+        {
+            await ShowMessageAsync("GUARD", "Reading the list of existing system images. Wait for it to finish before creating a new image.");
+            return;
+        }
         if (!_imageAvailable)
         {
             await ShowMessageAsync("GUARD", "System imaging is not available on this edition of Windows (the wbadmin tool was not found).");
@@ -613,6 +622,9 @@ public sealed partial class MainWindow : Window
 
         _imageListing = true;
         BtnViewImages.IsEnabled = false;
+        // wbadmin cannot run two operations against the same target at once;
+        // block Create Image Now for the same reason RunImage checks _imageListing.
+        BtnCreateImage.IsEnabled = false;
         TxtImageOutput.Text = "";
         AppendOut(TxtImageOutput, "> Listing system images on " + _cfg.ImageTarget + "\r\n\r\n");
         AnnounceNotification("Checking the destination for existing system images. This needs Administrator approval.");
@@ -635,6 +647,7 @@ public sealed partial class MainWindow : Window
         {
             _imageListing = false;
             BtnViewImages.IsEnabled = !_imageRunning;
+            BtnCreateImage.IsEnabled = _imageAvailable && !_imageRunning;
         }
 
         string outcome;

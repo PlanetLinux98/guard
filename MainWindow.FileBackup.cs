@@ -459,157 +459,169 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "A backup is already running. Wait for it to finish, or press Stop Backup to cancel it.");
             return;
         }
-        // A clean config skips the save: the script already matches the saved
-        // settings, and re-saving would re-apply the scheduled tasks (a
-        // multi-second PowerShell call) for nothing. The unreachable-sources
-        // note is still refreshed, since a drive can come or go between runs.
-        if (_dirty || !File.Exists(GuardPaths.ScriptPath))
-        {
-            if (!await SaveAllAsync()) return;
-            // Same courtesy as RunImage: the run continues, but a scheduled-task
-            // registration failure inside that save must not vanish silently.
-            if (_taskError != null)
-                await ShowMessageAsync("GUARD", "Settings saved, but registering a scheduled task reported a problem:\n\n" + _taskError);
-        }
-        else
-        {
-            // No save ran, so any drift note from an earlier save is stale.
-            _destDriftNote = null;
-            _missingSources = await System.Threading.Tasks.Task.Run(
-                () => SaveValidation.UnreachableSources(_cfg.Folders));
-        }
-        string script = GuardPaths.ScriptPath;
-        if (!File.Exists(script))
-        {
-            // Parallels the System Image page's wording; no internal path dump.
-            await ShowMessageAsync("GUARD", "Backup script not found. Click Save Settings first.");
-            return;
-        }
-
-        TxtOutput.Text = "";
-        AppendOut(TxtOutput, "> " + Path.GetFileName(script) + (arg.Length > 0 ? " " + arg : "") + "\r\n");
-        // A modal here would interrupt the run the user just asked for; the
-        // script SKIPs unreachable sources itself, so a line in the output is
-        // the right weight. Same for the drive-drift note.
-        if (_destDriftNote != null)
-            AppendOut(TxtOutput, "NOTE: " + _destDriftNote.Replace("\n", "\r\n  ") + "\r\n");
-        if (_missingSources.Count > 0)
-            AppendOut(TxtOutput, "WARNING: " + DescribeMissingSources(_missingSources).Replace("\n", "\r\n  ")
-                + "\r\nThey will be skipped if still unreachable.\r\n");
-        _progTotal = 0;
-        _progByBytes = false;
-        _progSizes = null;
-        _progOffsets = null;
-        _progTotalBytes = 0;
-        _summaryParser = new RobocopySummaryParser();
-        _runIsPreview = arg == "test";
-        _runDoneAnnounce = null;
-        SetProgress(FileProgress, FileProgressLabel, 1, 0, "Measuring folders...");
-        ShowStatusBarProgress(0, true);
-
+        // Claimed and the buttons disabled BEFORE any await below, not after:
+        // otherwise a second click landing in that window (SaveAllAsync/the
+        // unreachable-sources scan) would slip past the _backupRunning guard
+        // above and launch a second robocopy run sharing _runCts, which then
+        // races the first run's finally block for the field and can NRE-crash
+        // the app when the loser Disposes an already-nulled CTS.
         _backupRunning = true;
-        _runCts = new CancellationTokenSource();
-        var ct = _runCts.Token;
         SetFileBusy(true);
         try
         {
-            // Best-effort: pre-scan the included folders so the bar can advance by
-            // bytes copied within each folder (see _progByBytes). On failure, empty
-            // result, timeout or cancel it stays in per-folder mode. Cancellable, so
-            // Stop during a long measure aborts cleanly - the launch below then
-            // starts and is killed at once by the already-cancelled token.
-            try
+            // A clean config skips the save: the script already matches the saved
+            // settings, and re-saving would re-apply the scheduled tasks (a
+            // multi-second PowerShell call) for nothing. The unreachable-sources
+            // note is still refreshed, since a drive can come or go between runs.
+            if (_dirty || !File.Exists(GuardPaths.ScriptPath))
             {
-                var sizes = await SaveValidation.MeasureIncludedFolderSizesAsync(
-                    _cfg.Folders, _cfg.EffectiveExcludeDirs(), _cfg.EffectiveExcludeFiles(),
-                    SaveValidation.RunSizeCap, ct);
-                if (sizes != null && sizes.Count > 0)
-                {
-                    long tot = 0;
-                    foreach (var s in sizes) tot += s;
-                    if (tot > 0)
-                    {
-                        _progSizes = sizes.ToArray();
-                        _progOffsets = new long[sizes.Count];
-                        long acc = 0;
-                        for (int k = 0; k < sizes.Count; k++) { _progOffsets[k] = acc; acc += sizes[k]; }
-                        _progTotalBytes = tot;
-                        // Throttle per-file bar pushes to ~500 over the whole run so
-                        // a large backup cannot flood the dispatcher.
-                        _curPushStep = Math.Max(4L * 1024 * 1024, tot / 500);
-                        _progByBytes = true;
-                    }
-                }
-            }
-            catch (OperationCanceledException) { }
-            catch { }
-
-            var psi = new ProcessStartInfo("cmd.exe", "/c \"\"" + script + "\" " + arg + "\"")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                WorkingDirectory = GuardPaths.BaseDir
-            };
-            psi.EnvironmentVariables["GUARD_UI"] = "1";
-            using var proc = new Process { StartInfo = psi };
-            proc.OutputDataReceived += (_, ev) => HandleScriptLine(ev.Data);
-            proc.ErrorDataReceived += (_, ev) => { if (ev.Data != null) AppendOut(TxtOutput, ev.Data + "\r\n"); };
-            proc.Start();
-            // Cancel kills the whole tree: cmd.exe alone would die while its
-            // robocopy child kept copying. Kill throws if the process already
-            // exited naturally in the same instant; that race is harmless.
-            using var reg = ct.Register(() => { try { proc.Kill(entireProcessTree: true); } catch { } });
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
-            proc.StandardInput.Close();
-            await proc.WaitForExitAsync();
-            // Parameterless WaitForExit additionally drains the async output
-            // handlers, so the completion line below always lands after the
-            // script's own last output.
-            proc.WaitForExit();
-            if (ct.IsCancellationRequested)
-            {
-                AppendOut(TxtOutput, "\r\n--- cancelled by user ---\r\n");
-                // Enqueued (not set directly) so it lands after any progress
-                // update the output handlers enqueued during the drain above;
-                // a direct set could be overwritten by a stale "Backing up"
-                // line still sitting in the queue.
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    FileProgressLabel.Text = "Backup cancelled.";
-                    // Mirror into the page's progress slot; SetProgress last wrote
-                    // a stale "Backing up..." line there.
-                    _pageProg[0].Text = "Backup cancelled."; ApplyPageProgress(0);
-                });
+                if (!await SaveAllAsync()) return;
+                // Same courtesy as RunImage: the run continues, but a scheduled-task
+                // registration failure inside that save must not vanish silently.
+                if (_taskError != null)
+                    await ShowMessageAsync("GUARD", "Settings saved, but registering a scheduled task reported a problem:\n\n" + _taskError);
             }
             else
             {
-                AppendOut(TxtOutput, "\r\n--- finished ---\r\n");
+                // No save ran, so any drift note from an earlier save is stale.
+                _destDriftNote = null;
+                _missingSources = await System.Threading.Tasks.Task.Run(
+                    () => SaveValidation.UnreachableSources(_cfg.Folders));
             }
-        }
-        catch (Exception ex)
-        {
-            AppendOut(TxtOutput, "ERROR launching script: " + ex.Message + "\r\n");
+            string script = GuardPaths.ScriptPath;
+            if (!File.Exists(script))
+            {
+                // Parallels the System Image page's wording; no internal path dump.
+                await ShowMessageAsync("GUARD", "Backup script not found. Click Save Settings first.");
+                return;
+            }
+
+            TxtOutput.Text = "";
+            AppendOut(TxtOutput, "> " + Path.GetFileName(script) + (arg.Length > 0 ? " " + arg : "") + "\r\n");
+            // A modal here would interrupt the run the user just asked for; the
+            // script SKIPs unreachable sources itself, so a line in the output is
+            // the right weight. Same for the drive-drift note.
+            if (_destDriftNote != null)
+                AppendOut(TxtOutput, "NOTE: " + _destDriftNote.Replace("\n", "\r\n  ") + "\r\n");
+            if (_missingSources.Count > 0)
+                AppendOut(TxtOutput, "WARNING: " + DescribeMissingSources(_missingSources).Replace("\n", "\r\n  ")
+                    + "\r\nThey will be skipped if still unreachable.\r\n");
+            _progTotal = 0;
+            _progByBytes = false;
+            _progSizes = null;
+            _progOffsets = null;
+            _progTotalBytes = 0;
+            _summaryParser = new RobocopySummaryParser();
+            _runIsPreview = arg == "test";
+            _runDoneAnnounce = null;
+            SetProgress(FileProgress, FileProgressLabel, 1, 0, "Measuring folders...");
+            ShowStatusBarProgress(0, true);
+
+            _runCts = new CancellationTokenSource();
+            var ct = _runCts.Token;
+            try
+            {
+                // Best-effort: pre-scan the included folders so the bar can advance by
+                // bytes copied within each folder (see _progByBytes). On failure, empty
+                // result, timeout or cancel it stays in per-folder mode. Cancellable, so
+                // Stop during a long measure aborts cleanly - the launch below then
+                // starts and is killed at once by the already-cancelled token.
+                try
+                {
+                    var sizes = await SaveValidation.MeasureIncludedFolderSizesAsync(
+                        _cfg.Folders, _cfg.EffectiveExcludeDirs(), _cfg.EffectiveExcludeFiles(),
+                        SaveValidation.RunSizeCap, ct);
+                    if (sizes != null && sizes.Count > 0)
+                    {
+                        long tot = 0;
+                        foreach (var s in sizes) tot += s;
+                        if (tot > 0)
+                        {
+                            _progSizes = sizes.ToArray();
+                            _progOffsets = new long[sizes.Count];
+                            long acc = 0;
+                            for (int k = 0; k < sizes.Count; k++) { _progOffsets[k] = acc; acc += sizes[k]; }
+                            _progTotalBytes = tot;
+                            // Throttle per-file bar pushes to ~500 over the whole run so
+                            // a large backup cannot flood the dispatcher.
+                            _curPushStep = Math.Max(4L * 1024 * 1024, tot / 500);
+                            _progByBytes = true;
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch { }
+
+                var psi = new ProcessStartInfo("cmd.exe", "/c \"\"" + script + "\" " + arg + "\"")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    RedirectStandardInput = true,
+                    WorkingDirectory = GuardPaths.BaseDir
+                };
+                psi.EnvironmentVariables["GUARD_UI"] = "1";
+                using var proc = new Process { StartInfo = psi };
+                proc.OutputDataReceived += (_, ev) => HandleScriptLine(ev.Data);
+                proc.ErrorDataReceived += (_, ev) => { if (ev.Data != null) AppendOut(TxtOutput, ev.Data + "\r\n"); };
+                proc.Start();
+                // Cancel kills the whole tree: cmd.exe alone would die while its
+                // robocopy child kept copying. Kill throws if the process already
+                // exited naturally in the same instant; that race is harmless.
+                using var reg = ct.Register(() => { try { proc.Kill(entireProcessTree: true); } catch { } });
+                proc.BeginOutputReadLine();
+                proc.BeginErrorReadLine();
+                proc.StandardInput.Close();
+                await proc.WaitForExitAsync();
+                // Parameterless WaitForExit additionally drains the async output
+                // handlers, so the completion line below always lands after the
+                // script's own last output.
+                proc.WaitForExit();
+                if (ct.IsCancellationRequested)
+                {
+                    AppendOut(TxtOutput, "\r\n--- cancelled by user ---\r\n");
+                    // Enqueued (not set directly) so it lands after any progress
+                    // update the output handlers enqueued during the drain above;
+                    // a direct set could be overwritten by a stale "Backing up"
+                    // line still sitting in the queue.
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        FileProgressLabel.Text = "Backup cancelled.";
+                        // Mirror into the page's progress slot; SetProgress last wrote
+                        // a stale "Backing up..." line there.
+                        _pageProg[0].Text = "Backup cancelled."; ApplyPageProgress(0);
+                    });
+                }
+                else
+                {
+                    AppendOut(TxtOutput, "\r\n--- finished ---\r\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendOut(TxtOutput, "ERROR launching script: " + ex.Message + "\r\n");
+            }
+            finally
+            {
+                // Whatever the outcome (finish, cancel, launch error), the bar's
+                // progress area must not outlive the job it mirrors.
+                ShowStatusBarProgress(0, false);
+                _runCts?.Dispose();
+                _runCts = null;
+                // The run just rewrote the log, so the health line has news; the
+                // end-of-run summary below is the spoken part, the line updates
+                // silently.
+                RefreshScriptStatus(announce: false);
+            }
+            string? spoken = ct.IsCancellationRequested ? "Backup cancelled." : _runDoneAnnounce;
+            if (spoken != null) AnnounceSettled(spoken, 2000);
         }
         finally
         {
-            // Whatever the outcome (finish, cancel, launch error), the bar's
-            // progress area must not outlive the job it mirrors.
-            ShowStatusBarProgress(0, false);
             _backupRunning = false;
-            _runCts.Dispose();
-            _runCts = null;
             SetFileBusy(false);
-            // The run just rewrote the log, so the health line has news; the
-            // end-of-run summary below is the spoken part, the line updates
-            // silently.
-            RefreshScriptStatus(announce: false);
         }
-        string? spoken = ct.IsCancellationRequested ? "Backup cancelled." : _runDoneAnnounce;
-        if (spoken != null) AnnounceSettled(spoken, 2000);
     }
 
     private void OnStopBackup(object sender, RoutedEventArgs e) => _runCts?.Cancel();

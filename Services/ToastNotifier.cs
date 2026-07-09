@@ -15,6 +15,9 @@ public static class ToastNotifier
     // Blocking on purpose: the helper process exits right after this, and a
     // toast handed to the pipeline too close to process exit is dropped. A
     // dedicated MTA thread keeps WinRT activation off the STA main thread.
+    // IsBackground stays true so a notification pipeline that hangs past the
+    // 15s Join cannot keep the whole headless process alive after Show
+    // returns - a foreground thread would block process exit indefinitely.
     public static void Show(string title, string body)
     {
         var th = new Thread(() =>
@@ -23,7 +26,7 @@ public static class ToastNotifier
             catch (Exception ex) { DebugLog.Log("toast", "could not show notification", ex); }
         });
         th.SetApartmentState(ApartmentState.MTA);
-        th.IsBackground = false;
+        th.IsBackground = true;
         th.Start();
         th.Join(TimeSpan.FromSeconds(15));
     }

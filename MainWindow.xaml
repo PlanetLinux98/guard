@@ -344,6 +344,7 @@
                                         <RadioButtons AutomationProperties.Name="Mode">
                                             <RadioButton x:Name="RbAdditive" IsChecked="True" AccessKey="I"
                                                          Checked="OnDirtyChecked"
+                                                         AccessKeyInvoked="OnToggleAccessKeyInvoked"
                                                          AutomationProperties.Name="Additive. Copy new and changed files; nothing at the destination is ever deleted.">
                                                 <StackPanel>
                                                     <TextBlock Text="Additive" />
@@ -354,6 +355,7 @@
                                             </RadioButton>
                                             <RadioButton x:Name="RbMirror" AccessKey="M"
                                                          Checked="OnDirtyChecked"
+                                                         AccessKeyInvoked="OnToggleAccessKeyInvoked"
                                                          AutomationProperties.Name="Mirror. Make the destination match the source exactly; files deleted from the source are also deleted at the destination.">
                                                 <StackPanel>
                                                     <TextBlock Text="Mirror" />
@@ -372,7 +374,8 @@
                                         <TextBlock Text="Versioning" Style="{StaticResource CardTitle}" />
                                         <CheckBox x:Name="ChkVersioned" Content="Keep dated backup versions" IsChecked="False" AccessKey="V"
                                                   ToolTipService.ToolTip="Each run copies into a dated folder (like 2026-06-10) inside the destination, and the oldest dated folders beyond the keep count are removed after a successful run."
-                                                  Checked="OnVersionedChanged" Unchecked="OnVersionedChanged" />
+                                                  Checked="OnVersionedChanged" Unchecked="OnVersionedChanged"
+                                                  AccessKeyInvoked="OnToggleAccessKeyInvoked" />
                                         <StackPanel Orientation="Horizontal" Spacing="12">
                                             <TextBlock Text="Versions to keep:" VerticalAlignment="Center" />
                                             <NumberBox x:Name="NumVersionsKeep" VerticalAlignment="Center"
@@ -395,7 +398,8 @@
                                       IsExpanded="True" Header="Schedule">
                                 <StackPanel Spacing="6">
                                     <CheckBox x:Name="ChkSchedule" Content="Run a scheduled backup" IsChecked="False" AccessKey="Y"
-                                              Checked="OnScheduleEnabledChanged" Unchecked="OnScheduleEnabledChanged" />
+                                              Checked="OnScheduleEnabledChanged" Unchecked="OnScheduleEnabledChanged"
+                                              AccessKeyInvoked="OnToggleAccessKeyInvoked" />
                                     <StackPanel x:Name="ScheduleConfig">
                                         <!-- Day picker: all seven ticked = daily, one = weekly, any
                                              mix = custom. Seven real CheckBoxes (one accessible name
@@ -437,7 +441,8 @@
                                     <CheckBox x:Name="ChkOnConnect" AccessKey="W" Margin="0,4,0,0"
                                               Content="Automatically run when the backup destination becomes available (checks every 15 min)"
                                               ToolTipService.ToolTip="Adds a second scheduled task that quietly checks for the destination every 15 minutes and at sign-in, and runs the backup at most once per day when it is reachable. Works for external drives and network shares, with or without the day/time schedule."
-                                              Checked="OnDirtyChecked" Unchecked="OnDirtyChecked" />
+                                              Checked="OnDirtyChecked" Unchecked="OnDirtyChecked"
+                                              AccessKeyInvoked="OnToggleAccessKeyInvoked" />
                                     <TextBlock x:Name="LblNextRun" Text="Next run: (unknown)" Margin="0,4,0,0" />
                                 </StackPanel>
                             </Expander>
@@ -576,7 +581,8 @@
                                 <StackPanel Spacing="6">
                                     <CheckBox x:Name="ChkImageSchedule" Content="Create images on a schedule" IsChecked="False" AccessKey="Y"
                                               ToolTipService.ToolTip="Registers a scheduled task that runs as SYSTEM with the highest privileges, so it needs no approval prompt at run time. Registering or changing it asks for Administrator approval once."
-                                              Checked="OnImageScheduleEnabledChanged" Unchecked="OnImageScheduleEnabledChanged" />
+                                              Checked="OnImageScheduleEnabledChanged" Unchecked="OnImageScheduleEnabledChanged"
+                                              AccessKeyInvoked="OnToggleAccessKeyInvoked" />
                                     <StackPanel x:Name="ImageScheduleConfig">
                                         <!-- Frequency: one of weekly / monthly / daily. Single-word
                                              content, so each radio's accessible name derives from its
@@ -819,7 +825,8 @@
                                          is read before the Export button in the bar below. -->
                                     <CheckBox x:Name="ChkExportSettings" Margin="0,6,0,0" AccessKey="A"
                                               Content="Also export app settings"
-                                              ToolTipService.ToolTip="When ticked, Export also finds the ticked apps' settings folders and copies them alongside the app list, after you confirm the matches" />
+                                              ToolTipService.ToolTip="When ticked, Export also finds the ticked apps' settings folders and copies them alongside the app list, after you confirm the matches"
+                                              AccessKeyInvoked="OnToggleAccessKeyInvoked" />
 
                                     <TextBlock TextWrapping="Wrap" Margin="0,4,0,0"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -899,13 +906,15 @@
                                     <CheckBox x:Name="ChkUpdateAutoCheck" AccessKey="U"
                                               Content="Check for updates automatically"
                                               ToolTipService.ToolTip="Once a day when GUARD starts, quietly check GitHub for a newer release and mention it here if one exists"
-                                              Checked="OnUpdatePrefChanged" Unchecked="OnUpdatePrefChanged" />
+                                              Checked="OnUpdatePrefChanged" Unchecked="OnUpdatePrefChanged"
+                                              AccessKeyInvoked="OnToggleAccessKeyInvoked" />
                                     <!-- Indented + greyed while auto-check is off, mirroring the
                                          schedule sections' dependent-control pattern. -->
                                     <CheckBox x:Name="ChkUpdateAutoInstall" AccessKey="A" Margin="24,0,0,0"
                                               Content="Download updates automatically and install them when GUARD exits"
                                               ToolTipService.ToolTip="When a check finds a new version, download it in the background and apply it after you close GUARD, instead of asking first"
-                                              Checked="OnUpdatePrefChanged" Unchecked="OnUpdatePrefChanged" />
+                                              Checked="OnUpdatePrefChanged" Unchecked="OnUpdatePrefChanged"
+                                              AccessKeyInvoked="OnToggleAccessKeyInvoked" />
                                     <Button x:Name="BtnCheckUpdates" Content="Check for Updates Now" AccessKey="C"
                                             Margin="0,4,0,0"
                                             ToolTipService.ToolTip="Check GitHub for a newer GUARD release right now; a skipped version is offered again"
@@ -972,11 +981,13 @@
                                         <CheckBox x:Name="ChkNotifyFailure" AccessKey="F"
                                                   Content="When it fails or cannot run"
                                                   ToolTipService.ToolTip="Notify when an unattended backup finishes with errors, or a scheduled backup cannot reach its destination"
-                                                  Checked="OnNotifyPrefChanged" Unchecked="OnNotifyPrefChanged" />
+                                                  Checked="OnNotifyPrefChanged" Unchecked="OnNotifyPrefChanged"
+                                                  AccessKeyInvoked="OnToggleAccessKeyInvoked" />
                                         <CheckBox x:Name="ChkNotifySuccess" AccessKey="G"
                                                   Content="When it succeeds"
                                                   ToolTipService.ToolTip="Also notify when an unattended backup finishes cleanly; off by default so a working nightly backup stays quiet"
-                                                  Checked="OnNotifyPrefChanged" Unchecked="OnNotifyPrefChanged" />
+                                                  Checked="OnNotifyPrefChanged" Unchecked="OnNotifyPrefChanged"
+                                                  AccessKeyInvoked="OnToggleAccessKeyInvoked" />
                                     </StackPanel>
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"

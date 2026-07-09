@@ -29,7 +29,12 @@ public static class HeadlessBackupRunner
         if (!File.Exists(GuardPaths.ScriptPath))
         {
             DebugLog.Log("scheduled-run", "guard-backup.cmd not found; nothing to run");
-            if (scheduled && prefs.NotifyFailure)
+            // Unlike "destination unreachable" (normal life for on-connect, see
+            // the switch below), a missing script means Save Settings was never
+            // run or the file was deleted/quarantined - a setup failure, not a
+            // quiet skip, so it must surface on either trigger or an on-connect-
+            // only user never learns their backups have silently stopped.
+            if (prefs.NotifyFailure)
                 ToastNotifier.Show("GUARD backup",
                     "The scheduled backup could not run: the backup script was not found. Open GUARD and click Save Settings.");
             return 2;

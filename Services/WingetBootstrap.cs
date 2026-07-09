@@ -173,7 +173,12 @@ public static class WingetBootstrap
         // A script file, not -Command: the paths stay data (no quoting games)
         // and the exit codes are honoured reliably under -File.
         string ps1 = Path.Combine(StageDir, "install-winget.ps1");
-        File.WriteAllText(ps1, sb.ToString());
+        // Encoding.UTF8 (not the 2-arg WriteAllText overload, which omits the
+        // BOM) so Windows PowerShell reads the file as UTF-8 instead of
+        // guessing the system codepage; without a BOM a non-ASCII path (e.g.
+        // an accented Windows username under StageDir) corrupts the quoted
+        // paths above.
+        File.WriteAllText(ps1, sb.ToString(), Encoding.UTF8);
         int code = ProcessRunner.RunPowerShellFileCapture(ps1, out string output);
         if (code != 0)
             throw new InvalidOperationException(output.Length > 0

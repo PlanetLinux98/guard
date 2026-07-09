@@ -134,7 +134,12 @@ public static class ProcessRunner
         string ps1 = Path.Combine(Path.GetTempPath(), "guard_" + Guid.NewGuid().ToString("N") + ".ps1");
         try
         {
-            File.WriteAllText(ps1, script);
+            // Encoding.UTF8 (not the 2-arg WriteAllText overload, which omits
+            // the BOM) so Windows PowerShell reads the file as UTF-8 instead of
+            // guessing the system codepage; without a BOM, a non-ASCII path
+            // (e.g. an accented Windows username) gets misread and corrupts
+            // the script's quoted arguments.
+            File.WriteAllText(ps1, script, Encoding.UTF8);
             var psi = new ProcessStartInfo("powershell.exe",
                 "-NoProfile -ExecutionPolicy Bypass -File \"" + ps1 + "\"")
             {
@@ -146,7 +151,10 @@ public static class ProcessRunner
             p.WaitForExit();
             return p.ExitCode;
         }
-        catch (System.ComponentModel.Win32Exception)
+        // 1223 (ERROR_CANCELLED) is the actual UAC-decline code; any other
+        // Win32Exception (e.g. a missing/corrupted powershell.exe) is a real
+        // launch failure and must not be mislabeled as a declined prompt.
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
             error = "was cancelled - Administrator approval was declined.";
             return ElevationDeclined;

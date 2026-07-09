@@ -168,9 +168,12 @@ public sealed partial class MainWindow : Window
         SetWindowIcon();
         // Wider than the old 820 to keep the page content roomy beside the
         // ~210 DIP navigation pane (the seven schedule-day checkboxes need a
-        // full-width row). Height holds at 900: the expanders collapse the
-        // advanced sections, so the default page is shorter than before.
-        SizeToDips(1040, 900);
+        // full-width row). Height trimmed from 900 to 840: CenterInWorkArea
+        // clamps the top to the work area, but 900 still ran the bottom edge
+        // under the taskbar on common smaller-or-scaled displays (e.g. a
+        // 1366x768 laptop); the expanders collapse the advanced sections, so
+        // the default page has room to spare at the smaller height.
+        SizeToDips(1040, 840);
         EnableMinimumWindowSize();
 
         // Releases up to v0.5.0 shipped the manual as USER_GUIDE.md; an update
@@ -725,6 +728,19 @@ public sealed partial class MainWindow : Window
         catch { }
     }
 
+    // Shared by every CheckBox and RadioButton that carries an AccessKey (both
+    // are ToggleButtons). Confirmed live with NVDA: Tab+Space announces the new
+    // state, but WinUI's default Alt access-key handling toggles the control
+    // without moving keyboard focus there first, so NVDA has nothing focused to
+    // read. Move focus explicitly so the access key gets the same
+    // focus-then-toggle sequence Tab+Space already gets right; the default
+    // toggle still runs afterwards (Handled is left false), so each control's
+    // own Checked/Unchecked handler still fires.
+    private void OnToggleAccessKeyInvoked(UIElement sender, AccessKeyInvokedEventArgs args)
+    {
+        if (sender is Control control) control.Focus(FocusState.Keyboard);
+    }
+
     // Per-page progress model. The status bar's right-hand area shows only the
     // FOCUSED page's job (repainted on a page switch, like the left-hand status), and
     // each page's nav ring shows that page's own job - a filling determinate arc once
@@ -885,10 +901,22 @@ public sealed partial class MainWindow : Window
 
     private async System.Threading.Tasks.Task BrowseInto(TextBox box)
     {
-        var picker = new Windows.Storage.Pickers.FolderPicker();
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
-        picker.FileTypeFilter.Add("*");
-        var folder = await picker.PickSingleFolderAsync();
+        Windows.Storage.StorageFolder? folder;
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+            picker.FileTypeFilter.Add("*");
+            folder = await picker.PickSingleFolderAsync();
+        }
+        catch (Exception ex)
+        {
+            // The WinRT folder picker can throw in an unpackaged app; failing
+            // the browse (not the whole app) matches TestConnection's handling
+            // of its own I/O just below.
+            await ShowMessageAsync("GUARD", "Could not open the folder picker:\n\n" + ex.Message);
+            return;
+        }
         if (folder != null) box.Text = folder.Path;
     }
 
@@ -1147,11 +1175,12 @@ public sealed partial class MainWindow : Window
         if (_allowClose) return;
 
         // Two independent reasons to pause a close: unsaved File Backup settings,
-        // and a backup/reinstall still running. If neither applies, let the close
-        // proceed untouched; otherwise cancel it and drive the close ourselves
-        // after the prompts (the second Close() re-enters this handler with
-        // _allowClose set, so it sails straight through).
-        bool busy = _backupRunning || _reinstalling || _imageRunning;
+        // and any background job still running (backup, image, reinstall, export,
+        // image listing, app scan). If neither applies, let the close proceed
+        // untouched; otherwise cancel it and drive the close ourselves after the
+        // prompts (the second Close() re-enters this handler with _allowClose
+        // set, so it sails straight through).
+        bool busy = _backupRunning || _reinstalling || _imageRunning || _exporting || _imageListing || _scanning;
         if (!_dirty && !_imageDirty && !busy) return;
         args.Cancel = true;
 
@@ -1182,6 +1211,9 @@ public sealed partial class MainWindow : Window
                 : _updateAllElevated
                 ? "An app update is still running with Administrator rights, so it will keep running in the background after GUARD closes."
                 : _reinstalling ? "An app reinstall is still running. Closing GUARD stops it."
+                : _exporting ? "Copying app settings is still running. Closing GUARD now will leave an incomplete export."
+                : _imageListing ? "Reading the list of existing system images is still running."
+                : _scanning ? "Scanning installed apps is still running."
                 : "A backup is still running. Closing GUARD stops it.";
             if (!await ShowConfirmAsync("GUARD", what + " Close anyway?")) return;
             // Cancel both jobs so no cmd/robocopy/winget tree outlives the

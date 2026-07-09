@@ -36,6 +36,9 @@ public static class GuardPaths
     public static string PrefsPath => Path.Combine(BaseDir, "guard-prefs.ini");
     public static string ScriptPath => Path.Combine(BaseDir, "guard-backup.cmd");
     public static string LogPath => Path.Combine(BaseDir, @"Logs\backup_last.log");
+    // Preview (Test) runs write here instead of LogPath, so a preview never
+    // overwrites the real last-backup log BackupHealth and Open Last Log read.
+    public static string PreviewLogPath => Path.Combine(BaseDir, @"Logs\backup_preview.log");
     // HTML, not the .md source: every PC opens .html in a browser, while .md
     // often has no file association and Help dead-ended on Windows' picker.
     public static string ManualPath => Path.Combine(BaseDir, "USER_GUIDE.html");
@@ -54,10 +57,6 @@ public static class GuardPaths
     // "Update All Apps" output: winget upgrade --all runs elevated (so MSIX and
     // machine-scope packages can install), so its output comes back via a log.
     public static string AppUpdateLogPath => Path.Combine(BaseDir, @"Logs\app-update_last.log");
-    // Update All Apps output: the winget upgrade pass runs elevated (MSIX
-    // packages cannot be elevated per-app), so its stream comes back through a
-    // log the app tails, like the system image's.
-    public static string AppUpdatesLogPath => Path.Combine(BaseDir, @"Logs\app-updates_last.log");
     // Sentinel the wizard writes to ask the elevated build to stop at the next
     // stage boundary (the elevated process can't be killed by the un-elevated app).
     public static string RecoveryMediaCancelPath => Path.Combine(BaseDir, @"Logs\recovery-media.cancel");
