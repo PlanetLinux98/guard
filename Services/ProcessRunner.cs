@@ -8,6 +8,12 @@ namespace GuardWui3.Services;
 
 public static class ProcessRunner
 {
+    // Escape a value for splicing into a single-quoted PowerShell string
+    // literal (double any quote). The one shared copy: four private clones had
+    // grown across the callers, and an escaping helper that drifts is how
+    // quoting bugs start.
+    public static string PsQuote(string? s) => (s ?? "").Replace("'", "''");
+
     // Hard deadline for the capture helpers: a hung winget or powershell would
     // otherwise pin the caller's job flag for the whole session (the app scan
     // stuck on "Scanning...", a save that never returns). Generous, because a

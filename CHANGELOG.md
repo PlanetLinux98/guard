@@ -14,32 +14,39 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ### Fixed
 - Paths with accented or other non-ASCII characters no longer break the
-  generated scripts. cmd reads batch files in the legacy OEM codepage, so a
-  backup destination, source folder, or exclude pattern containing such a
-  character was silently mangled: the backup failed with "destination not
-  reachable" or skipped the folder on every run, and a system image to a
-  non-ASCII share path failed the same way. Self-update was broken for
-  Windows accounts with non-ASCII usernames too, because the staged
-  download's path runs through the profile folder. The generated backup,
-  system-image, and update scripts now switch their console to UTF-8 before
-  any path is read; existing backup and image scripts pick the fix up the
-  next time settings are saved.
-- Closing GUARD no longer succeeds silently while the recovery-media wizard
-  is writing a USB. The elevated build cannot be stopped by closing the app,
-  so the close is now blocked with an announcement pointing at the wizard's
-  own Cancel, instead of leaving diskpart and DISM running with the progress
-  surface (and the "do not remove the drive" warning) gone.
-- With a pinned Light or Dark theme (Settings page), the small follow-up
-  dialogs (folder and exclusion validation messages, file-picker and
-  browser-launch errors) now follow the pinned theme instead of the OS one.
+  generated scripts. cmd reads batch files in the legacy OEM codepage, which
+  mangled such characters: backups failed with "destination not reachable" or
+  skipped folders, images to non-ASCII share paths failed, and self-update
+  broke for accounts with non-ASCII usernames. The scripts now switch their
+  console to UTF-8; existing backup and image scripts pick the fix up on the
+  next save.
+- Self-update also failed when GUARD was installed at a drive's root (such as
+  the top of a USB stick) or under a path containing a literal %; the staged
+  apply script now escapes both.
+- Closing GUARD while the recovery-media wizard is writing a USB is now
+  blocked, with an announcement pointing at the wizard's own Cancel. The
+  elevated build cannot be stopped by closing the app, so a close left
+  diskpart and DISM writing the drive with the progress surface gone.
+- With a pinned Light or Dark theme, the small follow-up dialogs (validation
+  messages, file-picker and browser-launch errors) now follow the pinned
+  theme instead of the OS one.
 - Opening the System Image page on a Windows edition without wbadmin (e.g.
-  Home) no longer invents unsaved changes when it disables a saved image
-  schedule, so closing GUARD there no longer prompts to save an edit the
-  user never made.
-- The status bar's backup size and free-space figures can no longer replace
-  a newer status. A check that finished after the line had been rewritten
-  (for example, a quick backup ran while it measured) used to put the old
-  text back; a superseded check is now discarded.
+  Home) no longer invents unsaved changes (and a save prompt on close) when
+  it disables a saved image schedule.
+- The status bar could lose a fresh status to a stale one: a size and
+  free-space check that finished after the line had been rewritten (for
+  example, a quick backup ran while it measured) put the old text back. A
+  superseded check is now discarded.
+- The System Image page could show "Next run: (unknown)" for a healthy
+  scheduled image, since the label only refreshed when a save changed the
+  schedule; the next run time now also loads when GUARD opens.
+- The scheduled system image failed to register on Windows locales whose
+  default calendar is not Gregorian (such as Thai); the task's start date is
+  now always written as a Gregorian date.
+- Saving or creating a system image now warns when the destination contains
+  a % that is not an environment variable, as File Backup already did; cmd
+  treats % specially in the generated script, so the image could be written
+  to the wrong location.
 
 ## [0.5.1] - 2026-07-09
 

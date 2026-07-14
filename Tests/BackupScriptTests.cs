@@ -128,6 +128,30 @@ public class BackupScriptTests
         => haystack.IndexOf(needle, System.StringComparison.Ordinal);
 
     [Fact]
+    public void UpdateScriptSurvivesDriveRootAndPercentInstallPaths()
+    {
+        // A drive-root install keeps BaseDir's trailing backslash, and embedded
+        // verbatim it made tar's -C argument end in \" (an escaped quote to its
+        // parser), so a root install could never self-update. The root embeds
+        // as X:\. because "X:" alone is drive-relative.
+        string root = Updater.GenerateApplyScript(
+            @"C:\stage\GUARD.zip", relaunch: false, appDir: @"E:\", pid: 7);
+        Assert.Contains("set \"APPDIR=E:\\.\"", root);
+
+        // cmd drops an unmatched % when it parses a batch line, so a literal %
+        // in either embedded path must be escaped as %%.
+        string pct = Updater.GenerateApplyScript(
+            @"C:\100% temp\GUARD.zip", relaunch: false, appDir: @"C:\100% backups\GUARD", pid: 7);
+        Assert.Contains("set \"APPDIR=C:\\100%% backups\\GUARD\"", pct);
+        Assert.Contains("set \"ZIP=C:\\100%% temp\\GUARD.zip\"", pct);
+
+        // A normal install path passes through untouched.
+        string plain = Updater.GenerateApplyScript(
+            @"C:\stage\GUARD.zip", relaunch: false, appDir: @"C:\Tools\GUARD", pid: 7);
+        Assert.Contains("set \"APPDIR=C:\\Tools\\GUARD\"", plain);
+    }
+
+    [Fact]
     public void PreviewRunsRedirectToASeparateLogFile()
     {
         // A preview (test) run must never write to backup_last.log: BackupHealth

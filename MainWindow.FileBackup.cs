@@ -347,6 +347,11 @@ public sealed partial class MainWindow : Window
         if (LblNextRun == null) return;
         var state = await System.Threading.Tasks.Task.Run(ScheduledTasks.QueryStartupState);
         LblNextRun.Text = state.NextRun == null ? "Next run: (no scheduled task)" : "Next run: " + state.NextRun;
+        // The image label's only other writer is a schedule-CHANGING save, so
+        // without this seed it read "(unknown)" every session even with a
+        // healthy scheduled image registered.
+        LblImageNextRun.Text = state.ImageNextRun == null
+            ? "Next run: (no scheduled image)" : "Next run: " + state.ImageNextRun;
 
         bool healBackup = false;
         bool imageStale = false;

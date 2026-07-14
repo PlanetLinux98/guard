@@ -332,7 +332,10 @@ path you enter, and GUARD shows which applies beneath the box as you type:
 
 The destination cannot be on the same drive as Windows (an image includes the
 Windows drive, so it must be written somewhere separate). GUARD checks the free
-space after you save and warns if it looks too small.
+space after you save and warns if it looks too small. As on the File Backup
+tab, it also warns if the path contains a `%` sign that is not an environment
+variable, since Windows command scripts treat `%` specially and the image could
+be written to the wrong place.
 
 > **Note:** on a local or external disk, Windows always writes images to the
 > drive's root, in a folder named `WindowsImageBackup`. If you type or browse

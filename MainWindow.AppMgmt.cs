@@ -815,7 +815,7 @@ public sealed partial class MainWindow : Window
         // installed version are considered too. $LASTEXITCODE is winget's.
         string inner = "winget upgrade --all --silent --include-unknown --disable-interactivity "
             + "--accept-package-agreements --accept-source-agreements > \"" + log + "\" 2>&1";
-        string script = "& cmd.exe /c '" + PsQuote(inner) + "'\nexit $LASTEXITCODE";
+        string script = "& cmd.exe /c '" + ProcessRunner.PsQuote(inner) + "'\nexit $LASTEXITCODE";
 
         string? err = null;
         var runTask = System.Threading.Tasks.Task.Run(() => ProcessRunner.RunPowerShellElevatedCode(script, out err));
