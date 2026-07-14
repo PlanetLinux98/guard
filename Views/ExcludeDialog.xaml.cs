@@ -85,14 +85,7 @@ public sealed partial class ExcludeDialog : ContentDialog
             // Keep the dialog open and explain what is missing.
             var deferral = args.GetDeferral();
             args.Cancel = true;
-            var msg = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "Add Exclusion",
-                Content = problem,
-                CloseButtonText = "OK"
-            };
-            await msg.ShowAsync();
+            await UiHelpers.ShowNestedMessageAsync(this, problem);
             deferral.Complete();
             return;
         }

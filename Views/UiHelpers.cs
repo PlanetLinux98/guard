@@ -1,3 +1,5 @@
+// System supplies the WinRT async awaiter extensions ShowNestedMessageAsync needs.
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -22,6 +24,25 @@ internal static class UiHelpers
         };
         style.Setters.Add(new Setter(UIElement.AccessKeyProperty, accessKey));
         return style;
+    }
+
+    // Message dialog nested inside an open ContentDialog (validation errors,
+    // picker failures). These don't go through MainWindow.ShowDialogAsync, so
+    // mirror the owner's RequestedTheme here: the popup layer doesn't inherit
+    // the root element's theme override, and without this a pinned Light/Dark
+    // theme (Settings page) left the nested dialog in the OS theme. The owner
+    // itself was themed by ShowDialogAsync, so its value is the right one.
+    public static async System.Threading.Tasks.Task ShowNestedMessageAsync(ContentDialog owner, string content)
+    {
+        var msg = new ContentDialog
+        {
+            XamlRoot = owner.XamlRoot,
+            RequestedTheme = owner.RequestedTheme,
+            Title = owner.Title,
+            Content = content,
+            CloseButtonText = "OK"
+        };
+        await msg.ShowAsync();
     }
 
     // Depth-first search of a realized control's visual tree for a template part

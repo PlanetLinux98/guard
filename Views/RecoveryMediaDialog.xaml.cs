@@ -18,6 +18,12 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
 {
     public nint WindowHandle { get; set; }
 
+    // Read by MainWindow's close guard: the elevated build cannot be killed
+    // from the app, so closing GUARD mid-build would leave diskpart/DISM
+    // writing the USB with the progress surface (and the "do not remove the
+    // drive" warning) gone.
+    public bool IsBuilding => _building;
+
     private int _step;
     private readonly string _arch;
     private readonly int _major;
@@ -232,14 +238,8 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
         {
             // The WinRT picker can throw in an unpackaged app; that must fail
             // the browse, not the whole wizard.
-            var msg = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = Title,
-                Content = "Could not open the file picker:\n\n" + ex.Message,
-                CloseButtonText = "OK"
-            };
-            await msg.ShowAsync();
+            await UiHelpers.ShowNestedMessageAsync(this,
+                "Could not open the file picker:\n\n" + ex.Message);
             return;
         }
         if (file != null)

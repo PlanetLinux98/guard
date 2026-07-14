@@ -39,14 +39,8 @@ public sealed partial class FolderDialog : ContentDialog
         {
             // Mirrors OnPrimary's own inline dialog: the WinRT picker can throw
             // in an unpackaged app, and that must fail the browse, not the app.
-            var msg = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = Title,
-                Content = "Could not open the folder picker:\n\n" + ex.Message,
-                CloseButtonText = "OK"
-            };
-            await msg.ShowAsync();
+            await UiHelpers.ShowNestedMessageAsync(this,
+                "Could not open the folder picker:\n\n" + ex.Message);
             return;
         }
         if (folder != null) TxtSource.Text = folder.Path;
@@ -59,14 +53,7 @@ public sealed partial class FolderDialog : ContentDialog
         // Keep the dialog open and explain what is missing or invalid.
         var deferral = args.GetDeferral();
         args.Cancel = true;
-        var msg = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = Title, // matches Add or Edit mode
-            Content = problem,
-            CloseButtonText = "OK"
-        };
-        await msg.ShowAsync();
+        await UiHelpers.ShowNestedMessageAsync(this, problem); // title matches Add or Edit mode
         deferral.Complete();
     }
 

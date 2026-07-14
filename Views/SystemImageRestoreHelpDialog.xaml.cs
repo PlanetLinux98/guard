@@ -49,14 +49,8 @@ public sealed partial class SystemImageRestoreHelpDialog : ContentDialog
         }
         catch (Exception ex)
         {
-            var msg = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = Title,
-                Content = "Could not open the manual:\n\n" + ex.Message,
-                CloseButtonText = "OK"
-            };
-            await msg.ShowAsync();
+            await UiHelpers.ShowNestedMessageAsync(this,
+                "Could not open the manual:\n\n" + ex.Message);
         }
         deferral.Complete();
     }

@@ -35,7 +35,10 @@ public static class ProcessRunner
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8
+            StandardOutputEncoding = Encoding.UTF8,
+            // Both pipes, matching RunWinget: winget writes UTF-8 to each, and
+            // the OEM default would mangle non-ASCII app names on stderr.
+            StandardErrorEncoding = Encoding.UTF8
         };
         using var p = Process.Start(psi)!;
         // Drain both pipes concurrently: reading one to the end while the child

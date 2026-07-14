@@ -556,6 +556,12 @@ public sealed partial class MainWindow : Window
     private void RefreshScriptStatus(bool announce = true)
     {
         if (StatusBarText == null) return;
+        // This rewrite supersedes any in-flight space check: the check (capped
+        // at two minutes) captures the line it started from and appends its
+        // figures to THAT text, so without this a run finishing mid-check had
+        // its fresh health line replaced by the stale pre-run text. The
+        // check's own seq test drops its result once this bumps.
+        _spaceCheckSeq++;
         // Status texts stay TERSE throughout: the bar is one line, so a
         // sentence too many visually truncates the part that matters (and pads
         // every screen-reader announcement). Detail belongs in the manual.
@@ -1178,6 +1184,20 @@ public sealed partial class MainWindow : Window
     private async void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
         if (_allowClose) return;
+
+        // The recovery-USB build runs inside its modal wizard, so the usual
+        // close prompts cannot show over it (ShowDialogAsync refuses a second
+        // dialog). Block the close outright and say so via a notification:
+        // the elevated build cannot be killed from here, and closing would
+        // strand it writing the USB with its progress surface (and the
+        // "do not remove the drive" warning) gone. The wizard's own Cancel
+        // is the way to stop it first.
+        if (_recoveryDialog?.IsBuilding == true)
+        {
+            args.Cancel = true;
+            AnnounceNotification("A recovery USB is being built. Finish or cancel it in the wizard before closing GUARD.");
+            return;
+        }
 
         // Two independent reasons to pause a close: unsaved File Backup settings,
         // and any background job still running (backup, image, reinstall, export,
