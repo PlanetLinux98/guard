@@ -54,7 +54,7 @@ public static class ScheduledTasks
         // the same script hidden and raises the outcome toast; see Program /
         // HeadlessBackupRunner. -MultipleInstances IgnoreNew plus the script's
         // own run lock keep overlapping fires from colliding on the log.
-        string exe = PsQuote(Environment.ProcessPath ?? Path.Combine(GuardPaths.BaseDir, "GUARD.exe"));
+        string exe = ProcessRunner.PsQuote(Environment.ProcessPath ?? Path.Combine(GuardPaths.BaseDir, "GUARD.exe"));
         var sb = new StringBuilder();
         if (cfg.ScheduleEnabled)
         {
@@ -160,7 +160,12 @@ public static class ScheduledTasks
     private static string BuildSystemImageTaskXml(Settings cfg)
     {
         string time = NormalizeTime(cfg.ImageScheduleTime);
-        string start = DateTime.Now.ToString("yyyy-MM-dd") + "T" + time + ":00";
+        // Invariant: StartBoundary must be a Gregorian date, but a bare
+        // ToString follows the culture's default calendar, and on locales
+        // where that is not Gregorian (Thai Buddhist, Umm al-Qura) yyyy
+        // yields a year Task Scheduler rejects.
+        string start = DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
+            + "T" + time + ":00";
         string trigger = cfg.ImageCadence switch
         {
             "Daily" => "<ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>",
@@ -225,32 +230,39 @@ public static class ScheduledTasks
     }
 
     public sealed record TaskActionInfo(string Name, string Execute, string Arguments);
-    public sealed record StartupState(string? NextRun, List<TaskActionInfo> Actions);
+    public sealed record StartupState(string? NextRun, string? ImageNextRun, List<TaskActionInfo> Actions);
 
-    // One batched launch-time query: the file task's next run plus each GUARD
-    // task's registered action. The actions matter because GUARD is portable:
-    // the tasks embed absolute paths from save time, so a moved or renamed
-    // folder leaves them silently firing into the old location while the UI
-    // still shows a healthy next-run time. The caller compares these against
-    // the current install and re-registers what it may (see MainWindow).
+    // One batched launch-time query: the backup and image tasks' next runs plus
+    // each GUARD task's registered action. Both next runs, because only a
+    // schedule-CHANGING save re-queries the image task, so without this the
+    // System Image page sat on "Next run: (unknown)" for the whole session.
+    // The actions matter because GUARD is portable: the tasks embed absolute
+    // paths from save time, so a moved or renamed folder leaves them silently
+    // firing into the old location while the UI still shows a healthy next-run
+    // time. The caller compares these against the current install and
+    // re-registers what it may (see MainWindow).
     public static StartupState QueryStartupState()
     {
         var sb = new StringBuilder();
         sb.Append("try { Write-Output ('NEXT ' + (Get-ScheduledTaskInfo -TaskName '" + GuardPaths.FileTaskName +
+                  "' -ErrorAction Stop).NextRunTime.ToString('yyyy-MM-dd HH:mm')) } catch { };");
+        sb.Append("try { Write-Output ('NEXTIMG ' + (Get-ScheduledTaskInfo -TaskName '" + GuardPaths.SystemImageTaskName +
                   "' -ErrorAction Stop).NextRunTime.ToString('yyyy-MM-dd HH:mm')) } catch { };");
         sb.Append("foreach ($n in @('" + GuardPaths.FileTaskName + "','" + GuardPaths.OnConnectTaskName +
                   "','" + GuardPaths.SystemImageTaskName + "')) {")
           .Append("try { $t = Get-ScheduledTask -TaskName $n -ErrorAction Stop; $a = $t.Actions[0];")
           .Append("Write-Output ('ACT ' + $n + '|' + $a.Execute + '|' + $a.Arguments) } catch { } }");
 
-        string? next = null;
+        string? next = null, imageNext = null;
         var actions = new List<TaskActionInfo>();
         try
         {
             foreach (var raw in ProcessRunner.RunPowerShellCapture(sb.ToString()).Split('\n'))
             {
                 var line = raw.Trim();
-                if (line.StartsWith("NEXT ")) next = line.Substring(5);
+                // NEXTIMG first: its marker shares the NEXT prefix.
+                if (line.StartsWith("NEXTIMG ")) imageNext = line.Substring(8);
+                else if (line.StartsWith("NEXT ")) next = line.Substring(5);
                 else if (line.StartsWith("ACT "))
                 {
                     var parts = line.Substring(4).Split('|');
@@ -260,7 +272,7 @@ public static class ScheduledTasks
             }
         }
         catch (Exception ex) { DebugLog.Log("tasks", "startup task query failed", ex); }
-        return new StartupState(next, actions);
+        return new StartupState(next, imageNext, actions);
     }
 
     // Whether a registered backup-task action launches THIS install's exe in
@@ -290,6 +302,4 @@ public static class ScheduledTasks
         }
         catch { return null; }
     }
-
-    private static string PsQuote(string s) => s.Replace("'", "''");
 }

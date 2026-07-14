@@ -40,6 +40,22 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   a newer status. A check that finished after the line had been rewritten
   (for example, a quick backup ran while it measured) used to put the old
   text back; a superseded check is now discarded.
+- The System Image page now shows the scheduled image's next run time when
+  GUARD opens. The label was only refreshed by a save that changed the
+  schedule, so it read "Next run: (unknown)" every session even with a
+  healthy scheduled image registered.
+- Self-update now works when GUARD is installed at a drive's root (such as
+  the top of a USB stick) or in a folder whose path contains a literal %.
+  The staged apply script embedded the install path verbatim, so a root
+  path's trailing backslash corrupted the extractor's arguments and cmd
+  silently dropped an unmatched %; both are now escaped.
+- The scheduled system image now registers correctly on Windows locales
+  whose default calendar is not Gregorian (such as Thai): the task's start
+  date was written in the locale's calendar, which Task Scheduler rejects.
+- Saving or creating a system image whose destination contains a % that is
+  not an environment variable now warns, like the File Backup page already
+  did: cmd treats % specially in the generated script, so the image could
+  be written to the wrong location.
 
 ## [0.5.1] - 2026-07-09
 

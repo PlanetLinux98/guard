@@ -272,6 +272,12 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "The image destination cannot be on the same drive as Windows.\n\nA system image includes the Windows drive, so it must be written to a separate disk or a network share. Choose another destination.");
             return false;
         }
+        // Advisory, mirroring the File Backup page's percent warning: cmd
+        // expands %...% at parse time in the generated image script, so an
+        // unresolved percent silently rewrites the path and the image can land
+        // in the wrong place. The name is legal on disk, so the save proceeds.
+        _imagePercentPath = SaveValidation.UnresolvedPercentPaths(
+            _cfg.ImageTarget, Array.Empty<FolderPair>()).Count > 0 ? _cfg.ImageTarget : null;
         if (_imageSaving) return false;
         _imageSaving = true;
         try
@@ -330,6 +336,8 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "Settings saved, but scheduling the system image reported a problem:\n\n" + _imageTaskError);
             return;
         }
+        if (_imagePercentPath != null)
+            await ShowMessageAsync("GUARD", "Settings saved. Warning: " + DescribeImagePercentPath(_imagePercentPath));
         if (_cfg.ImageScheduleEnabled && _cfg.ImageTargetKind == "NetworkShare")
             await ShowMessageAsync("GUARD", "Note: a scheduled image runs as SYSTEM, which cannot supply network share sign-in details. If the scheduled image cannot reach the share, store images on a local or external disk for the schedule, or create images to the share on demand.");
         StartImageSpaceCheck();
@@ -400,6 +408,10 @@ public sealed partial class MainWindow : Window
 
         TxtImageOutput.Text = "";
         AppendOut(TxtImageOutput, "> Creating system image to " + _cfg.ImageTarget + "\r\n");
+        // A modal here would interrupt the run the user just asked for (the
+        // RunScript convention); the save above refreshed the flag.
+        if (_imagePercentPath != null)
+            AppendOut(TxtImageOutput, "WARNING: " + DescribeImagePercentPath(_imagePercentPath) + "\r\n");
         // Tail only THIS run's lines (startAtEnd). The previous run's log is
         // still on disk until the elevated script truncates it after the UAC
         // prompt; reading from 0 would replay it, inflating the volume tally
@@ -427,7 +439,7 @@ public sealed partial class MainWindow : Window
             // while it runs; the exit code is the authoritative result. PsQuote:
             // the path sits in a single-quoted PowerShell string, so an apostrophe
             // in the install path would otherwise end the string and kill the run.
-            string elevated = "& cmd.exe /c '\"" + PsQuote(GuardPaths.SystemImageScriptPath) + "\"'; exit $LASTEXITCODE";
+            string elevated = "& cmd.exe /c '\"" + ProcessRunner.PsQuote(GuardPaths.SystemImageScriptPath) + "\"'; exit $LASTEXITCODE";
             var runTask = System.Threading.Tasks.Task.Run(() => ProcessRunner.RunPowerShellElevated(elevated, out err));
             while (!runTask.IsCompleted)
             {
@@ -659,7 +671,8 @@ public sealed partial class MainWindow : Window
         // there); the exit code is not trusted for success (localized wbadmin
         // uses it inconsistently for the empty case), the text is the answer.
         string script =
-            "& wbadmin get versions ('-backupTarget:' + '" + PsQuote(target) + "') *> '" + PsQuote(log) + "'\n" +
+            "& wbadmin get versions ('-backupTarget:' + '" + ProcessRunner.PsQuote(target) + "') *> '"
+            + ProcessRunner.PsQuote(log) + "'\n" +
             "exit 0";
         string? err = null;
         bool ok;
@@ -708,7 +721,11 @@ public sealed partial class MainWindow : Window
         return n;
     }
 
-    private static string PsQuote(string s) => s.Replace("'", "''");
+    // Image-flavoured sibling of DescribePercentPaths (single path, image wording).
+    private static string DescribeImagePercentPath(string path) =>
+        "the image destination contains a % that is not an environment variable:\n" + path
+        + "\n\nWindows command scripts treat % specially, so the image could be written to "
+        + "the wrong location. Renaming the folder to avoid % is the reliable fix.";
 
     private async void OnBrowseImageTarget(object sender, RoutedEventArgs e) => await BrowseInto(TxtImageTarget);
     private async void OnTestImageTarget(object sender, RoutedEventArgs e) => await TestConnection(TxtImageTarget.Text);

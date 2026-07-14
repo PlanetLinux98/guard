@@ -133,6 +133,11 @@ public sealed partial class MainWindow : Window
     private string _imageStatusText = "Open this tab to set up full system images.";
     private Brush? _imageStatusBrush;
     private string? _imageTaskError;
+    // Image destination whose % does not resolve as an environment variable at
+    // the last image save, or null. Advisory like _percentPaths: cmd would
+    // silently mangle it in the generated image script. OnSaveImage shows it
+    // as a dialog, RunImage as an output line.
+    private string? _imagePercentPath;
     private Control? _imageRunLauncher;
     // The registered SYSTEM image task points at a previous install path (the
     // folder moved); only an elevated save can fix it, so it rides the status
@@ -773,8 +778,18 @@ public sealed partial class MainWindow : Window
     }
     private readonly PageProgress[] _pageProg = { new(), new(), new(), new() };
 
-    private ProgressRing NavRingFor(int page) => page == 1 ? NavAppsRing : page == 2 ? NavImageRing : NavFileRing;
-    private NavigationViewItem NavItemFor(int page) => page == 1 ? NavApps : page == 2 ? NavImage : NavFile;
+    // Explicit per-page mapping, null for a page with no nav ring: Settings
+    // (page 3) owns a _pageProg slot for the shared status bar, and a
+    // fallthrough default would silently paint a job there onto the File
+    // Backup ring if one ever runs.
+    private ProgressRing? NavRingFor(int page) => page switch
+    {
+        0 => NavFileRing, 1 => NavAppsRing, 2 => NavImageRing, _ => null,
+    };
+    private NavigationViewItem? NavItemFor(int page) => page switch
+    {
+        0 => NavFile, 1 => NavApps, 2 => NavImage, _ => null,
+    };
     private int PageOfBar(ProgressBar bar) => bar == AppProgress ? 1 : bar == ImageProgress ? 2 : 0;
 
     // Mutate one page's snapshot on the UI thread, then render it. Callers may be on
@@ -788,19 +803,22 @@ public sealed partial class MainWindow : Window
     private void ApplyPageProgress(int page)
     {
         var p = _pageProg[page];
-        var ring = NavRingFor(page);
-        ring.Visibility = p.Running ? Visibility.Visible : Visibility.Collapsed;
-        ring.IsActive = p.Running;
-        ring.IsIndeterminate = p.Indeterminate;
-        if (!p.Indeterminate)
+        if (NavRingFor(page) is { } ring)
         {
-            if (p.Max > 0) ring.Maximum = p.Max;
-            ring.Value = p.Value;
+            ring.Visibility = p.Running ? Visibility.Visible : Visibility.Collapsed;
+            ring.IsActive = p.Running;
+            ring.IsIndeterminate = p.Indeterminate;
+            if (!p.Indeterminate)
+            {
+                if (p.Max > 0) ring.Maximum = p.Max;
+                ring.Value = p.Value;
+            }
         }
         // "running" rides on HelpText (read after the page name on focus) only while
         // a job is live; cleared when done. Just "running", not "<page> running", or
         // a screen reader would read the page name twice.
-        AutomationProperties.SetHelpText(NavItemFor(page), p.Running ? "running" : "");
+        if (NavItemFor(page) is { } item)
+            AutomationProperties.SetHelpText(item, p.Running ? "running" : "");
         if (page == _activePage) RenderStatusBar(p);
     }
 

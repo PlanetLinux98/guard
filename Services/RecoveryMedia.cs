@@ -93,9 +93,9 @@ public static class RecoveryMedia
         var sb = new StringBuilder();
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
         sb.AppendLine("$disk = " + diskNumber);
-        sb.AppendLine("$iso = '" + PsLiteral(isoPath) + "'");
-        sb.AppendLine("$log = '" + PsLiteral(logPath) + "'");
-        sb.AppendLine("$cancel = '" + PsLiteral(cancelPath) + "'");
+        sb.AppendLine("$iso = '" + ProcessRunner.PsQuote(isoPath) + "'");
+        sb.AppendLine("$log = '" + ProcessRunner.PsQuote(logPath) + "'");
+        sb.AppendLine("$cancel = '" + ProcessRunner.PsQuote(cancelPath) + "'");
         sb.AppendLine("function Log($m){ $m | Out-File -FilePath $log -Append -Encoding UTF8 }");
         sb.AppendLine("function Pct($n){ Log ('@@PCT@@ ' + $n) }");
         sb.AppendLine("function Stop-IfCancelled($iso){ if (Test-Path $cancel) { try { Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue | Out-Null } catch {}; Log 'CANCELLED'; exit 9 } }");
@@ -200,7 +200,4 @@ public static class RecoveryMedia
         sb.AppendLine("exit 0");
         return sb.ToString();
     }
-
-    // Escape for a single-quoted PowerShell string (double any single quote).
-    private static string PsLiteral(string s) => (s ?? "").Replace("'", "''");
 }

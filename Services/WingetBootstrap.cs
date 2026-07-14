@@ -165,8 +165,8 @@ public static class WingetBootstrap
         var sb = new StringBuilder();
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
         foreach (string dep in p.Dependencies)
-            sb.Append("try { Add-AppxPackage -Path '").Append(Q(dep)).AppendLine("' } catch { }");
-        sb.Append("try { Add-AppxPackage -Path '").Append(Q(p.BundlePath)).AppendLine("' }");
+            sb.Append("try { Add-AppxPackage -Path '").Append(ProcessRunner.PsQuote(dep)).AppendLine("' } catch { }");
+        sb.Append("try { Add-AppxPackage -Path '").Append(ProcessRunner.PsQuote(p.BundlePath)).AppendLine("' }");
         sb.AppendLine("catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }");
         sb.AppendLine("exit 0");
 
@@ -196,8 +196,6 @@ public static class WingetBootstrap
         throw new InvalidOperationException(
             "the package installed, but the winget command has not appeared yet. Sign out and back in (or restart Windows), then check again.");
     }
-
-    private static string Q(string s) => s.Replace("'", "''");
 
     // Deployment messages end with an "additional information" pointer at the
     // Event Log / an ActivityId GUID; useless in a dialog, so cut it. The part
