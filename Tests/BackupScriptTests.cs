@@ -93,6 +93,41 @@ public class BackupScriptTests
     }
 
     [Fact]
+    public void GeneratedScriptsSwitchTheConsoleToUtf8BeforeAnyEmbeddedPath()
+    {
+        // The generated scripts are written as UTF-8, but cmd parses batch
+        // lines in the OEM console codepage; without the chcp switch, any
+        // non-ASCII character in an embedded path was mangled and every path
+        // test failed (self-update broke the same way for non-ASCII Windows
+        // usernames, via %TEMP% in the staged zip path). The switch must land
+        // before the first embedded value.
+        var cfg = BaseSettings();
+        cfg.Dest = @"E:\Sauvegardes-Élise";
+        string backup = BackupScript.Generate(cfg);
+        Assert.Contains("chcp 65001 >nul", backup);
+        Assert.True(IndexOf(backup, "chcp 65001") < IndexOf(backup, cfg.Dest));
+
+        cfg.ImageTarget = @"\\nas\images-élise";
+        cfg.ImageTargetKind = "NetworkShare";
+        string image = SystemImageScript.Generate(cfg);
+        Assert.Contains("chcp 65001 >nul", image);
+        Assert.True(IndexOf(image, "chcp 65001") < IndexOf(image, cfg.ImageTarget));
+
+        string update = Updater.GenerateApplyScript(
+            @"C:\Users\Élise\AppData\Local\Temp\GUARD-update-X\GUARD.zip",
+            relaunch: true, appDir: @"C:\Users\Élise\GUARD", pid: 1234);
+        Assert.Contains("chcp 65001 >nul", update);
+        Assert.True(IndexOf(update, "chcp 65001") < IndexOf(update, "Élise"));
+        // The relaunch variant must still restart from the install folder.
+        Assert.Contains("start \"\" \"%APPDIR%\\GUARD.exe\"", update);
+        Assert.DoesNotContain("start \"\"",
+            Updater.GenerateApplyScript(@"C:\z.zip", relaunch: false, appDir: @"C:\G", pid: 1));
+    }
+
+    private static int IndexOf(string haystack, string needle)
+        => haystack.IndexOf(needle, System.StringComparison.Ordinal);
+
+    [Fact]
     public void PreviewRunsRedirectToASeparateLogFile()
     {
         // A preview (test) run must never write to backup_last.log: BackupHealth

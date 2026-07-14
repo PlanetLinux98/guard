@@ -39,9 +39,16 @@ public sealed partial class MainWindow : Window
         {
             BtnCreateImage.IsEnabled = false;
             BtnViewImages.IsEnabled = false;
+            // The programmatic untick fires the Unchecked handler, which sets
+            // _imageDirty - fabricating an "unsaved changes" prompt on close
+            // for an edit the user never made (and a Save there would silently
+            // persist schedule-off). Preserve the flag across it; settings
+            // saved on a wbadmin-capable machine stay saved as they were.
+            bool wasDirty = _imageDirty;
             ChkImageSchedule.IsChecked = false;
             ChkImageSchedule.IsEnabled = false;
             UpdateImageScheduleEnabledState();
+            _imageDirty = wasDirty;
         }
         RefreshImageStatus(announce: false);
 
@@ -59,6 +66,11 @@ public sealed partial class MainWindow : Window
     private void RefreshImageStatus(bool announce = true)
     {
         if (StatusBarText == null) return;
+        // Supersede any in-flight space check, as RefreshScriptStatus does: a
+        // check completing after this rewrite must not resurrect the text it
+        // was started from (e.g. an image run's fresh health line replaced by
+        // the stale pre-run one while a dead share stalled the free query).
+        _imageSpaceSeq++;
         // Terse on purpose, like RefreshScriptStatus: one bar line.
         if (!_imageAvailable)
         {
@@ -723,9 +735,16 @@ public sealed partial class MainWindow : Window
         dlg.SetResolvedIp(ip);
     }
 
+    // Kept while the wizard is open so the close guard (OnAppWindowClosing)
+    // can see a build in progress; the other long jobs live in MainWindow
+    // fields, but the build state is the dialog's own.
+    private Views.RecoveryMediaDialog? _recoveryDialog;
+
     private async void OnCreateRecoveryMedia(object sender, RoutedEventArgs e)
     {
         var dlg = new Views.RecoveryMediaDialog { XamlRoot = Content.XamlRoot, WindowHandle = WindowHandle };
-        await ShowDialogAsync(dlg);
+        _recoveryDialog = dlg;
+        try { await ShowDialogAsync(dlg); }
+        finally { _recoveryDialog = null; }
     }
 }

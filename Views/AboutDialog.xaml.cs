@@ -43,14 +43,8 @@ public sealed partial class AboutDialog : ContentDialog
         {
             // Mirrors MainWindow.OnHelp's handling of the same failure mode
             // (no default browser/handler registered, or launch blocked).
-            var msg = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = Title,
-                Content = "Could not open the project page:\n\n" + ex.Message,
-                CloseButtonText = "OK"
-            };
-            await msg.ShowAsync();
+            await UiHelpers.ShowNestedMessageAsync(this,
+                "Could not open the project page:\n\n" + ex.Message);
         }
     }
 

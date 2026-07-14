@@ -15,6 +15,7 @@ obj/
 # Generated at runtime by the app
 backup-settings.ini
 guard-backup.cmd
+guard-system-image.cmd
 guard-prefs.ini
 onconnect-stamp.txt
 Logs/

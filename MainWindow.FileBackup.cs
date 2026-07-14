@@ -588,6 +588,13 @@ public sealed partial class MainWindow : Window
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     RedirectStandardInput = true,
+                    // The script switches its console to UTF-8 (chcp 65001; see
+                    // BackupScript.Generate), so the @@PROGRESS@@ markers and
+                    // robocopy lines carrying paths arrive as UTF-8 bytes; the
+                    // default decode is the OEM codepage, which would mangle
+                    // non-ASCII path characters in the output box.
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     WorkingDirectory = GuardPaths.BaseDir
                 };
                 psi.EnvironmentVariables["GUARD_UI"] = "1";
@@ -826,13 +833,8 @@ public sealed partial class MainWindow : Window
     private static string CountPhrase(long n, string noun)
         => n.ToString("N0", CultureInfo.CurrentCulture) + " " + noun + (n == 1 ? "" : "s");
 
+    // Run-summary byte label; SizeText is the shared formatter, so the summary
+    // reads the same as the list-row captions elsewhere.
     private static string FormatBytes(double b)
-    {
-        if (b <= 0) return "";
-        string[] units = { "bytes", "KB", "MB", "GB", "TB" };
-        int u = 0;
-        while (b >= 1024 && u < units.Length - 1) { b /= 1024; u++; }
-        return (u == 0 ? b.ToString("N0", CultureInfo.CurrentCulture)
-                       : b.ToString("0.#", CultureInfo.CurrentCulture)) + " " + units[u];
-    }
+        => b <= 0 ? "" : SizeText.FormatBytes((long)b);
 }
