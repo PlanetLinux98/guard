@@ -23,6 +23,7 @@ public sealed class RobocopySummaryParser
     public int Blocks { get; private set; }
     public long FilesCopied { get; private set; }
     public long FilesSkipped { get; private set; }
+    public long FilesMismatch { get; private set; }
     public long FilesFailed { get; private set; }
     public long FilesExtras { get; private set; }
     public double BytesCopied { get; private set; }
@@ -50,6 +51,7 @@ public sealed class RobocopySummaryParser
                 {
                     FilesCopied += (long)f[1];
                     FilesSkipped += (long)f[2];
+                    FilesMismatch += (long)f[3];
                     FilesFailed += (long)f[4];
                     FilesExtras += (long)f[5];
                     _state = State.SeenFiles;

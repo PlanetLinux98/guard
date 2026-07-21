@@ -91,6 +91,29 @@ public sealed partial class MainWindow : Window
             var vol = await System.Threading.Tasks.Task.Run(() => VolumeInfo.TryGetForRoot(root + "\\"));
             if (vol != null)
             {
+                // A serial already recorded for this letter that doesn't match what's
+                // there now means the real backup drive was unplugged and something
+                // else - possibly unrelated - has taken its letter. Adopting it blind
+                // would re-anchor Mirror mode at a drive GUARD never meant to touch and
+                // lose the link back to the real one, so block once and require a
+                // second, unchanged Save (the pending-mismatch fields) as confirmation.
+                bool mismatched = _cfg.DestVolumeSerial.Length > 0
+                    && !_cfg.DestVolumeSerial.Equals(vol.Serial, StringComparison.OrdinalIgnoreCase);
+                bool confirmed = _pendingVolumeMismatchRoot != null
+                    && _pendingVolumeMismatchRoot.Equals(root, StringComparison.OrdinalIgnoreCase)
+                    && _pendingVolumeMismatchSerial == vol.Serial;
+                if (mismatched && !confirmed)
+                {
+                    _pendingVolumeMismatchRoot = root;
+                    _pendingVolumeMismatchSerial = vol.Serial;
+                    string oldLabel = _cfg.DestVolumeLabel.Length > 0 ? _cfg.DestVolumeLabel : "(unlabeled)";
+                    string newLabel = vol.Label.Length > 0 ? vol.Label : "(unlabeled)";
+                    await ShowMessageAsync("GUARD", "The drive at " + root + " is not the one GUARD last used there (it was labeled \""
+                        + oldLabel + "\", now \"" + newLabel + "\").\n\nIf this is a new drive, click Save again to confirm; if not, reconnect your backup drive.");
+                    return false;
+                }
+                _pendingVolumeMismatchRoot = null;
+                _pendingVolumeMismatchSerial = null;
                 _cfg.DestVolumeSerial = vol.Serial;
                 _cfg.DestVolumeLabel = vol.Label;
             }
@@ -114,6 +137,8 @@ public sealed partial class MainWindow : Window
             // UNC and other non-letter destinations have no volume to track.
             _cfg.DestVolumeSerial = "";
             _cfg.DestVolumeLabel = "";
+            _pendingVolumeMismatchRoot = null;
+            _pendingVolumeMismatchSerial = null;
         }
         // A script with zero included folders copies nothing yet reports
         // FINISHED OK (and still registers the scheduled tasks), so a user could
@@ -808,14 +833,21 @@ public sealed partial class MainWindow : Window
         if (bytes.Length > 0 && p.FilesCopied > 0) copied += " (" + bytes + ")";
         string skipped = p.FilesSkipped.ToString("N0", CultureInfo.CurrentCulture);
 
-        if (p.FilesFailed > 0)
+        if (p.FilesFailed > 0 || p.FilesMismatch > 0)
         {
-            // Failures lead so a screen reader hears the problem first.
-            string failed = CountPhrase(p.FilesFailed, "file");
+            // Failures and mismatches lead so a screen reader hears the problem
+            // first. A mismatch (same name, different type - e.g. the destination
+            // has a file where the source now has a same-named folder) is not
+            // something robocopy resolves on its own, so a run with only
+            // mismatches and zero failures must still not read as a clean success.
+            var problems = new List<string>();
+            if (p.FilesFailed > 0) problems.Add(CountPhrase(p.FilesFailed, "file") + " failed to copy");
+            if (p.FilesMismatch > 0) problems.Add(CountPhrase(p.FilesMismatch, "item") + " could not be reconciled");
+            string problemText = string.Join(" and ", problems);
             return _runIsPreview
-                ? "Preview finished with problems: " + failed + " could not be read - open the last log for details. " +
+                ? "Preview finished with problems: " + problemText + " - open the last log for details. " +
                   copied + " would be copied, " + skipped + " already up to date."
-                : "Backup finished with problems: " + failed + " failed to copy - open the last log for details. " +
+                : "Backup finished with problems: " + problemText + " - open the last log for details. " +
                   copied + " copied, " + skipped + " skipped.";
         }
 

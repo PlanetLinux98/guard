@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Text;
 using GuardWui3.Models;
@@ -8,8 +9,24 @@ public static class AppPrefsStore
 {
     public static AppPrefs Load()
     {
-        var p = new AppPrefs();
-        if (!File.Exists(GuardPaths.PrefsPath)) return p;
+        if (!File.Exists(GuardPaths.PrefsPath)) return new AppPrefs();
+        // A locked file (AV scan, open in another editor, a laggy portable/
+        // network copy) must not crash the interactive launch or the headless
+        // scheduled run (HeadlessBackupRunner reads this first thing); fall
+        // back to defaults, same as a missing file.
+        try
+        {
+            return LoadFrom(new AppPrefs());
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("prefs", "could not read " + GuardPaths.PrefsPath, ex);
+            return new AppPrefs();
+        }
+    }
+
+    private static AppPrefs LoadFrom(AppPrefs p)
+    {
         var section = "";
         foreach (var raw in File.ReadAllLines(GuardPaths.PrefsPath))
         {

@@ -14,6 +14,25 @@ public static class SettingsStore
         var cfg = new Settings { Folders = Settings.DefaultFolders() };
         if (!File.Exists(GuardPaths.IniPath)) return cfg;
 
+        // The read+parse below mutates cfg field-by-field as it goes; a locked
+        // file (AV scan, open in another editor, a laggy portable/network copy)
+        // must not crash the interactive launch (constructor-time) or the
+        // headless scheduled run, and must not leave cfg half-populated from
+        // whichever lines parsed before the fault. Catch around the whole
+        // thing and hand back a fresh default Settings, same as a missing file.
+        try
+        {
+            return LoadFrom(cfg);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("settings", "could not read " + GuardPaths.IniPath, ex);
+            return new Settings { Folders = Settings.DefaultFolders() };
+        }
+    }
+
+    private static Settings LoadFrom(Settings cfg)
+    {
         var section = "";
         var folders = new ObservableCollection<FolderPair>();
         bool sawFolders = false;

@@ -63,6 +63,13 @@
         <StackPanel x:Name="Step3" Spacing="8" Visibility="Collapsed">
             <TextBlock Text="Confirm" FontWeight="SemiBold" />
             <TextBlock x:Name="ConfirmText" TextWrapping="Wrap" />
+            <!-- Only shown for a disk above RecoveryMedia.LargeDiskWarningBytes
+                 (see PrepareConfirm): an extra explicit step so a user's own
+                 external backup drive can't be erased with the same one-click
+                 confirmation as an actual blank flash stick. -->
+            <CheckBox x:Name="ChkLargeDiskConfirm" AccessKey="L" Visibility="Collapsed"
+                      Content="I confirm this is a blank USB flash drive, not an external hard drive"
+                      Checked="OnLargeDiskConfirmChanged" Unchecked="OnLargeDiskConfirmChanged" />
         </StackPanel>
 
         <!-- Step 4: building -->

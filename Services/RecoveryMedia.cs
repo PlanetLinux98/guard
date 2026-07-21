@@ -19,6 +19,15 @@ public static class RecoveryMedia
 {
     public sealed record UsbDisk(int Number, string Model, long SizeBytes);
 
+    // BusType 'USB' is true for any USB-attached storage, including external USB
+    // hard drives/SSDs - exactly what GUARD's own File Backup and System Image
+    // pages tell users to back up to. There is no reliable Win32/CIM signal that
+    // separates a flash stick from an external drive (MediaType is frequently
+    // Unspecified for both), so recovery media only needs 8-32 GB and the wizard
+    // flags anything bigger as a UI warning instead of filtering it out - see
+    // RecoveryMediaDialog.PrepareConfirm.
+    public const long LargeDiskWarningBytes = 256L * 1024 * 1024 * 1024;
+
     // The USB only boots WinRE and launches System Image Recovery; it does not
     // install Windows, so the EDITION is irrelevant - only architecture and major
     // version must match the image being restored.
@@ -43,7 +52,9 @@ public static class RecoveryMedia
                     : "https://www.microsoft.com/software-download/windows10";
 
     // Removable USB disks only; fixed, system and boot disks are never listed, so
-    // the wizard can't offer the user a way to wipe their own system drive.
+    // the wizard can't offer the user a way to wipe their own system drive. This
+    // does NOT distinguish a blank flash stick from a USB external hard drive
+    // (both are BusType 'USB'); see LargeDiskWarningBytes above.
     public static Task<List<UsbDisk>> EnumerateRemovableDrivesAsync()
     {
         return Task.Run(() =>

@@ -14,6 +14,11 @@ public sealed class AppSettingsRestoreStats
     public int Replaced;       // existing targets renamed aside before replacing
     public int SkippedFolders; // targets left untouched (locked, or move-aside failed)
     public int SkippedFiles;   // individual files that could not be copied
+    // The move-aside succeeded but the copy-back then failed AND moving the
+    // aside folder back to TargetPath also failed: unlike SkippedFolders (never
+    // touched), the original is gone from TargetPath and sitting under one of
+    // these paths, so the user needs to move it back by hand.
+    public List<string> ManualRecoveryPaths = new();
 }
 
 // Puts the exported settings folders back where they came from. Export records
@@ -24,6 +29,16 @@ public sealed class AppSettingsRestoreStats
 // always reversible.
 public static class AppSettingsRestore
 {
+    // The only rootAnchor values AppSettingsExport ever writes (see its
+    // GetRoots). A manifest is untrusted input - hand-editable JSON, or a
+    // deliberately crafted one - and IsSafeFolderName only keeps Folder from
+    // escaping the anchor; without this allowlist a rootAnchor of, say,
+    // "%USERPROFILE%" would expand to a real, writable root and let Folder
+    // ("Desktop") target it directly. Case-insensitive since Windows env var
+    // names are.
+    private static readonly string[] KnownRootAnchors =
+        { "%APPDATA%", "%LOCALAPPDATA%", "%USERPROFILE%\\.config" };
+
     // Reads the manifest in the AppSettings folder beside an imported app-list
     // file, or null when the import carried no settings bundle. Folder/file names
     // match what AppSettingsExport wrote.
@@ -64,6 +79,14 @@ public static class AppSettingsRestore
             if (string.IsNullOrEmpty(e.Folder) || string.IsNullOrEmpty(e.RootAnchor)
                 || string.IsNullOrEmpty(e.DestRelativePath)) continue;
             if (!IsSafeFolderName(e.Folder)) continue;
+            // The anchor itself needs the same distrust as Folder: expanding an
+            // arbitrary env var name (e.g. "%USERPROFILE%") would hand Folder a
+            // real, writable root to target that was never one of the three
+            // roots GUARD's own export ever uses.
+            bool knownAnchor = false;
+            foreach (var known in KnownRootAnchors)
+                if (known.Equals(e.RootAnchor, StringComparison.OrdinalIgnoreCase)) { knownAnchor = true; break; }
+            if (!knownAnchor) continue;
 
             string source;
             try { source = Path.GetFullPath(Path.Combine(listDir, e.DestRelativePath)); }
@@ -98,9 +121,13 @@ public static class AppSettingsRestore
     // Restores the confirmed folders. An existing target is renamed to
     // <name>.guard-old-<timestamp> first; if that rename fails (a file inside is
     // locked by the running app) the target is left untouched and counted
-    // skipped, never half-overwritten. progress gets one line per folder; the
-    // walk honours the cancellation token between folders so Stop Reinstall halts
-    // cleanly.
+    // skipped, never half-overwritten. If the rename succeeds but the copy-back
+    // then fails, the rename is undone (best effort) so the original still ends
+    // up back at TargetPath; only if THAT also fails is the folder left under its
+    // aside name and reported via ManualRecoveryPaths, never miscounted as
+    // "skipped" (which would wrongly imply nothing changed). progress gets one
+    // line per folder; the walk honours the cancellation token between folders so
+    // Stop Reinstall halts cleanly.
     public static AppSettingsRestoreStats RestoreCandidates(
         List<AppSettingsRestoreCandidate> picked, Action<string>? progress, CancellationToken ct)
     {
@@ -111,6 +138,7 @@ public static class AppSettingsRestore
             var c = picked[i];
             progress?.Invoke("Restoring settings: " + c.DisplayPath + " (" + (i + 1) + " of " + picked.Count + ")...");
 
+            string? aside = null;
             try
             {
                 if (Directory.Exists(c.TargetPath))
@@ -118,19 +146,39 @@ public static class AppSettingsRestore
                     // Move the live folder aside before replacing. Directory.Move
                     // throws if a file inside is open (the locked-app case); leave
                     // existing settings intact and skip.
-                    string aside = MakeAsidePath(c.TargetPath);
+                    aside = MakeAsidePath(c.TargetPath);
                     try { Directory.Move(c.TargetPath, aside); }
                     catch { stats.SkippedFolders++; continue; }
                     stats.Replaced++;
                 }
+            }
+            catch { stats.SkippedFolders++; continue; }
 
+            // Copy-back gets its own catch, separate from the move-aside above: if
+            // the move already succeeded (Replaced counted) and THIS then throws,
+            // the original is no longer at TargetPath, so falling into a shared
+            // catch and reporting SkippedFolders (which means "left untouched")
+            // would be a lie. Try to put the original back first; only when that
+            // also fails does the user need to go find it themselves.
+            try
+            {
                 var folderStats = new TreeCopyStats();
                 FileTreeCopy.Copy(new DirectoryInfo(c.SourcePath), c.TargetPath, folderStats);
                 stats.Folders++;
                 stats.Files += folderStats.Files;
                 stats.SkippedFiles += folderStats.SkippedFiles;
             }
-            catch { stats.SkippedFolders++; }
+            catch
+            {
+                if (aside == null) { stats.SkippedFolders++; continue; }
+                try
+                {
+                    if (Directory.Exists(c.TargetPath)) Directory.Delete(c.TargetPath, true);
+                    Directory.Move(aside, c.TargetPath);
+                    stats.SkippedFolders++;
+                }
+                catch { stats.ManualRecoveryPaths.Add(aside); }
+            }
         }
         return stats;
     }
