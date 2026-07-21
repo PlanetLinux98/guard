@@ -88,6 +88,14 @@ public sealed partial class MainWindow : Window
     // as a dialog, RunScript as an output line.
     private string? _destDriftNote;
 
+    // Root + serial of a destination-letter volume mismatch SaveAllAsync has
+    // already warned about (see finding: silent drive-letter reuse). A repeat
+    // Save that finds the same root still carrying the same unrecognized
+    // serial is treated as the user's explicit confirmation; anything else
+    // (a different root, or the serial changing again) re-warns from scratch.
+    private string? _pendingVolumeMismatchRoot;
+    private string? _pendingVolumeMismatchSerial;
+
     // Included sources that were unreachable at the last save. Advisory only:
     // the generated script SKIPs them at run time, so a save never blocks on
     // them. OnSave folds these into its dialog; RunScript prints them in the
@@ -1223,7 +1231,15 @@ public sealed partial class MainWindow : Window
         // untouched; otherwise cancel it and drive the close ourselves after the
         // prompts (the second Close() re-enters this handler with _allowClose
         // set, so it sails straight through).
-        bool busy = _backupRunning || _reinstalling || _imageRunning || _exporting || _imageListing || _scanning;
+        // _saving/_imageSaving (SaveAllAsync/SaveImageAsync's reentrancy guards)
+        // are deliberately not in this list: both write the settings ini and
+        // script synchronously and only THEN clear the dirty flag, before any
+        // of their remaining work (scheduled-task registration, reachability
+        // probes) runs; a close during that later async tail can't truncate a
+        // write that already finished. _updateAllElevated is in the list
+        // because the warning six lines below already has a dedicated message
+        // for it - without this it can never fire.
+        bool busy = _backupRunning || _reinstalling || _imageRunning || _exporting || _imageListing || _scanning || _updateAllElevated;
         if (!_dirty && !_imageDirty && !busy) return;
         args.Cancel = true;
 
@@ -1247,7 +1263,7 @@ public sealed partial class MainWindow : Window
         // Recomputed, not the snapshot from above: the save prompt can sit open
         // while a job finishes, and a stale snapshot would then warn about a
         // job that is no longer running.
-        busy = _backupRunning || _reinstalling || _imageRunning || _exporting || _imageListing || _scanning;
+        busy = _backupRunning || _reinstalling || _imageRunning || _exporting || _imageListing || _scanning || _updateAllElevated;
         if (busy)
         {
             // The elevated image cannot be cancelled from this un-elevated

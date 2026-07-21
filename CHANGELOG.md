@@ -13,6 +13,48 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   formatter as the settings-folder lists, and sizes above 1 TB display in TB.
 
 ### Fixed
+- The backup destination could silently switch to an unrelated drive: if the
+  drive letter last used for the destination was reachable but now held a
+  different, unrecognized volume (for example, the real backup drive had been
+  unplugged and something else took its letter), Save Settings adopted the new
+  volume without asking. In Mirror mode this risked deleting the other drive's
+  own files as "extras", and permanently lost the link back to the real backup
+  drive. Save now warns when this happens and needs a second Save to confirm
+  before treating the new drive as correct.
+- Restoring app settings could lose the original folder if putting the saved
+  copy back failed right after the existing folder had already been renamed
+  aside to make room for it: the result reported the folder as merely
+  "skipped" (implying nothing had changed), while the original was actually
+  sitting under a `<name>.guard-old-<timestamp>` name beside it. GUARD now
+  tries to move the original back into place first, and only reports the
+  folder separately, with its location, if that also fails.
+- A backup run with a robocopy "Mismatch" (for example, the destination has a
+  file where the source now has a same-named folder) was reported as a clean
+  "Backup complete" even though robocopy could not reconcile it. Mismatches
+  are now counted and called out in the run summary alongside failures.
+- An imported app-settings manifest could target any environment-variable
+  folder on the machine (such as `%USERPROFILE%\Desktop`) for
+  rename-aside-and-replace during a restore, because only the folder name
+  inside the anchor was checked, not the anchor itself. Restoring now only
+  accepts the three anchors GUARD's own export ever writes (`%APPDATA%`,
+  `%LOCALAPPDATA%`, `%USERPROFILE%\.config`).
+- A locked or momentarily unreadable settings or preferences file (an
+  antivirus scan, the file open in another program, a laggy portable or
+  network copy) could crash GUARD on launch, or crash the headless scheduled
+  backup task silently. Both now fall back to defaults, the same as when the
+  file does not exist yet.
+- An error while preparing to build recovery media (before the elevated build
+  itself even started) could crash GUARD outright instead of showing the
+  wizard's own "Could not finish" result.
+- Closing GUARD while "Update All Apps" was still running with Administrator
+  rights gave no warning, even though the close prompt already had wording
+  written for exactly this case; it never actually triggered.
+- The Recovery Media wizard's USB drive list could show a user's own external
+  USB hard drive - the same kind of drive GUARD's own File Backup and System
+  Image features back up to - with no visible difference from an actual blank
+  flash stick, since both report the same USB bus type. A drive much larger
+  than a typical recovery stick now carries a visible warning in the list and
+  the confirmation step, and needs an extra tick before it can be erased.
 - Paths with accented or other non-ASCII characters no longer break the
   generated scripts. cmd reads batch files in the legacy OEM codepage, which
   mangled such characters: backups failed with "destination not reachable" or

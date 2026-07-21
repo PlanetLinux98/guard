@@ -24,6 +24,7 @@ public class RobocopySummaryParserTests
         Assert.Equal(1, p.Blocks);
         Assert.Equal(10, p.FilesCopied);
         Assert.Equal(122, p.FilesSkipped);
+        Assert.Equal(0, p.FilesMismatch);
         Assert.Equal(1, p.FilesFailed);
         Assert.Equal(3, p.FilesExtras);
         Assert.Equal(10.5 * 1024 * 1024, p.BytesCopied, precision: 0);
@@ -51,6 +52,28 @@ public class RobocopySummaryParserTests
         p.Feed("               Total    Copied   Skipped  Mismatch    FAILED    Extras");
         p.Feed("    Dirs :         1         1         0         0         0         0");
         Assert.Equal(0, p.Blocks);
+    }
+
+    // A type conflict (destination has a file where the source now has a
+    // same-named folder, or vice versa) shows up only in the Mismatch column;
+    // robocopy does not fail the copy or count it as Failed, so a caller that
+    // only checked FilesFailed would wrongly call this run a clean success.
+    [Fact]
+    public void ParsesNonzeroMismatchColumn()
+    {
+        var p = new RobocopySummaryParser();
+        foreach (var line in new[]
+        {
+            "------------------------------------------------------------------------------",
+            "               Total    Copied   Skipped  Mismatch    FAILED    Extras",
+            "    Dirs :         5         1         4         0         0         0",
+            "   Files :        20         8        10         2         0         0",
+            "   Bytes :   1.234 g    10.5 m     1.2 g         0         0         0",
+        }) p.Feed(line);
+
+        Assert.Equal(1, p.Blocks);
+        Assert.Equal(2, p.FilesMismatch);
+        Assert.Equal(0, p.FilesFailed);
     }
 
     [Fact]

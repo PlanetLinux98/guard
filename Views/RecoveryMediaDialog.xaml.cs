@@ -90,7 +90,11 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
                 break;
             case 3:
                 PrimaryButtonText = "Erase and Build"; SecondaryButtonText = "Back"; CloseButtonText = "Cancel";
-                IsPrimaryButtonEnabled = true;
+                // PrepareConfirm (called just before ShowStep(3)) has already set
+                // the checkbox's visibility and reset it to unchecked; only a
+                // flagged large disk needs it ticked before Erase and Build unlocks.
+                IsPrimaryButtonEnabled = ChkLargeDiskConfirm.Visibility != Visibility.Visible
+                    || ChkLargeDiskConfirm.IsChecked == true;
                 break;
             case 4:
                 // Cancel stays available during the build (handled in OnClose).
@@ -268,11 +272,17 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
         UsbList.Items.Clear();
         var disks = await RecoveryMedia.EnumerateRemovableDrivesAsync();
         foreach (var d in disks)
-            UsbList.Items.Add(new ListViewItem
-            {
-                Content = d.Model + "  -  " + SaveValidation.FormatBytes(d.SizeBytes) + "  (Disk " + d.Number + ")",
-                Tag = d,
-            });
+        {
+            string label = d.Model + "  -  " + SaveValidation.FormatBytes(d.SizeBytes) + "  (Disk " + d.Number + ")";
+            // 'USB' BusType alone can't tell a flash stick from an external hard
+            // drive (see RecoveryMedia.LargeDiskWarningBytes), so a disk too big to
+            // be a plausible recovery stick gets a warning baked right into the row
+            // text - the list otherwise shows only Model/Size with no visual cue
+            // that could tell them apart.
+            if (d.SizeBytes > RecoveryMedia.LargeDiskWarningBytes)
+                label += "  -  WARNING: larger than a typical recovery stick, may be an external hard drive";
+            UsbList.Items.Add(new ListViewItem { Content = label, Tag = d });
+        }
         UsbEmpty.Visibility = disks.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         IsPrimaryButtonEnabled = SelectedUsb() != null;
     }
@@ -281,9 +291,23 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
     {
         var usb = SelectedUsb();
         if (usb == null) return;
+        bool large = usb.SizeBytes > RecoveryMedia.LargeDiskWarningBytes;
         ConfirmText.Text = "This will ERASE EVERYTHING on:\n\n" +
             usb.Model + "  -  " + SaveValidation.FormatBytes(usb.SizeBytes) + "  (Disk " + usb.Number + ")\n\n" +
-            "All data on that drive will be permanently deleted. Make sure this is the right drive and that anything important on it is backed up elsewhere.";
+            "All data on that drive will be permanently deleted. Make sure this is the right drive and that anything important on it is backed up elsewhere."
+            + (large
+                ? "\n\nThis drive is much larger than a typical USB recovery stick (which only needs 8-32 GB). Make sure this isn't an external hard drive - like the ones GUARD's own File Backup and System Image pages back up to - before continuing."
+                : "");
+        // Reset on every visit: a Back-then-forward re-run must not carry a
+        // stale checked state from a previously selected (possibly different)
+        // disk into this one's confirmation.
+        ChkLargeDiskConfirm.Visibility = large ? Visibility.Visible : Visibility.Collapsed;
+        ChkLargeDiskConfirm.IsChecked = false;
+    }
+
+    private void OnLargeDiskConfirmChanged(object sender, RoutedEventArgs e)
+    {
+        if (_step == 3) IsPrimaryButtonEnabled = ChkLargeDiskConfirm.IsChecked == true;
     }
 
     private async Task RunBuild()
@@ -294,21 +318,30 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
         _cancelRequested = false;
         _buildCancelled = false;
         _buildError = null;
-        try { File.Delete(GuardPaths.RecoveryMediaCancelPath); } catch { }
-        // Clear any prior run's log so the tail doesn't briefly show a stale error
-        // before the elevated script truncates and rewrites it.
-        try { File.WriteAllText(GuardPaths.RecoveryMediaLogPath, ""); } catch { }
-        _buildTail = new LogTail(GuardPaths.RecoveryMediaLogPath, startAtEnd: false);
-        BuildBar.IsIndeterminate = true;
-        BuildBar.Value = 0;
-        SetBuildStatus("Preparing...");
-
-        string script = RecoveryMedia.BuildUsbScript(
-            usb.Number, _isoPath, GuardPaths.RecoveryMediaLogPath, GuardPaths.RecoveryMediaCancelPath);
         string? err = null;
         bool ok = false;
+        // The whole build - script generation, the log tail, the elevated launch -
+        // is inside this one try, not just the elevated launch: this is the most
+        // destructive step in the app (wiping a disk), and every other risky
+        // dialog (UpdateDialog, WingetInstallDialog) wraps its entire async body
+        // the same way. Without it, an exception here would escape this async
+        // Task and crash the async void OnPrimary awaiting it instead of landing
+        // on the "Could not finish" result below. _building is reset in the
+        // finally so it clears on every path, not just the success one.
         try
         {
+            try { File.Delete(GuardPaths.RecoveryMediaCancelPath); } catch { }
+            // Clear any prior run's log so the tail doesn't briefly show a stale
+            // error before the elevated script truncates and rewrites it.
+            try { File.WriteAllText(GuardPaths.RecoveryMediaLogPath, ""); } catch { }
+            _buildTail = new LogTail(GuardPaths.RecoveryMediaLogPath, startAtEnd: false);
+            BuildBar.IsIndeterminate = true;
+            BuildBar.Value = 0;
+            SetBuildStatus("Preparing...");
+
+            string script = RecoveryMedia.BuildUsbScript(
+                usb.Number, _isoPath, GuardPaths.RecoveryMediaLogPath, GuardPaths.RecoveryMediaCancelPath);
+
             var runTask = Task.Run(() => ProcessRunner.RunPowerShellElevated(script, out err));
             while (!runTask.IsCompleted)
             {
@@ -318,9 +351,9 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
             PumpBuildLog();
             ok = await runTask;
         }
-        catch (Exception ex) { err = ex.Message; }
+        catch (Exception ex) { err = ex.Message; _buildError = ex.Message; }
+        finally { _building = false; }
 
-        _building = false;
         BuildBar.IsIndeterminate = false;
         if (ok) BuildBar.Value = 100;
         try { File.Delete(GuardPaths.RecoveryMediaCancelPath); } catch { }

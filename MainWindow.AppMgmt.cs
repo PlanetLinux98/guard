@@ -720,6 +720,12 @@ public sealed partial class MainWindow : Window
                 r += " " + rstats.SkippedFolders + " folder(s) were in use and skipped.";
             if (rstats.SkippedFiles > 0)
                 r += " " + rstats.SkippedFiles + " file(s) were locked and skipped.";
+            // Distinct from "skipped": these were moved aside to make room for
+            // the restore and could not be put back, so the user's original data
+            // is not where they left it - the path is the only way back to it.
+            if (rstats.ManualRecoveryPaths.Count > 0)
+                r += " " + rstats.ManualRecoveryPaths.Count + " folder(s) could not be fully restored; your original data is saved at: "
+                    + string.Join("; ", rstats.ManualRecoveryPaths);
             s = s.Length > 0 ? s + " " + r : r;
         }
         return s.Length > 0 ? s : "Done.";
