@@ -22,7 +22,11 @@ public static class ProcessRunner
     // every caller already routes exceptions to its own failure path.
     private static readonly TimeSpan CaptureTimeout = TimeSpan.FromMinutes(5);
 
-    private static void WaitOrKill(Process p, string what, TimeSpan timeout)
+    // Internal, not private: HeadlessBackupRunner also needs the timeout-and-kill
+    // pattern for the scheduled-run backup process, with its own much longer
+    // deadline (a real backup can legitimately run for hours; the 5-minute
+    // CaptureTimeout below is sized for quick capture-and-return calls only).
+    internal static void WaitOrKill(Process p, string what, TimeSpan timeout)
     {
         if (p.WaitForExit((int)timeout.TotalMilliseconds)) return;
         try { p.Kill(entireProcessTree: true); } catch { }
@@ -99,6 +103,16 @@ public static class ProcessRunner
         // -EncodedCommand, not a quote-escaped -Command: the script stays data
         // whatever quotes, carets or percent signs it contains, removing the
         // whole cmd-vs-PowerShell quoting hazard class.
+        //
+        // Unlike winget.exe (RunCapture/RunWinget), Windows PowerShell does NOT
+        // write UTF-8 to a redirected pipe by default - it uses the console/OEM
+        // codepage (verified: a piped `Write-Output` of an accented character
+        // comes out as that codepage's byte, not UTF-8), so setting only the
+        // StandardOutputEncoding below would misdecode it. The prepended
+        // statement switches PowerShell's own output encoding to UTF-8 first
+        // (the "chcp 65001" equivalent the generated cmd scripts already use),
+        // which the two pipes are then decoded as.
+        script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " + script;
         string b64 = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
         var psi = new ProcessStartInfo("powershell.exe",
             "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + b64)
@@ -106,7 +120,9 @@ public static class ProcessRunner
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
         };
         using var p = Process.Start(psi)!;
         // Concurrent drain; see RunCapture for the deadlock reasoning.
@@ -124,6 +140,14 @@ public static class ProcessRunner
     // capture deadline: the winget bundle deployment this runs is legitimately
     // slow on a weak disk, and killing a transactional install too early
     // helps nobody.
+    //
+    // -File, not -Command "& '...'": the latter does not propagate the
+    // script's own `exit N` as this process's exit code (verified - it always
+    // comes back 1 on a script failure), which the caller depends on. That
+    // means the UTF-8 switch RunPowerShellCapture prepends to its script text
+    // can't be injected here the same way; the script FILE's own content must
+    // set `[Console]::OutputEncoding` as its first line instead (see
+    // WingetBootstrap.InstallPayload, this method's only caller).
     public static int RunPowerShellFileCapture(string scriptPath, out string output)
     {
         var psi = new ProcessStartInfo("powershell.exe",
@@ -132,7 +156,9 @@ public static class ProcessRunner
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
         };
         using var p = Process.Start(psi)!;
         // Concurrent drain; see RunCapture for the deadlock reasoning.

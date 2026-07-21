@@ -125,10 +125,20 @@ public static class Updater
         GitHubRelease release, bool relaunch, IProgress<double>? progress, CancellationToken ct)
     {
         GitHubAsset? zipAsset = null, sumAsset = null;
-        foreach (var a in release.Assets)
+        // GitHub's API does not normally return a null "assets" array (like
+        // FetchLatestAsync's TagName guard, this is cheap insurance against a
+        // malformed response), but a deserialized DTO's non-null default only
+        // holds until the JSON payload overwrites it - without this check a
+        // genuinely null Assets would NRE here instead of falling through to
+        // the "no ZipAssetName download" message below, the same outcome an
+        // empty or non-matching asset list already produces.
+        if (release.Assets != null)
         {
-            if (a.Name.Equals(ZipAssetName, StringComparison.OrdinalIgnoreCase)) zipAsset = a;
-            else if (a.Name.Equals(ChecksumAssetName, StringComparison.OrdinalIgnoreCase)) sumAsset = a;
+            foreach (var a in release.Assets)
+            {
+                if (a.Name.Equals(ZipAssetName, StringComparison.OrdinalIgnoreCase)) zipAsset = a;
+                else if (a.Name.Equals(ChecksumAssetName, StringComparison.OrdinalIgnoreCase)) sumAsset = a;
+            }
         }
         if (zipAsset is null)
             throw new InvalidOperationException("This release has no " + ZipAssetName + " download.");

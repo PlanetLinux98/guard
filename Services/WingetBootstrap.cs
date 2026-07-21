@@ -164,6 +164,11 @@ public static class WingetBootstrap
         // the dialog's status line.
         var sb = new StringBuilder();
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
+        // RunPowerShellFileCapture now decodes both pipes as UTF-8, but
+        // PowerShell itself only WRITES UTF-8 to a redirected pipe when told
+        // to; without this, a non-ASCII deployment error (e.g. an accented
+        // path under StageDir) would still come out mangled.
+        sb.AppendLine("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8");
         foreach (string dep in p.Dependencies)
             sb.Append("try { Add-AppxPackage -Path '").Append(ProcessRunner.PsQuote(dep)).AppendLine("' } catch { }");
         sb.Append("try { Add-AppxPackage -Path '").Append(ProcessRunner.PsQuote(p.BundlePath)).AppendLine("' }");

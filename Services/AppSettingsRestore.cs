@@ -14,6 +14,12 @@ public sealed class AppSettingsRestoreStats
     public int Replaced;       // existing targets renamed aside before replacing
     public int SkippedFolders; // targets left untouched (locked, or move-aside failed)
     public int SkippedFiles;   // individual files that could not be copied
+    // A subtree FileTreeCopy could not fully enumerate while copying back (e.g.
+    // an ACL-restricted subfolder in the saved copy), distinct from
+    // SkippedFolders above: the target folder WAS restored, just not
+    // completely - part of its contents were abandoned outright, not one
+    // locked file (that's SkippedFiles).
+    public int PartialFolders;
     // The move-aside succeeded but the copy-back then failed AND moving the
     // aside folder back to TargetPath also failed: unlike SkippedFolders (never
     // touched), the original is gone from TargetPath and sitting under one of
@@ -167,6 +173,7 @@ public static class AppSettingsRestore
                 stats.Folders++;
                 stats.Files += folderStats.Files;
                 stats.SkippedFiles += folderStats.SkippedFiles;
+                stats.PartialFolders += folderStats.SkippedFolders;
             }
             catch
             {

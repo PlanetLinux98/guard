@@ -19,6 +19,13 @@ namespace GuardWui3.Services;
 //       or another backup already holds the run lock)
 public static class HeadlessBackupRunner
 {
+    // Unlike ProcessRunner's 5-minute CaptureTimeout (sized for quick
+    // capture-and-return calls), a real backup can legitimately run for hours
+    // on a large first backup over slow USB or network media; this only needs
+    // to catch a run that is actually stuck (e.g. robocopy hung on a flaky
+    // network share) rather than one that is merely slow.
+    private static readonly TimeSpan RunTimeout = TimeSpan.FromHours(12);
+
     public static int Run(string mode)
     {
         mode = (mode ?? "").Trim().ToLowerInvariant();
@@ -53,8 +60,21 @@ public static class HeadlessBackupRunner
             psi.ArgumentList.Add(GuardPaths.ScriptPath);
             psi.ArgumentList.Add(mode);
             using var p = Process.Start(psi)!;
-            p.WaitForExit();
-            code = p.ExitCode;
+            try
+            {
+                ProcessRunner.WaitOrKill(p, "The scheduled backup", RunTimeout);
+                code = p.ExitCode;
+            }
+            catch (TimeoutException ex)
+            {
+                // A hung run (stuck retrying a flaky network share, say) would
+                // otherwise block every later scheduled/on-connect fire with no
+                // toast telling the user backups have stalled; killed and
+                // reported the same as any other setup failure (2), since
+                // nothing in the 0/1/3 outcomes fits "we had to kill it".
+                DebugLog.Log("scheduled-run", ex.Message);
+                code = 2;
+            }
         }
         catch (Exception ex)
         {

@@ -91,14 +91,26 @@ public static class ScheduledTasks
         try { output = ProcessRunner.RunPowerShellCapture(sb.ToString()); }
         catch (Exception ex) { return new ApplyResult(ex.Message, null); }
 
-        string? fileErr = null, connErr = null, next = null;
+        // A multi-line exception message (a CimException's message, say) prints
+        // its later lines with no ERRFILE/ERRCONN/NEXT prefix of their own;
+        // `current` tracks which error the last recognized line started, so
+        // those continuation lines fold into it instead of being silently
+        // dropped, until the next recognized prefix or the end of output.
+        string? next = null;
+        var fileSb = new StringBuilder();
+        var connSb = new StringBuilder();
+        StringBuilder? current = null;
         foreach (var raw in output.Split('\n'))
         {
             var line = raw.Trim();
-            if (line.StartsWith("ERRFILE ")) fileErr = "Scheduled backup task: " + line.Substring(8);
-            else if (line.StartsWith("ERRCONN ")) connErr = "On-connect task: " + line.Substring(8);
-            else if (line.StartsWith("NEXT ")) next = line.Substring(5);
+            if (line.Length == 0) continue;
+            if (line.StartsWith("ERRFILE ")) { fileSb.Append(line.Substring(8)); current = fileSb; }
+            else if (line.StartsWith("ERRCONN ")) { connSb.Append(line.Substring(8)); current = connSb; }
+            else if (line.StartsWith("NEXT ")) { next = line.Substring(5); current = null; }
+            else current?.Append('\n').Append(line);
         }
+        string? fileErr = fileSb.Length > 0 ? "Scheduled backup task: " + fileSb : null;
+        string? connErr = connSb.Length > 0 ? "On-connect task: " + connSb : null;
         string? err = fileErr != null && connErr != null ? fileErr + "\n\n" + connErr : fileErr ?? connErr;
         return new ApplyResult(err, next);
     }

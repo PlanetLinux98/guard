@@ -14,6 +14,10 @@ public sealed class AppSettingsCopyStats
     public int Files;
     public long Bytes;
     public int SkippedFiles;
+    // A subtree FileTreeCopy could not fully enumerate (e.g. an
+    // ACL-restricted subfolder), distinct from SkippedFiles: this means part
+    // of a folder's contents were abandoned outright, not one locked file.
+    public int SkippedFolders;
 }
 
 // Finds and copies per-user settings folders for selected apps. No reliable
@@ -214,6 +218,7 @@ public static class AppSettingsExport
             stats.Files += folderStats.Files;
             stats.Bytes += folderStats.Bytes;
             stats.SkippedFiles += folderStats.SkippedFiles;
+            stats.SkippedFolders += folderStats.SkippedFolders;
             entries.Add(new AppSettingsManifestEntry
             {
                 Apps = c.MatchedApps.ToArray(),

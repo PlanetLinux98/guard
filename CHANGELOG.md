@@ -13,6 +13,53 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   formatter as the settings-folder lists, and sizes above 1 TB display in TB.
 
 ### Fixed
+- A backup log's outcome could be misreported as "did not complete" after a
+  large version prune: BackupScript logs one line per deleted dated folder
+  after the FINISHED marker, and lowering the keep count after letting old
+  versions accumulate could push that marker past the fixed 16 KB window the
+  status check read. The check now searches progressively larger windows
+  until it finds the marker.
+- Nothing stopped a backup, a system image, a winget reinstall or update, an
+  app-settings export, or an app scan from running at the same time if you
+  switched pages and started another while one was still going - robocopy,
+  wbadmin and winget could all race each other with stacked elevation
+  prompts. Each page's Run/Start action now checks whether another page's job
+  is already running and names it before proceeding.
+- The scheduled and on-connect backup process had no timeout: a run stuck for
+  any reason (a flaky network share robocopy kept retrying, say) could block
+  every later scheduled or on-connect fire indefinitely with no toast telling
+  you backups had stalled. It is now killed and reported as a failed run
+  after 12 hours.
+- The installed-app scan could report an app as already up to date when
+  winget actually had no idea what version was installed: a row with a blank
+  Version cell but a populated Available (upgrade) cell parsed identically to
+  a normal row, so the available version was mistakenly stored as the
+  installed one.
+- A fast double-click on Reinstall Selected or Update All Apps could start
+  two overlapping runs: the busy flag was only set after the
+  winget-availability check and confirmation dialog had already been
+  awaited, leaving a window where a second click slipped past the guard -
+  the same race Run Now already closed.
+- App settings export and restore had two under-the-hood accuracy gaps: an
+  individual symlinked or hard-linked file inside a copied folder was
+  followed and copied instead of skipped like the folders around it
+  (matching robocopy's own /XJ behaviour), and a subfolder that could not be
+  listed partway through a copy (a permissions error) was counted as a
+  single skipped file instead of the abandoned subtree it actually was. Both
+  now behave and count correctly, including in the export and
+  reinstall/restore summaries.
+- A scheduled-task registration error with a multi-line message had all but
+  its first line silently dropped from what GUARD showed; the rest is now
+  kept.
+- Non-ASCII text captured from PowerShell - a scheduled-task error, a
+  removable-drive name, a winget deployment failure - could come out
+  mangled: PowerShell writes the console/OEM codepage to a redirected pipe by
+  default, not UTF-8. GUARD now switches PowerShell's own output encoding to
+  UTF-8 to match how it decodes the result.
+- A GitHub release response with no assets list at all (not something the
+  API is known to return, but not something it rules out either) would have
+  crashed the update download instead of reporting a normal "no compatible
+  download" error.
 - The backup destination could silently switch to an unrelated drive: if the
   drive letter last used for the destination was reachable but now held a
   different, unrecognized volume (for example, the real backup drive had been
