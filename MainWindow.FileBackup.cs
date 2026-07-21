@@ -515,6 +515,15 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "A backup is already running. Wait for it to finish, or press Stop Backup to cancel it.");
             return;
         }
+        // Cross-page: a system image, reinstall, export, or scan on another
+        // page would otherwise run concurrently with this backup (see
+        // IsAnyJobRunning). _backupRunning is already false here (checked
+        // above), so this only sees the OTHER pages' flags.
+        if (IsAnyJobRunning)
+        {
+            await ShowMessageAsync("GUARD", Capitalize(RunningJobLabel()!) + " is currently running. Wait for it to finish before starting a backup.");
+            return;
+        }
         // Claimed and the buttons disabled BEFORE any await below, not after:
         // otherwise a second click landing in that window (SaveAllAsync/the
         // unreachable-sources scan) would slip past the _backupRunning guard

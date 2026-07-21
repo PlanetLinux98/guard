@@ -28,7 +28,23 @@ public sealed partial class MainWindow : Window
     // =====================================================================
     //  APP SCAN
     // =====================================================================
-    private void OnRefreshApps(object sender, RoutedEventArgs e) { _appScanned = true; ScanApps(announceStart: true); }
+    private async void OnRefreshApps(object sender, RoutedEventArgs e)
+    {
+        // Cross-page: a backup, system image, reinstall, or export on another
+        // page would otherwise run concurrently with this scan (see
+        // IsAnyJobRunning). The automatic/lazy scans (first tab navigation,
+        // the post-winget-install and post-import rescans) are deliberately
+        // NOT gated - only this explicit Refresh button is, so switching tabs
+        // while something else runs doesn't pop up an unexpected dialog for a
+        // read-only inventory scan the user never asked to start.
+        if (IsAnyJobRunning)
+        {
+            await ShowMessageAsync("GUARD", Capitalize(RunningJobLabel()!) + " is currently running. Wait for it to finish before scanning apps.");
+            return;
+        }
+        _appScanned = true;
+        ScanApps(announceStart: true);
+    }
 
     // notifyCompletion: announce the completion summary as a settled UIA
     // notification instead of the live region. The post-install rescan needs
@@ -203,6 +219,15 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "An export is already running. Wait for it to finish.");
             return;
         }
+        // Cross-page: a backup, system image, reinstall, or scan on another
+        // page would otherwise run concurrently with this export (see
+        // IsAnyJobRunning). _exporting is already false here (checked above),
+        // so this only sees the OTHER pages' flags.
+        if (IsAnyJobRunning)
+        {
+            await ShowMessageAsync("GUARD", Capitalize(RunningJobLabel()!) + " is currently running. Wait for it to finish before exporting.");
+            return;
+        }
         // Only this page's fields: HarvestUi would pull the File Backup page's
         // unsaved edits into the live config, and the save below would then
         // persist edits the user never saved.
@@ -341,6 +366,9 @@ public sealed partial class MainWindow : Window
                     string copied = "Copied " + stats.Folders + " settings folder(s): " + stats.Files + " file(s)."
                         + (stats.SkippedFiles > 0
                             ? " " + stats.SkippedFiles + " file(s) were locked or unreadable and were skipped."
+                            : "")
+                        + (stats.SkippedFolders > 0
+                            ? " " + stats.SkippedFolders + " subfolder(s) could not be read (permissions) and were left out entirely."
                             : "");
                     summary += " " + copied;
                     detail += "\n\n" + copied
@@ -584,6 +612,25 @@ public sealed partial class MainWindow : Window
         // live, so this path should be unreachable during one.
         if (_reinstalling) return;
 
+        // Cross-page: a backup, system image, export, or scan on another page
+        // would otherwise run concurrently with this reinstall (see
+        // IsAnyJobRunning). _reinstalling is already false here (checked
+        // above), so this only sees the OTHER pages' flags.
+        if (IsAnyJobRunning)
+        {
+            await ShowMessageAsync("GUARD", Capitalize(RunningJobLabel()!) + " is currently running. Wait for it to finish before starting a reinstall.");
+            return;
+        }
+
+        // Claimed before any await below (the winget probe and install-offer
+        // dialog included), not after: otherwise a second click landing in that
+        // window would slip past the _reinstalling guard above and start a
+        // second concurrent reinstall sharing _reinstallCts. Same hazard
+        // RunScript guards against in MainWindow.FileBackup.cs. Reset on the
+        // winget-declined early return below since that path skips the run
+        // entirely; the core run's own finally resets it on every other exit.
+        _reinstalling = true;
+
         // winget gate: the install phase needs winget, and a fresh PC restoring
         // a saved list is exactly where it is missing. _wingetAvailable can be
         // stale in both directions (installed outside GUARD since the scan), so
@@ -601,12 +648,12 @@ public sealed partial class MainWindow : Window
                          ? "The ticked app needs winget to reinstall automatically. GUARD will install winget first, then reinstall the app."
                          : targets.Count + " ticked apps need winget to reinstall automatically. GUARD will install winget first, then reinstall them."))
             {
+                _reinstalling = false;
                 _appStatusText = "Reinstall cancelled: winget is not installed.";
                 AnnounceAppStatus();
                 return;
             }
         }
-        _reinstalling = true;
         _reinstallCts = new CancellationTokenSource();
         var ct = _reinstallCts.Token;
         // Shared focus discipline (BeginRunBusy): Stop takes focus before
@@ -720,6 +767,8 @@ public sealed partial class MainWindow : Window
                 r += " " + rstats.SkippedFolders + " folder(s) were in use and skipped.";
             if (rstats.SkippedFiles > 0)
                 r += " " + rstats.SkippedFiles + " file(s) were locked and skipped.";
+            if (rstats.PartialFolders > 0)
+                r += " " + rstats.PartialFolders + " folder(s) had a subfolder that could not be read (permissions) and was left out entirely.";
             // Distinct from "skipped": these were moved aside to make room for
             // the restore and could not be put back, so the user's original data
             // is not where they left it - the path is the only way back to it.
@@ -750,6 +799,26 @@ public sealed partial class MainWindow : Window
     {
         if (_reinstalling) return;
 
+        // Cross-page: a backup, system image, export, or scan on another page
+        // would otherwise run concurrently with this update (see
+        // IsAnyJobRunning). _reinstalling is already false here (checked
+        // above), so this only sees the OTHER pages' flags.
+        if (IsAnyJobRunning)
+        {
+            await ShowMessageAsync("GUARD", Capitalize(RunningJobLabel()!) + " is currently running. Wait for it to finish before updating apps.");
+            return;
+        }
+
+        // Claimed before any await below (the winget probe, install-offer
+        // dialog, and confirm dialog all included), not after: otherwise a
+        // second click landing in that window would slip past the
+        // _reinstalling guard above and start a second concurrent update run.
+        // Same hazard RunScript guards against in MainWindow.FileBackup.cs.
+        // Reset on both early returns below (winget declined, confirm
+        // declined) since they skip the run entirely; the run's own finally
+        // resets it on every other exit.
+        _reinstalling = true;
+
         // Same winget gate as the reinstall path: probe first (the cached flag
         // can be stale in both directions), then offer the install dialog.
         if (!_wingetAvailable)
@@ -763,6 +832,7 @@ public sealed partial class MainWindow : Window
             else if (!await ShowWingetInstallDialogAsync(
                 "Updating apps needs winget. GUARD will install winget first, then check for app updates."))
             {
+                _reinstalling = false;
                 _appStatusText = "Update cancelled: winget is not installed.";
                 AnnounceAppStatus();
                 return;
@@ -772,9 +842,12 @@ public sealed partial class MainWindow : Window
         if (!await ShowConfirmAsync("GUARD",
             "Update every app winget knows to its latest version now?\n\n" +
             "GUARD asks for Administrator approval once, so apps that install for all users (and Store-delivered apps like WSL) can update too. This can take a while and cannot be stopped once it starts; some apps may briefly show their own setup windows.",
-            "Update All", "Cancel")) return;
+            "Update All", "Cancel"))
+        {
+            _reinstalling = false;
+            return;
+        }
 
-        _reinstalling = true;
         _updateAllElevated = true;
         // No Stop for an elevated run (it can't be killed from here), so move
         // focus to the live output before SetAppBusy greys the launcher, and

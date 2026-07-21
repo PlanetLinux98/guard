@@ -1205,6 +1205,46 @@ public sealed partial class MainWindow : Window
     }
 
     // =====================================================================
+    //  CROSS-PAGE JOB EXCLUSION
+    // =====================================================================
+    // Single source of truth for "is any page's job currently running",
+    // reused by the close handler's busy check below AND by each page's own
+    // Run/Start entry point (RunScript, RunImage, ExecuteReinstall,
+    // OnUpdateAllApps, OnExportApps, OnRefreshApps), so nothing stops a
+    // backup, a system image, and a winget reinstall all running at once
+    // (robocopy/wbadmin/winget racing each other, stacked elevation prompts)
+    // just because each page only ever checked its OWN flag. Keeping the flag
+    // list in exactly one place means the close handler and the start guards
+    // can never drift apart and disagree about what "busy" means.
+    //
+    // _saving/_imageSaving (SaveAllAsync/SaveImageAsync's reentrancy guards)
+    // are deliberately not in this list: both write the settings ini and
+    // script synchronously and only THEN clear the dirty flag, before any of
+    // their remaining work (scheduled-task registration, reachability probes)
+    // runs; a close (or another page's job starting) during that later async
+    // tail can't truncate a write that already finished.
+    private bool IsAnyJobRunning =>
+        _backupRunning || _imageRunning || _reinstalling || _exporting || _imageListing || _scanning || _updateAllElevated;
+
+    // Short label for whichever job IsAnyJobRunning found, for each page's
+    // start-guard message ("<Label> is currently running. Wait for it to
+    // finish before starting <this operation>."). Null when nothing is
+    // running - callers only use this after IsAnyJobRunning is already true.
+    // _updateAllElevated implies _reinstalling too (OnUpdateAllApps sets
+    // both), so it is checked first for the more specific label.
+    private string? RunningJobLabel() =>
+        _imageRunning ? "a system image"
+        : _updateAllElevated ? "an app update"
+        : _reinstalling ? "an app reinstall"
+        : _exporting ? "copying app settings"
+        : _imageListing ? "reading the list of existing system images"
+        : _scanning ? "scanning installed apps"
+        : _backupRunning ? "a backup"
+        : null;
+
+    private static string Capitalize(string s) => s.Length > 0 ? char.ToUpperInvariant(s[0]) + s.Substring(1) : s;
+
+    // =====================================================================
     //  CLOSE GUARD
     // =====================================================================
     private async void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
@@ -1231,15 +1271,7 @@ public sealed partial class MainWindow : Window
         // untouched; otherwise cancel it and drive the close ourselves after the
         // prompts (the second Close() re-enters this handler with _allowClose
         // set, so it sails straight through).
-        // _saving/_imageSaving (SaveAllAsync/SaveImageAsync's reentrancy guards)
-        // are deliberately not in this list: both write the settings ini and
-        // script synchronously and only THEN clear the dirty flag, before any
-        // of their remaining work (scheduled-task registration, reachability
-        // probes) runs; a close during that later async tail can't truncate a
-        // write that already finished. _updateAllElevated is in the list
-        // because the warning six lines below already has a dedicated message
-        // for it - without this it can never fire.
-        bool busy = _backupRunning || _reinstalling || _imageRunning || _exporting || _imageListing || _scanning || _updateAllElevated;
+        bool busy = IsAnyJobRunning;
         if (!_dirty && !_imageDirty && !busy) return;
         args.Cancel = true;
 
@@ -1263,7 +1295,7 @@ public sealed partial class MainWindow : Window
         // Recomputed, not the snapshot from above: the save prompt can sit open
         // while a job finishes, and a stale snapshot would then warn about a
         // job that is no longer running.
-        busy = _backupRunning || _reinstalling || _imageRunning || _exporting || _imageListing || _scanning || _updateAllElevated;
+        busy = IsAnyJobRunning;
         if (busy)
         {
             // The elevated image cannot be cancelled from this un-elevated

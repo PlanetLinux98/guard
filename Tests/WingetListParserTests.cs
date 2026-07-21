@@ -15,13 +15,14 @@ public class WingetListParserTests
         "Cool App              9NBLGGH4NNS1              Unknown               msstore\r\n" +
         "Legacy Thing          ARP\\Machine\\X64\\Legacy    2.0\r\n" +
         "Some Very Long Name…  SomeVendor.SomeApp        3.1                   winget\r\n" +
-        "NoVersion App         Vendor.NoVer                                    winget\r\n";
+        "NoVersion App         Vendor.NoVer                                    winget\r\n" +
+        "Old App               Vendor.OldApp                        2.0.0      winget\r\n";
 
     [Fact]
     public void ParsesSourcesVersionsAndTruncation()
     {
         var rows = WingetListParser.Parse(Sample);
-        Assert.Equal(5, rows.Count);
+        Assert.Equal(6, rows.Count);
 
         var vsc = rows[0];
         Assert.Equal("Visual Studio Code", vsc.Name);
@@ -51,6 +52,16 @@ public class WingetListParserTests
         Assert.Equal("", noVer.Version);
         Assert.Equal("winget", noVer.Source);
         Assert.True(noVer.CanAuto);
+
+        // Version blank but Available populated: tokenizes to the exact same
+        // [id, X, source] shape as a populated Version with Available blank
+        // (vsc above), so X must not be misread as the installed Version -
+        // that would make an app with no known installed version look
+        // already up to date.
+        var oldApp = rows[5];
+        Assert.Equal("", oldApp.Version);
+        Assert.Equal("winget", oldApp.Source);
+        Assert.True(oldApp.CanAuto);
     }
 
     [Fact]

@@ -25,6 +25,17 @@ public static class BackupHealth
     // last success is older than this.
     public static readonly TimeSpan OnConnectStale = TimeSpan.FromDays(7);
 
+    // Progressively larger tail windows to search for the FINISHED marker in.
+    // A version prune (BackupScript's :prune, run after FINISHED is written)
+    // logs one line per deleted dated folder; lowering VersionsToKeep after
+    // letting versions accumulate (up to the 365 allowed) can push FINISHED
+    // well past a single small window. Doubling up from a small window keeps
+    // the common case (no prune, or a small one) to one short read, while a
+    // pathological log still resolves without reading it into memory in one
+    // shot - capped, so a truly enormous or corrupt log gives up rather than
+    // growing without bound.
+    private static readonly int[] TailWindowSizes = { 16 * 1024, 128 * 1024, 1024 * 1024, 8 * 1024 * 1024 };
+
     // Outcome of the last run recorded in a GUARD-generated log (backup or
     // system image), or null when no run has happened. The WHEN is the file's
     // write time: the log's own "%date% %time%" stamps are locale-formatted
@@ -35,7 +46,14 @@ public static class BackupHealth
         {
             if (!File.Exists(path)) return null;
             var fi = new FileInfo(path);
-            string tail = ReadTail(path, 16 * 1024);
+            string tail = "";
+            foreach (var window in TailWindowSizes)
+            {
+                tail = ReadTail(path, window);
+                bool found = tail.Contains("FINISHED OK", StringComparison.Ordinal)
+                    || tail.Contains("FINISHED WITH ERRORS", StringComparison.Ordinal);
+                if (found || window >= fi.Length) break;
+            }
             int ok = tail.LastIndexOf("FINISHED OK", StringComparison.Ordinal);
             int err = tail.LastIndexOf("FINISHED WITH ERRORS", StringComparison.Ordinal);
             var outcome = ok > err ? RunOutcome.Ok

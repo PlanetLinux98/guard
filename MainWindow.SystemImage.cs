@@ -389,6 +389,15 @@ public sealed partial class MainWindow : Window
             await ShowMessageAsync("GUARD", "Reading the list of existing system images. Wait for it to finish before creating a new image.");
             return;
         }
+        // Cross-page: a backup, reinstall, export, or scan on another page
+        // would otherwise run concurrently with this elevated image (see
+        // IsAnyJobRunning). _imageRunning/_imageListing are already false here
+        // (checked above), so this only sees the OTHER pages' flags.
+        if (IsAnyJobRunning)
+        {
+            await ShowMessageAsync("GUARD", Capitalize(RunningJobLabel()!) + " is currently running. Wait for it to finish before creating a system image.");
+            return;
+        }
         if (!_imageAvailable)
         {
             await ShowMessageAsync("GUARD", "System imaging is not available on this edition of Windows (the wbadmin tool was not found).");

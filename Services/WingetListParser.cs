@@ -68,6 +68,28 @@ public static class WingetListParser
         }
         if (idStart <= 0) return rows;
 
+        // Version's and Available's own column starts, found the same way as
+        // Id above (literal word, or the third/fourth whitespace-delimited
+        // word on a localized header). Needed below to tell a genuinely blank
+        // Version cell apart from a populated one when a row's tail
+        // tokenizes to the same shape either way - see the 3-token case.
+        int versionStart = lines[hi].IndexOf("Version", StringComparison.Ordinal);
+        if (versionStart < 0)
+        {
+            var m = Regex.Match(lines[hi], @"^\S+\s+\S+\s+(\S)");
+            versionStart = m.Success ? m.Groups[1].Index : -1;
+        }
+        // Available appears only when at least one installed package has an
+        // upgrade; when the header has no such column this stays -1, and the
+        // 3-token ambiguity below never arises (there is no fourth cell to
+        // confuse Version with).
+        int availableStart = lines[hi].IndexOf("Available", StringComparison.Ordinal);
+        if (availableStart < 0)
+        {
+            var m = Regex.Match(lines[hi], @"^\S+\s+\S+\s+\S+\s+(\S)");
+            availableStart = m.Success ? m.Groups[1].Index : -1;
+        }
+
         int start = hi + 1;
         if (start < lines.Length && lines[start].TrimStart().StartsWith("---")) start++;
 
@@ -100,7 +122,18 @@ public static class WingetListParser
             }
             string ver = "";
             if (toks.Count >= 2 && !(toks.Count == 2 && source.Length > 0))
-                ver = toks[1].Value;
+            {
+                // Three tokens [id, X, source] is ambiguous whenever the header
+                // has an Available column: X is Version with Available blank,
+                // OR Available with Version itself blank - a blank cell leaves
+                // no token at all, so both tokenize identically and X's own
+                // text can't say which column it came from (both look like
+                // version strings). Fall back to whether the row actually has
+                // anything in the Version column's own character range.
+                bool ambiguous = toks.Count == 3 && versionStart > 0 && availableStart > versionStart;
+                bool versionCellBlank = ambiguous && IsBlank(row, versionStart, availableStart);
+                if (!versionCellBlank) ver = toks[1].Value;
+            }
             if (ver == "…") ver = "";
 
             rows.Add(new WingetRow
@@ -113,6 +146,18 @@ public static class WingetListParser
             });
         }
         return rows;
+    }
+
+    // Whether row[start..end) (clamped to the row's actual length, since a
+    // trailing blank cell can leave the row shorter than the header) has no
+    // non-whitespace character - i.e. that column's cell is blank for this row.
+    private static bool IsBlank(string row, int start, int end)
+    {
+        int from = Math.Min(start, row.Length);
+        int to = Math.Min(end, row.Length);
+        for (int i = from; i < to; i++)
+            if (!char.IsWhiteSpace(row[i])) return false;
+        return true;
     }
 
     private static bool IsAllDashes(string s)

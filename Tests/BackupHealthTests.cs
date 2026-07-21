@@ -33,6 +33,30 @@ public class BackupHealthTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 
+    // A big version prune (BackupScript's :prune) logs one line per deleted
+    // dated folder AFTER the FINISHED line, which can push it well past the
+    // first, smallest tail window; this pads the log past 16 KB with prune
+    // lines to confirm the growing-window search still finds it.
+    [Fact]
+    public void ReadLogFindsFinishedPastTheSmallestTailWindow()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "guard-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string log = Path.Combine(dir, "backup_last.log");
+            var sb = new System.Text.StringBuilder();
+            sb.Append("header\nFINISHED OK   2026-07-06\n");
+            for (int i = 0; i < 1000; i++)
+                sb.Append("Deleted old version folder: 2020-01-").Append(i.ToString("D2")).Append('\n');
+            File.WriteAllText(log, sb.ToString());
+            Assert.True(new FileInfo(log).Length > 16 * 1024);
+
+            Assert.Equal(RunOutcome.Ok, BackupHealth.ReadLog(log)!.Outcome);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
     [Fact]
     public void PreviousScheduledRunFindsTheMostRecentOccurrence()
     {
