@@ -13,109 +13,99 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   formatter as the settings-folder lists, and sizes above 1 TB display in TB.
 
 ### Fixed
+- Nothing stopped a backup, system image, winget reinstall/update,
+  app-settings export, or app scan from running at the same time across
+  pages - robocopy, wbadmin and winget could race each other with stacked
+  elevation prompts. Each page's Run/Start action now checks whether another
+  is already running and names it.
+- The backup destination could silently switch to an unrelated drive: if the
+  last-used destination letter was reachable but now held a different,
+  unrecognized volume (say the real backup drive was unplugged and something
+  else took its letter), Save Settings adopted the new volume without asking.
+  In Mirror mode this risked deleting the other drive's own files as
+  "extras" and losing the link back to the real backup drive. Save now warns
+  and needs a second Save to confirm.
+- Restoring app settings could lose the original folder if putting the saved
+  copy back failed right after the existing folder had already been renamed
+  aside to make room for it: the result reported the folder as merely
+  "skipped" (implying nothing had changed), while the original was actually
+  sitting under a `<name>.guard-old-<timestamp>` name beside it. GUARD now
+  tries to move the original back first, and only reports it separately
+  (with its location) if that also fails.
+- A backup run with a robocopy "Mismatch" (say, the destination has a file
+  where the source now has a same-named folder) was reported as a clean
+  "Backup complete" even though robocopy couldn't reconcile it. Mismatches
+  are now counted and called out in the run summary alongside failures.
+- An imported app-settings manifest could target any environment-variable
+  folder on the machine (such as `%USERPROFILE%\Desktop`) for
+  rename-aside-and-replace during a restore, since only the folder name
+  inside the anchor was checked, not the anchor itself. Restoring now only
+  accepts the three anchors GUARD's own export writes (`%APPDATA%`,
+  `%LOCALAPPDATA%`, `%USERPROFILE%\.config`).
+- A locked or momentarily unreadable settings or preferences file (an
+  antivirus scan, the file open elsewhere, a laggy portable or network copy)
+  could crash GUARD on launch, or crash the headless scheduled backup task
+  silently. Both now fall back to defaults, as if the file didn't exist.
+- The recovery-media wizard is more robust against interruption: closing
+  GUARD while it's writing a USB is now blocked (the elevated build can't be
+  stopped by closing, which used to abandon diskpart/DISM mid-write with the
+  progress and "do not remove the drive" warning gone), and an error while
+  preparing the build - before the elevated step even starts - now lands on
+  the wizard's own "Could not finish" result instead of crashing GUARD
+  outright.
+- The Recovery Media wizard's USB list could show a user's own external hard
+  drive - the same kind GUARD's File Backup and System Image features back
+  up to - with no visible difference from a blank flash stick, since both
+  report the same USB bus type. A drive much larger than a typical recovery
+  stick now shows a warning in the list and confirmation step, and needs an
+  extra tick before it can be erased.
+- Closing GUARD while "Update All Apps" was still running with Administrator
+  rights gave no warning, even though the close prompt already had wording
+  for exactly this case; it never actually triggered.
 - A backup log's outcome could be misreported as "did not complete" after a
   large version prune: BackupScript logs one line per deleted dated folder
   after the FINISHED marker, and lowering the keep count after letting old
   versions accumulate could push that marker past the fixed 16 KB window the
   status check read. The check now searches progressively larger windows
   until it finds the marker.
-- Nothing stopped a backup, a system image, a winget reinstall or update, an
-  app-settings export, or an app scan from running at the same time if you
-  switched pages and started another while one was still going - robocopy,
-  wbadmin and winget could all race each other with stacked elevation
-  prompts. Each page's Run/Start action now checks whether another page's job
-  is already running and names it before proceeding.
-- The scheduled and on-connect backup process had no timeout: a run stuck for
-  any reason (a flaky network share robocopy kept retrying, say) could block
-  every later scheduled or on-connect fire indefinitely with no toast telling
-  you backups had stalled. It is now killed and reported as a failed run
-  after 12 hours.
+- The scheduled and on-connect backup process had no timeout: a stuck run
+  (robocopy hung on a flaky network share, say) could block every later fire
+  indefinitely with no toast telling you backups had stalled. It's now
+  killed and reported as a failed run after 12 hours.
 - The installed-app scan could report an app as already up to date when
-  winget actually had no idea what version was installed: a row with a blank
-  Version cell but a populated Available (upgrade) cell parsed identically to
-  a normal row, so the available version was mistakenly stored as the
+  winget actually had no idea what version was installed: a row with a
+  blank Version cell but a populated Available (upgrade) cell parsed the
+  same as a normal row, mistakenly storing the available version as the
   installed one.
 - A fast double-click on Reinstall Selected or Update All Apps could start
   two overlapping runs: the busy flag was only set after the
-  winget-availability check and confirmation dialog had already been
-  awaited, leaving a window where a second click slipped past the guard -
-  the same race Run Now already closed.
-- App settings export and restore had two under-the-hood accuracy gaps: an
-  individual symlinked or hard-linked file inside a copied folder was
-  followed and copied instead of skipped like the folders around it
-  (matching robocopy's own /XJ behaviour), and a subfolder that could not be
-  listed partway through a copy (a permissions error) was counted as a
-  single skipped file instead of the abandoned subtree it actually was. Both
-  now behave and count correctly, including in the export and
-  reinstall/restore summaries.
+  winget-availability check and confirmation dialog had been awaited,
+  leaving a window for a second click to slip past the guard - the same
+  race Run Now already closed.
+- App settings export and restore had two accuracy gaps: a symlinked or
+  hard-linked file inside a copied folder was followed instead of skipped
+  like the folders around it (matching robocopy's own /XJ), and a subfolder
+  that failed to enumerate (a permissions error) was counted as one skipped
+  file instead of an abandoned subtree. Both are now handled and counted
+  correctly.
 - A scheduled-task registration error with a multi-line message had all but
   its first line silently dropped from what GUARD showed; the rest is now
   kept.
-- Non-ASCII text captured from PowerShell - a scheduled-task error, a
-  removable-drive name, a winget deployment failure - could come out
-  mangled: PowerShell writes the console/OEM codepage to a redirected pipe by
-  default, not UTF-8. GUARD now switches PowerShell's own output encoding to
-  UTF-8 to match how it decodes the result.
-- A GitHub release response with no assets list at all (not something the
-  API is known to return, but not something it rules out either) would have
-  crashed the update download instead of reporting a normal "no compatible
-  download" error.
-- The backup destination could silently switch to an unrelated drive: if the
-  drive letter last used for the destination was reachable but now held a
-  different, unrecognized volume (for example, the real backup drive had been
-  unplugged and something else took its letter), Save Settings adopted the new
-  volume without asking. In Mirror mode this risked deleting the other drive's
-  own files as "extras", and permanently lost the link back to the real backup
-  drive. Save now warns when this happens and needs a second Save to confirm
-  before treating the new drive as correct.
-- Restoring app settings could lose the original folder if putting the saved
-  copy back failed right after the existing folder had already been renamed
-  aside to make room for it: the result reported the folder as merely
-  "skipped" (implying nothing had changed), while the original was actually
-  sitting under a `<name>.guard-old-<timestamp>` name beside it. GUARD now
-  tries to move the original back into place first, and only reports the
-  folder separately, with its location, if that also fails.
-- A backup run with a robocopy "Mismatch" (for example, the destination has a
-  file where the source now has a same-named folder) was reported as a clean
-  "Backup complete" even though robocopy could not reconcile it. Mismatches
-  are now counted and called out in the run summary alongside failures.
-- An imported app-settings manifest could target any environment-variable
-  folder on the machine (such as `%USERPROFILE%\Desktop`) for
-  rename-aside-and-replace during a restore, because only the folder name
-  inside the anchor was checked, not the anchor itself. Restoring now only
-  accepts the three anchors GUARD's own export ever writes (`%APPDATA%`,
-  `%LOCALAPPDATA%`, `%USERPROFILE%\.config`).
-- A locked or momentarily unreadable settings or preferences file (an
-  antivirus scan, the file open in another program, a laggy portable or
-  network copy) could crash GUARD on launch, or crash the headless scheduled
-  backup task silently. Both now fall back to defaults, the same as when the
-  file does not exist yet.
-- An error while preparing to build recovery media (before the elevated build
-  itself even started) could crash GUARD outright instead of showing the
-  wizard's own "Could not finish" result.
-- Closing GUARD while "Update All Apps" was still running with Administrator
-  rights gave no warning, even though the close prompt already had wording
-  written for exactly this case; it never actually triggered.
-- The Recovery Media wizard's USB drive list could show a user's own external
-  USB hard drive - the same kind of drive GUARD's own File Backup and System
-  Image features back up to - with no visible difference from an actual blank
-  flash stick, since both report the same USB bus type. A drive much larger
-  than a typical recovery stick now carries a visible warning in the list and
-  the confirmation step, and needs an extra tick before it can be erased.
-- Paths with accented or other non-ASCII characters no longer break the
-  generated scripts. cmd reads batch files in the legacy OEM codepage, which
-  mangled such characters: backups failed with "destination not reachable" or
-  skipped folders, images to non-ASCII share paths failed, and self-update
-  broke for accounts with non-ASCII usernames. The scripts now switch their
-  console to UTF-8; existing backup and image scripts pick the fix up on the
-  next save.
-- Self-update also failed when GUARD was installed at a drive's root (such as
-  the top of a USB stick) or under a path containing a literal %; the staged
-  apply script now escapes both.
-- Closing GUARD while the recovery-media wizard is writing a USB is now
-  blocked, with an announcement pointing at the wizard's own Cancel. The
-  elevated build cannot be stopped by closing the app, so a close left
-  diskpart and DISM writing the drive with the progress surface gone.
+- Non-ASCII characters (accented paths, drive names, PowerShell error text)
+  could get mangled throughout GUARD's shell-based tooling: cmd reads
+  generated scripts in the legacy OEM codepage, and PowerShell defaults to
+  the same codepage on a redirected pipe instead of UTF-8. This could fail
+  backups ("destination not reachable"), skip folders, break self-update for
+  non-ASCII usernames, and garble captured PowerShell errors (scheduled
+  tasks, drive names, winget). Both the generated scripts and PowerShell
+  calls now switch to UTF-8; existing scripts pick up the fix on the next
+  save.
+- Self-update also failed when GUARD was installed at a drive's root (such
+  as the top of a USB stick) or under a path containing a literal %; the
+  staged apply script now escapes both.
+- A GitHub release response with no assets list at all (unlikely, but not
+  ruled out by the API) would have crashed the update download instead of
+  reporting a normal "no compatible download" error.
 - With a pinned Light or Dark theme, the small follow-up dialogs (validation
   messages, file-picker and browser-launch errors) now follow the pinned
   theme instead of the OS one.
