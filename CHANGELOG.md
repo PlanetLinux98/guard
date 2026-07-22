@@ -14,25 +14,22 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ### Fixed
 - Nothing stopped a backup, system image, winget reinstall/update,
-  app-settings export, or app scan from running at the same time across
-  pages - robocopy, wbadmin and winget could race each other with stacked
-  elevation prompts. Each page's Run/Start action now checks whether another
-  is already running and names it.
-- The backup destination could silently switch to an unrelated drive: if the
-  last-used destination letter was reachable but now held a different,
-  unrecognized volume (say the real backup drive was unplugged and something
-  else took its letter), Save Settings adopted the new volume without asking.
-  In Mirror mode this risked deleting the other drive's own files as
-  "extras" and losing the link back to the real backup drive. Save now warns
-  and needs a second Save to confirm.
-- Restoring app settings could lose the original folder if putting the saved
-  copy back failed right after the existing folder had already been renamed
-  aside to make room for it: the result reported the folder as merely
-  "skipped" (implying nothing had changed), while the original was actually
-  sitting under a `<name>.guard-old-<timestamp>` name beside it. GUARD now
-  tries to move the original back first, and only reports it separately
+  app-settings export, or app scan from running at once across pages;
+  robocopy, wbadmin and winget could race each other with stacked elevation
+  prompts. Each page's Run/Start action now checks whether another is
+  already running and names it.
+- The backup destination could silently switch to an unrelated drive: a
+  reachable but unrecognized volume at the last-used letter (e.g. the real
+  drive was unplugged and something else took its letter) was adopted
+  without asking, risking the new drive's files being deleted as "extras" in
+  Mirror mode. Save now warns and needs a second Save to confirm.
+- Restoring app settings could lose the original folder: if putting the
+  saved copy back failed right after the existing folder was renamed aside
+  to make room, GUARD reported it as merely "skipped" even though the
+  original sat renamed under `<name>.guard-old-<timestamp>` beside it. GUARD
+  now tries to move the original back first, and only reports it separately
   (with its location) if that also fails.
-- A backup run with a robocopy "Mismatch" (say, the destination has a file
+- A backup run with a robocopy "Mismatch" (e.g. the destination has a file
   where the source now has a same-named folder) was reported as a clean
   "Backup complete" even though robocopy couldn't reconcile it. Mismatches
   are now counted and called out in the run summary alongside failures.
@@ -46,30 +43,27 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   antivirus scan, the file open elsewhere, a laggy portable or network copy)
   could crash GUARD on launch, or crash the headless scheduled backup task
   silently. Both now fall back to defaults, as if the file didn't exist.
-- The recovery-media wizard is more robust against interruption: closing
-  GUARD while it's writing a USB is now blocked (the elevated build can't be
+- The recovery-media wizard is now more robust against interruption: closing
+  GUARD while it's writing a USB is blocked (the elevated build can't be
   stopped by closing, which used to abandon diskpart/DISM mid-write with the
-  progress and "do not remove the drive" warning gone), and an error while
-  preparing the build - before the elevated step even starts - now lands on
-  the wizard's own "Could not finish" result instead of crashing GUARD
-  outright.
+  progress and "do not remove the drive" warning gone); and a preparation
+  error before the elevated step starts now lands on the wizard's own "Could
+  not finish" result instead of crashing GUARD outright.
 - The Recovery Media wizard's USB list could show a user's own external hard
-  drive - the same kind GUARD's File Backup and System Image features back
-  up to - with no visible difference from a blank flash stick, since both
-  report the same USB bus type. A drive much larger than a typical recovery
-  stick now shows a warning in the list and confirmation step, and needs an
-  extra tick before it can be erased.
+  drive (the same kind GUARD's File Backup and System Image features back up
+  to) with no visible difference from a blank flash stick, since both report
+  the same USB bus type. A drive much larger than a typical recovery stick
+  now shows a warning and needs an extra tick before it can be erased.
 - Closing GUARD while "Update All Apps" was still running with Administrator
   rights gave no warning, even though the close prompt already had wording
   for exactly this case; it never actually triggered.
 - A backup log's outcome could be misreported as "did not complete" after a
-  large version prune: BackupScript logs one line per deleted dated folder
-  after the FINISHED marker, and lowering the keep count after letting old
-  versions accumulate could push that marker past the fixed 16 KB window the
-  status check read. The check now searches progressively larger windows
-  until it finds the marker.
+  large version prune: BackupScript logs one line per deleted folder after
+  the FINISHED marker, and enough pruning could push that marker past the
+  fixed 16 KB window the status check read. The check now searches
+  progressively larger windows until it finds the marker.
 - The scheduled and on-connect backup process had no timeout: a stuck run
-  (robocopy hung on a flaky network share, say) could block every later fire
+  (e.g. robocopy hung on a flaky network share) could block every later fire
   indefinitely with no toast telling you backups had stalled. It's now
   killed and reported as a failed run after 12 hours.
 - The installed-app scan could report an app as already up to date when
@@ -80,8 +74,8 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - A fast double-click on Reinstall Selected or Update All Apps could start
   two overlapping runs: the busy flag was only set after the
   winget-availability check and confirmation dialog had been awaited,
-  leaving a window for a second click to slip past the guard - the same
-  race Run Now already closed.
+  leaving a window for a second click to slip past the guard; the same race
+  Run Now already closed.
 - App settings export and restore had two accuracy gaps: a symlinked or
   hard-linked file inside a copied folder was followed instead of skipped
   like the folders around it (matching robocopy's own /XJ), and a subfolder
@@ -93,35 +87,41 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   kept.
 - Non-ASCII characters (accented paths, drive names, PowerShell error text)
   could get mangled throughout GUARD's shell-based tooling: cmd reads
-  generated scripts in the legacy OEM codepage, and PowerShell defaults to
-  the same codepage on a redirected pipe instead of UTF-8. This could fail
+  generated scripts in the legacy OEM codepage, and PowerShell writes the
+  same codepage to a redirected pipe instead of UTF-8, which could fail
   backups ("destination not reachable"), skip folders, break self-update for
-  non-ASCII usernames, and garble captured PowerShell errors (scheduled
-  tasks, drive names, winget). Both the generated scripts and PowerShell
-  calls now switch to UTF-8; existing scripts pick up the fix on the next
-  save.
+  non-ASCII usernames, and garble captured errors. Both the generated
+  scripts and PowerShell calls now switch to UTF-8; existing scripts pick up
+  the fix on the next save.
 - Self-update also failed when GUARD was installed at a drive's root (such
-  as the top of a USB stick) or under a path containing a literal %; the
-  staged apply script now escapes both.
+  as the top of a USB stick) or under a path containing a literal %, since a
+  bare drive letter reads as relative once quoted and cmd treats an
+  unescaped % as a variable. The apply script now normalizes the root and
+  escapes the %.
 - A GitHub release response with no assets list at all (unlikely, but not
-  ruled out by the API) would have crashed the update download instead of
-  reporting a normal "no compatible download" error.
+  ruled out by the API) would have crashed the update download with a
+  null-reference error, instead of falling through to the normal "no
+  compatible download" message.
 - With a pinned Light or Dark theme, the small follow-up dialogs (validation
-  messages, file-picker and browser-launch errors) now follow the pinned
-  theme instead of the OS one.
+  messages, file-picker and browser-launch errors) now follow it instead of
+  the OS theme: a dialog renders in its own popup layer that doesn't inherit
+  the window's override, so each one now has it mirrored on explicitly.
 - Opening the System Image page on a Windows edition without wbadmin (e.g.
   Home) no longer invents unsaved changes (and a save prompt on close) when
-  it disables a saved image schedule.
+  it disables a saved image schedule: the automatic untick was wrongly
+  firing the same dirty flag a real edit would.
 - The status bar could lose a fresh status to a stale one: a size and
-  free-space check that finished after the line had been rewritten (for
-  example, a quick backup ran while it measured) put the old text back. A
-  superseded check is now discarded.
+  free-space check that finished after the line had been rewritten (e.g. a
+  quick backup ran while it measured) put the old text back regardless of
+  which was newer. A superseded check's result is now discarded.
 - The System Image page could show "Next run: (unknown)" for a healthy
   scheduled image, since the label only refreshed when a save changed the
   schedule; the next run time now also loads when GUARD opens.
 - The scheduled system image failed to register on Windows locales whose
-  default calendar is not Gregorian (such as Thai); the task's start date is
-  now always written as a Gregorian date.
+  default calendar isn't Gregorian (such as Thai or Umm al-Qura), since a
+  plain date format follows the OS calendar and Task Scheduler rejects
+  anything else. The task's start date is now always written as an
+  invariant Gregorian date.
 - Saving or creating a system image now warns when the destination contains
   a % that is not an environment variable, as File Backup already did; cmd
   treats % specially in the generated script, so the image could be written

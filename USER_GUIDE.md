@@ -250,13 +250,20 @@ opening GUARD, turn on notifications (see the Settings page): failures notify
 by default, successes only if you opt in. The status bar also reports the last
 run's outcome the next time you open GUARD.
 
-Two situations GUARD handles for you:
+Three situations GUARD handles for you:
 
 - **Your backup drive changes letters.** If the destination was `E:\Backups`
   and the drive comes back as `F:`, the backup follows it automatically (GUARD
   remembers the drive's volume serial number, not just its letter) and notes
   the change in the log. The next Save Settings updates the saved destination
   to the new letter and tells you.
+- **A different drive ends up at the same letter.** If the last-used
+  destination letter is reachable but now holds a drive GUARD does not
+  recognize (for example, the real backup drive was unplugged and something
+  else took `E:`), Save Settings stops and asks you to confirm before
+  adopting it; in Mirror mode, adopting the wrong drive blindly could delete
+  its files as "extras". Reconnect the real drive, or click Save again if
+  the new drive is intentional.
 - **You move or rename the GUARD folder.** The scheduled tasks point at
   GUARD's location, so a move would silently break them; GUARD notices at its
   next launch and re-registers the backup tasks against the new location
@@ -295,9 +302,11 @@ The progress bar tracks the backup folder by folder, and the **Output** box show
 its live output. When a run finishes, GUARD prints a plain-language summary, built
 from Robocopy's own totals: files copied (with size), files skipped because they
 were already up to date, failures (called out first, with a pointer to the log),
-and any extra files at the destination (noting whether Mirror removed them). The
-summary also appears on the progress line and in the status bar, so you rarely
-need to read the raw log.
+mismatches (where Robocopy found a file where the other side now has a
+same-named folder, or vice versa, and could not reconcile them), and any extra
+files at the destination (noting whether Mirror removed them). The summary also
+appears on the progress line and in the status bar, so you rarely need to read
+the raw log.
 
 ## The System Image tab
 
