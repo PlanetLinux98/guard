@@ -8,6 +8,8 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-22
+
 ### Changed
 - Byte sizes in the end-of-run backup summary now use the same compact
   formatter as the settings-folder lists, and sizes above 1 TB display in TB.
@@ -797,7 +799,8 @@ shipping as a single self-contained `GUARD.exe`.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/PlanetLinux98/guard/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/PlanetLinux98/guard/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/PlanetLinux98/guard/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/PlanetLinux98/guard/compare/v0.4.0...v0.4.1
