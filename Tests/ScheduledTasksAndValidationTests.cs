@@ -22,7 +22,9 @@ public class ScheduledTasksTests
     [Fact]
     public void BackupActionCurrencyChecksExeAndHelperArgs()
     {
-        string exe = Environment.ProcessPath!;
+        // Matches production's resolution (GuardPaths.BaseDir + "GUARD.exe"), not
+        // the test host's own Environment.ProcessPath (testhost.exe/dotnet.exe).
+        string exe = System.IO.Path.Combine(GuardPaths.BaseDir, "GUARD.exe");
         Assert.True(ScheduledTasks.IsCurrentBackupAction(
             new ScheduledTasks.TaskActionInfo("GUARD Backup", "\"" + exe + "\"", "--run-backup auto")));
         // Legacy visible cmd.exe action: must read as stale so it re-registers.

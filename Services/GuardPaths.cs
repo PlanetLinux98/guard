@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace GuardWui3.Services;
 
@@ -14,8 +16,54 @@ public static class GuardPaths
     // root, and trimming that yields "E:", a drive-RELATIVE path that resolves
     // against E:'s current directory - so an exe run from a USB stick's root
     // would scatter its working files.
-    public static readonly string BaseDir =
-        Path.GetDirectoryName(Environment.ProcessPath)!;
+    public static readonly string BaseDir = ResolveBaseDir();
+
+    // ProcessPath reflects the path CreateProcess was invoked with, not the
+    // file's real location: winget's portable packages launch through an NTFS
+    // symlink in %LOCALAPPDATA%\Microsoft\WinGet\Links (a file-level reparse
+    // point), and a junctioned or symlinked ANCESTOR folder anywhere in the
+    // invoked path has the same effect - Windows reports the alias verbatim
+    // rather than the reparse-resolved target. Unresolved, every working file
+    // would land next to the alias instead of the real exe.
+    // GetFinalPathNameByHandle, not File.ResolveLinkTarget: ResolveLinkTarget
+    // only follows a reparse point on the file itself, so it would miss a
+    // symlinked/junctioned ancestor directory - GetFinalPathNameByHandle asks
+    // the OS for the canonical path of the actually-open file, resolving every
+    // reparse point in the chain, wherever it sits.
+    private static string ResolveBaseDir()
+    {
+        string exePath = Environment.ProcessPath!;
+        try
+        {
+            using var fs = new FileStream(exePath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            var sb = new StringBuilder(1024);
+            uint len = GetFinalPathNameByHandleW(fs.SafeFileHandle, sb, (uint)sb.Capacity, 0);
+            // On success len is the copied length, strictly less than capacity
+            // (which includes room for the null terminator); a too-small buffer
+            // returns the required size instead - always > 0, so a bare ">0"
+            // check alone would misread that as success and read an empty buffer.
+            if (len > 0 && len < sb.Capacity)
+                exePath = StripExtendedPrefix(sb.ToString());
+        }
+        catch { /* unreadable path - fall back to the invoked one */ }
+        return Path.GetDirectoryName(exePath)!;
+    }
+
+    // GetFinalPathNameByHandle always returns the \\?\ (or \\?\UNC\) extended-
+    // length form; downstream consumers (robocopy, tar.exe, cmd.exe scripts)
+    // do not expect it, so it is stripped back to an ordinary path here, once.
+    private static string StripExtendedPrefix(string path)
+    {
+        if (path.StartsWith(@"\\?\UNC\", StringComparison.Ordinal)) return @"\\" + path[8..];
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal)) return path[4..];
+        return path;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "GetFinalPathNameByHandleW")]
+    private static extern uint GetFinalPathNameByHandleW(
+        Microsoft.Win32.SafeHandles.SafeFileHandle hFile, StringBuilder lpszFilePath, uint cchFilePath, uint dwFlags);
+
     // Short stable id for THIS install folder (paths are case-insensitive, so
     // hash the uppercased path). Keys everything that must not collide between
     // two portable copies: the single-instance mutex and the update staging
