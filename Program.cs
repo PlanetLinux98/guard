@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using GuardWui3.Services;
 
 namespace GuardWui3;
@@ -17,9 +18,22 @@ namespace GuardWui3;
 //    portable copies can still run side by side.
 public static class Program
 {
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool SetDllDirectory(string lpPathName);
+
     [STAThread]
     static int Main(string[] args)
     {
+        // Self-contained WindowsAppSDK loads Microsoft.WindowsAppRuntime.dll (and
+        // friends) via a bare-name LoadLibrary that searches "the directory the
+        // application loaded from" - which Windows resolves from the invoked path,
+        // not the real one, when launched through a symlink (winget's portable
+        // packages run through one in %LOCALAPPDATA%\Microsoft\WinGet\Links). That
+        // crashes with DllNotFoundException before any managed handler below gets a
+        // chance to run. SetDllDirectory overrides that search step outright, so it
+        // must come first - GuardPaths.BaseDir already resolves the symlink chain.
+        SetDllDirectory(GuardPaths.BaseDir);
+
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             DebugLog.Crash(e.ExceptionObject as Exception, "AppDomain");
 

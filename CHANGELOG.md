@@ -8,6 +8,13 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+### Fixed
+- GUARD installed via `winget install` would not launch, and a scheduled
+  backup task saved under that install would silently never run either:
+  winget's portable packages launch through a symlink Windows reports as the
+  app's real location, so GUARD couldn't find its own files. GUARD now
+  resolves its real install folder before anything else runs.
+
 ## [0.5.2] - 2026-07-22
 
 ### Changed

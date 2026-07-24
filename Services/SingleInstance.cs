@@ -61,7 +61,12 @@ public static class SingleInstance
                 }
             }
             string path = new string(buf[..(int)len]);
-            return string.Equals(path, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
+            // Compare against BaseDir's resolved exe, not Environment.ProcessPath:
+            // launched through winget's portable symlink, ProcessPath is the alias
+            // in %LOCALAPPDATA%\Microsoft\WinGet\Links, so a same-exe match would
+            // silently fail and the existing window would never get activated.
+            return string.Equals(path, Path.Combine(GuardPaths.BaseDir, "GUARD.exe"),
+                StringComparison.OrdinalIgnoreCase);
         }
         catch { return false; }
         finally { CloseHandle(h); }
