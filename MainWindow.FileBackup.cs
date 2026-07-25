@@ -203,8 +203,11 @@ public sealed partial class MainWindow : Window
             {
                 // A read-only install folder or a locked file must fail the save
                 // with a dialog, not escape this async-void path and crash GUARD.
+                // Names the folder GUARD actually writes to, which is not the
+                // exe's folder under a winget install (see GuardPaths.DataDir).
                 await ShowMessageAsync("GUARD", "Could not save the settings:\n\n" + ex.Message
-                    + "\n\nGUARD writes its settings and backup script into the folder GUARD.exe is in, so that folder must be writable.");
+                    + "\n\nGUARD writes its settings and backup script into this folder, which must be"
+                    + " writable:\n\n" + GuardPaths.DataDir);
                 return false;
             }
             _dirty = false;
@@ -223,8 +226,16 @@ public sealed partial class MainWindow : Window
             _taskError = applied.Error;
             LblNextRun.Text = applied.NextRun == null
                 ? "Next run: (no scheduled task)" : "Next run: " + applied.NextRun;
+            // One snapshot for both walks. UnreachableSources needs it as much as
+            // CheckSources does: its own comment notes a dead UNC source can make
+            // Directory.Exists block for seconds, and nothing disables the folder
+            // list meanwhile, so enumerating the live bound collection on a worker
+            // thread could throw straight out of this async void.
+            var snapshot = SnapshotConfig();
             _missingSources = await System.Threading.Tasks.Task.Run(
-                () => SaveValidation.UnreachableSources(_cfg.Folders));
+                () => SaveValidation.UnreachableSources(snapshot.Folders));
+            SetSourceHealth(await System.Threading.Tasks.Task.Run(
+                () => SaveValidation.CheckSources(snapshot, SaveValidation.SourceCheckCap)));
             return true;
         }
         finally { _saving = false; }
@@ -248,6 +259,19 @@ public sealed partial class MainWindow : Window
         if (_missingSources.Count > 0)
             await ShowMessageAsync("GUARD", "Settings saved. Note: " + DescribeMissingSources(_missingSources)
                 + "\n\nThey will be skipped if still unreachable when the backup runs.");
+        // Ahead of the source warnings: if the backup itself is gone, that is
+        // the thing to say, and the rest is detail about a backup that no longer
+        // exists. Only once a run has happened - an empty destination before the
+        // first backup is simply a new destination.
+        if (_sourceHealth.DestinationEmpty && BackupHealth.ReadLog(GuardPaths.LogPath) is not null)
+            await ShowMessageAsync("GUARD",
+                "Settings saved. Warning: the backup destination is empty, but GUARD's records show a"
+                + " backup has run before.\n\n" + Expand(_cfg.Dest)
+                + "\n\nThe backup may have been deleted, or the drive reformatted. Run a backup to"
+                + " rebuild it.");
+        if (VanishedToReport.Count > 0) await ReportVanishedAsync(VanishedToReport);
+        if (_sourceHealth.Unreadable.Count > 0)
+            await ShowMessageAsync("GUARD", "Settings saved. Note: " + DescribeUnreadable(_sourceHealth.Unreadable));
         if (_percentPaths.Count > 0)
             await ShowMessageAsync("GUARD", "Settings saved. Warning: " + DescribePercentPaths(_percentPaths));
 
@@ -304,6 +328,58 @@ public sealed partial class MainWindow : Window
         SetFileStatusText(baseText + extra, announce);
     }
 
+    // A detached copy of the live configuration for a worker-thread walk. The
+    // folder and exclusion collections are two-way bound, so the user can add or
+    // remove rows while a walk is in flight; enumerating them off the UI thread
+    // would throw straight out of an async void and take the window down. Only
+    // the fields the source check reads are copied.
+    private Settings SnapshotConfig()
+    {
+        var s = new Settings
+        {
+            Dest = _cfg.Dest,
+            Mode = _cfg.Mode,
+            Versioned = _cfg.Versioned,
+            ExcludePresets = new List<string>(_cfg.ExcludePresets),
+        };
+        foreach (var f in _cfg.Folders)
+            s.Folders.Add(new FolderPair(f.Include, f.Source, f.SubFolder, f.KnownFolder));
+        foreach (var x in _cfg.Excludes)
+            s.Excludes.Add(new ExcludeItem(x.IsFolder, x.Pattern));
+        return s;
+    }
+
+    // Launch-time source-health probe, off the UI thread so it never holds up
+    // the window. Independent of the space check above, which only runs BEFORE
+    // the first backup: a source that has gone empty matters most once backups
+    // ARE running, because the healthy-looking "Last backup succeeded" line is
+    // exactly what hides it.
+    //
+    // Repaints only when something was actually found, so the usual no-news run
+    // cannot bump the sequence counter and discard an in-flight space check's
+    // own rewrite of the same line.
+    private async void StartSourceHealthCheck()
+    {
+        int seq = _spaceCheckSeq;
+        var snapshot = SnapshotConfig();
+        SaveValidation.SourceHealth health;
+        try
+        {
+            health = await System.Threading.Tasks.Task.Run(
+                () => SaveValidation.CheckSources(snapshot, SaveValidation.SourceCheckCap));
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("folders", "source health check failed", ex);
+            return;
+        }
+        // A save or a run that landed while this walk was out has already
+        // computed a fresher answer; do not overwrite it with this one.
+        if (seq != _spaceCheckSeq) return;
+        SetSourceHealth(health);
+        if (VanishedToReport.Count > 0) RefreshScriptStatus(announce: false);
+    }
+
     // Mid-flow file-status updates (the space-check placeholder and result).
     private void SetFileStatusText(string text, bool announce = true)
     {
@@ -313,10 +389,105 @@ public sealed partial class MainWindow : Window
 
     private static string DescribeMissingSources(List<string> missing)
     {
-        string list = "\n" + string.Join("\n", missing);
-        return missing.Count == 1
-            ? "this source folder is not currently reachable:" + list
-            : "these source folders are not currently reachable:" + list;
+        var sb = new System.Text.StringBuilder(missing.Count == 1
+            ? "this source folder is not currently reachable:"
+            : "these source folders are not currently reachable:");
+        foreach (var m in missing) sb.Append('\n').Append(Expand(m));
+        return sb.ToString();
+    }
+
+    // The vanished list minus anything the user has acknowledged as
+    // deliberately empty. Every consumer reads THIS, never _sourceHealth
+    // .Vanished, or an acknowledged folder would keep warning somewhere.
+    private List<SaveValidation.VanishedSource> VanishedToReport =>
+        SaveValidation.Unacknowledged(_sourceHealth.Vanished, _prefs.AcknowledgedEmpty);
+
+    // Records a fresh result and drops acknowledgements that no longer apply, so
+    // a folder that has content again stops being remembered and a real later
+    // disappearance is reported instead of inheriting the old answer.
+    private void SetSourceHealth(SaveValidation.SourceHealth health)
+    {
+        _sourceHealth = health;
+        // Pruned ONLY when the destination was actually reachable. With the
+        // backup drive unplugged - the normal state for a tool whose headline
+        // feature is an on-connect trigger - Vanished is empty because nothing
+        // could be compared, not because the folders are fine, and pruning on
+        // that would silently throw away every "Don't warn again" the user has
+        // given. "Could not measure" is not "measured, and all is well".
+        if (!health.DestinationReachable) return;
+        string pruned = SaveValidation.PruneAcknowledged(health.Vanished, _prefs.AcknowledgedEmpty);
+        if (pruned != _prefs.AcknowledgedEmpty)
+        {
+            _prefs.AcknowledgedEmpty = pruned;
+            AppPrefsStore.Save(_prefs);
+        }
+    }
+
+    // The save-time report, with a way out. In Additive mode the backup never
+    // loses the files it already holds, so a folder emptied on purpose meets the
+    // vanished condition for ever; without "Don't warn again" the only escape
+    // would be to untick the row.
+    private async System.Threading.Tasks.Task ReportVanishedAsync(
+        List<SaveValidation.VanishedSource> gone)
+    {
+        var dlg = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "GUARD",
+            Content = "Settings saved. Warning: " + DescribeVanished(gone),
+            PrimaryButtonText = "OK",
+            SecondaryButtonText = "Don't warn again",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await ShowDialogAsync(dlg) != ContentDialogResult.Secondary) return;
+        _prefs.AcknowledgedEmpty = SaveValidation.AddAcknowledged(gone, _prefs.AcknowledgedEmpty);
+        AppPrefsStore.Save(_prefs);
+        RefreshScriptStatus(announce: false);
+    }
+
+    // Paths are shown EXPANDED here, as everywhere else the user reads one: a
+    // screen reader announces a raw %USERPROFILE% as "percent USERPROFILE
+    // percent backslash", which is not a folder anyone recognizes.
+    private static string Expand(string p) => Environment.ExpandEnvironmentVariables(p ?? "");
+
+    // States the transition, not the state: these folders have nothing left to
+    // copy WHILE the backup still holds files from them, which is the only
+    // version of "empty" that is unambiguously worth interrupting someone for.
+    // Mirror mode leads with the consequence, because the next run does not just
+    // copy nothing - it deletes the copies to match the source.
+    private string DescribeVanished(List<SaveValidation.VanishedSource> gone)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(gone.Count == 1
+            ? "this folder has nothing left to back up, but your backup still holds files copied from it:"
+            : "these folders have nothing left to back up, but your backup still holds files copied from them:");
+        foreach (var v in gone) sb.Append('\n').Append(Expand(v.Source));
+        sb.Append(MirrorPurges
+            ? "\n\nMirror mode makes the backup match the source, so the next backup will DELETE those"
+              + " copies. Check the folder before it runs."
+            : "\n\nIf you expected files there, Windows may have moved the folder - OneDrive's"
+              + " \"Back up your folders\" and the folder's Properties, Location tab both do this.");
+        // Says how to stop it. Without this the warning has no exit: in Additive
+        // mode the backup never loses those files, so a folder the user emptied
+        // on purpose would warn on every launch, save and run for ever.
+        sb.Append("\n\nIf you no longer want this folder backed up, untick it in the folder list or"
+            + " remove it, and this warning stops.");
+        return sb.ToString();
+    }
+
+    // Separate from the above on purpose: a folder GUARD cannot read is a
+    // different problem from one that has emptied, and telling the user to go
+    // looking for a move that never happened wastes their time.
+    private static string DescribeUnreadable(List<string> unreadable)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(unreadable.Count == 1
+            ? "this folder could not be read, so GUARD cannot tell what is in it:"
+            : "these folders could not be read, so GUARD cannot tell what is in them:");
+        foreach (var u in unreadable) sb.Append('\n').Append(Expand(u));
+        sb.Append("\n\nThe backup will still try to copy them; check the last log afterwards to see"
+            + " whether it succeeded.");
+        return sb.ToString();
     }
 
     private static string DescribePercentPaths(List<string> paths)
@@ -343,12 +514,16 @@ public sealed partial class MainWindow : Window
     // rather than a bare refusal, so the user can see the problem and act on it.
     private static string DescribeOverlap(string dest, List<string> sources)
     {
-        string list = "\n" + string.Join("\n", sources);
+        // Expanded like every other path the user reads. These are the BLOCKING
+        // dialogs, so they are the loudest place a raw %USERPROFILE% would be
+        // read out character by character by a screen reader.
+        var sb = new System.Text.StringBuilder();
+        foreach (var s in sources) sb.Append('\n').Append(Expand(s));
         string which = sources.Count == 1
             ? "this source folder overlaps the backup destination:"
             : "these source folders overlap the backup destination:";
-        return "Cannot save these settings. " + which + list
-            + "\n\nDestination: " + dest
+        return "Cannot save these settings. " + which + sb
+            + "\n\nDestination: " + Expand(dest)
             + "\n\nA source cannot contain the destination, or sit inside it, or the "
             + "backup would copy itself into itself and grow without end until the "
             + "folder can no longer be opened or deleted. Choose a destination on a "
@@ -410,6 +585,167 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // Windows can move the personal folders GUARD backs up - OneDrive's "Back up
+    // your folders" relocates Documents, Desktop and Pictures under
+    // %USERPROFILE%\OneDrive, and a folder's Properties, Location tab can send
+    // it anywhere - and the vacated path is usually LEFT BEHIND rather than
+    // deleted. A row that kept pointing at the old path would therefore keep
+    // copying an empty folder and keep reporting success.
+    //
+    // GUARD follows, but only after asking. Silently re-pointing would mean a
+    // backup tool changing what it protects without telling anyone, and the
+    // unattended runs have nobody to ask - so until the answer comes, the
+    // scheduled task keeps using the location it was given.
+    //
+    // Only rows that TRACK a known folder qualify (FolderPair.KnownFolder); a
+    // path the user typed, or one they edited by hand, is theirs. A decline is
+    // remembered against this specific move - which folder AND where to - so it
+    // never nags, yet a later move somewhere else still gets asked about.
+    private async System.Threading.Tasks.Task CheckMovedFoldersAsync()
+    {
+        List<KnownFolders.Moved> moved;
+        try
+        {
+            var folders = new List<FolderPair>(_cfg.Folders);
+            moved = await System.Threading.Tasks.Task.Run(() => KnownFolders.FindMoved(folders));
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("folders", "moved-folder check failed", ex);
+            return;
+        }
+
+        // Prune the declined list to moves that still apply, so a folder that
+        // has since been put back does not leave a stale entry silencing a
+        // future move to the same place.
+        var declined = new List<string>(_prefs.DeclinedMoves.Split(';', StringSplitOptions.RemoveEmptyEntries));
+        var live = new List<string>();
+        foreach (var m in moved) if (declined.Contains(m.Key)) live.Add(m.Key);
+        if (live.Count != declined.Count)
+        {
+            _prefs.DeclinedMoves = string.Join(";", live);
+            AppPrefsStore.Save(_prefs);
+        }
+
+        var offer = new List<KnownFolders.Moved>();
+        var blocked = new List<KnownFolders.Moved>();
+        foreach (var m in moved)
+        {
+            if (live.Contains(m.Key)) continue;
+            // Already covered by another row - typically a user who noticed the
+            // move themselves and ADDED the new location while leaving the old
+            // row ticked. Following would give two rows on one tree under two
+            // destination subfolders: copied twice, for ever, silently. And if
+            // their subfolders happen to match, Mirror mode would then block
+            // every save, leaving the prompt to return at each launch with no
+            // way through. Neither is something to walk into automatically.
+            if (AnotherRowCovers(m)) blocked.Add(m); else offer.Add(m);
+        }
+
+        if (blocked.Count > 0)
+        {
+            var bs = new System.Text.StringBuilder(
+                "Windows reports that these folders have moved, but GUARD is already backing up the new"
+                + " location under another entry:\n\n");
+            foreach (var m in blocked)
+                bs.Append(m.Pair.KnownFolder).Append("\n  now at: ")
+                  .Append(Expand(m.ResolvedSource)).Append("\n\n");
+            bs.Append("Following the move would back the same folder up twice, so GUARD has left the list"
+                + " alone. Remove or untick whichever entry you do not want.");
+            await ShowMessageAsync("GUARD", bs.ToString());
+            // Recorded as answered: the situation needs a human decision, and
+            // repeating this at every launch would be nagging about something
+            // GUARD has already declined to do.
+            foreach (var m in blocked) live.Add(m.Key);
+            _prefs.DeclinedMoves = string.Join(";", live);
+            AppPrefsStore.Save(_prefs);
+        }
+        if (offer.Count == 0) return;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append(offer.Count == 1
+            ? "Windows reports that a folder GUARD backs up has moved:\n\n"
+            : "Windows reports that " + offer.Count + " folders GUARD backs up have moved:\n\n");
+        foreach (var m in offer)
+            sb.Append(m.Pair.KnownFolder)
+              .Append("\n  GUARD is backing up: ").Append(Environment.ExpandEnvironmentVariables(m.CurrentSource))
+              .Append("\n  Windows now reports: ").Append(Environment.ExpandEnvironmentVariables(m.ResolvedSource))
+              .Append("\n\n");
+        sb.Append("This usually means OneDrive's \"Back up your folders\" was turned on, or the folder was"
+            + " moved to another drive. The old location is often left behind empty, so those files would"
+            + " not be in your backup.\n\nFollow the move and back up the new locations?");
+
+        // "Not now" is the SECONDARY button, not the close button. WinUI returns
+        // None for the close button AND for a dialog that never opened (the
+        // single-dialog funnel), so putting the decline there would make the two
+        // indistinguishable - which is the very thing this dialog is built the
+        // long way round to tell apart. Secondary has its own result, so a real
+        // decline is recorded and a suppressed dialog simply asks again.
+        var dlg = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "GUARD",
+            Content = sb.ToString(),
+            PrimaryButtonText = "Follow",
+            SecondaryButtonText = "Not now",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        var answer = await ShowDialogAsync(dlg);
+        if (answer == ContentDialogResult.None) return;    // never asked; try again next launch
+        if (answer != ContentDialogResult.Primary)
+        {
+            foreach (var m in offer) live.Add(m.Key);
+            _prefs.DeclinedMoves = string.Join(";", live);
+            AppPrefsStore.Save(_prefs);
+            return;
+        }
+
+        var previous = new List<string>();
+        foreach (var m in offer) previous.Add(m.Pair.Source);
+        foreach (var m in offer) m.Pair.Source = m.ResolvedSource;
+        // Saved immediately: the point is that the generated script and the
+        // scheduled tasks start using the new locations, not just the list on
+        // screen.
+        if (!await SaveAllAsync())
+        {
+            // Validation refused (a source now overlapping the destination, say).
+            // SaveAllAsync has explained why, but the edits are sitting unsaved
+            // in a list the user never touched, and the prompt would return at
+            // every launch to repeat a save that cannot succeed. Put the paths
+            // back and record the answer, so the config matches disk and the
+            // loop ends; the message says what to do instead.
+            for (int i = 0; i < offer.Count; i++) offer[i].Pair.Source = previous[i];
+            _dirty = false;
+            RefreshScriptStatus(announce: false);
+            foreach (var m in offer) live.Add(m.Key);
+            _prefs.DeclinedMoves = string.Join(";", live);
+            AppPrefsStore.Save(_prefs);
+            await ShowMessageAsync("GUARD",
+                "GUARD has left the folder list as it was. Edit the folder yourself once the problem"
+                + " above is resolved, and it will start backing up the new location.");
+            return;
+        }
+        if (_destDriftNote != null) await ShowMessageAsync("GUARD", _destDriftNote);
+        if (_taskError != null)
+            await ShowMessageAsync("GUARD",
+                "Folders updated, but registering a scheduled task reported a problem:\n\n" + _taskError);
+    }
+
+    // Whether some OTHER included row already backs up the place this folder has
+    // moved to. Compared expanded, so %USERPROFILE%-relative and literal
+    // spellings of the same folder count as the same folder.
+    private bool AnotherRowCovers(KnownFolders.Moved m)
+    {
+        string target = Expand(m.ResolvedSource).TrimEnd('\\', '/');
+        foreach (var f in _cfg.Folders)
+        {
+            if (!f.Include || ReferenceEquals(f, m.Pair)) continue;
+            if (Expand(f.Source).TrimEnd('\\', '/')
+                .Equals(target, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
     // Settings store the daily run time as an "HH:mm" string; the TimePicker
     // works in TimeSpan. These convert between the two, falling back to the
     // existing value if the picker has no selection.
@@ -456,6 +792,16 @@ public sealed partial class MainWindow : Window
             // change notifications refresh the bound row in place and flow into
             // dirty tracking via OnFolderItemChanged, and the row keeps its
             // position and focus memory.
+            //
+            // Choosing a different path PINS the row: the user has named a
+            // location, so GUARD must stop tracking the Windows folder and stop
+            // offering to move it. Only on an actual change, so opening Edit and
+            // pressing OK without touching anything leaves tracking alone.
+            if (!string.Equals(f.Source, dlg.SourcePath, StringComparison.OrdinalIgnoreCase))
+            {
+                f.KnownFolder = "";
+                f.Pinned = true;
+            }
             f.Source = dlg.SourcePath;
             f.SubFolder = dlg.SubFolder;
         }
@@ -550,8 +896,11 @@ public sealed partial class MainWindow : Window
             {
                 // No save ran, so any drift note from an earlier save is stale.
                 _destDriftNote = null;
+                var snapshot = SnapshotConfig();
                 _missingSources = await System.Threading.Tasks.Task.Run(
-                    () => SaveValidation.UnreachableSources(_cfg.Folders));
+                    () => SaveValidation.UnreachableSources(snapshot.Folders));
+                SetSourceHealth(await System.Threading.Tasks.Task.Run(
+                    () => SaveValidation.CheckSources(snapshot, SaveValidation.SourceCheckCap)));
                 _percentPaths = SaveValidation.UnresolvedPercentPaths(_cfg.Dest, _cfg.Folders);
             }
             string script = GuardPaths.ScriptPath;
@@ -572,6 +921,10 @@ public sealed partial class MainWindow : Window
             if (_missingSources.Count > 0)
                 AppendOut(TxtOutput, "WARNING: " + DescribeMissingSources(_missingSources).Replace("\n", "\r\n  ")
                     + "\r\nThey will be skipped if still unreachable.\r\n");
+            if (VanishedToReport.Count > 0)
+                AppendOut(TxtOutput, "WARNING: " + DescribeVanished(VanishedToReport).Replace("\n", "\r\n  ") + "\r\n");
+            if (_sourceHealth.Unreadable.Count > 0)
+                AppendOut(TxtOutput, "NOTE: " + DescribeUnreadable(_sourceHealth.Unreadable).Replace("\n", "\r\n  ") + "\r\n");
             if (_percentPaths.Count > 0)
                 AppendOut(TxtOutput, "WARNING: " + DescribePercentPaths(_percentPaths).Replace("\n", "\r\n  ") + "\r\n");
             _progTotal = 0;
@@ -634,7 +987,7 @@ public sealed partial class MainWindow : Window
                     // non-ASCII path characters in the output box.
                     StandardOutputEncoding = System.Text.Encoding.UTF8,
                     StandardErrorEncoding = System.Text.Encoding.UTF8,
-                    WorkingDirectory = GuardPaths.BaseDir
+                    WorkingDirectory = GuardPaths.DataDir
                 };
                 psi.EnvironmentVariables["GUARD_UI"] = "1";
                 using var proc = new Process { StartInfo = psi };
@@ -831,7 +1184,7 @@ public sealed partial class MainWindow : Window
 
     // Builds the human-readable end-of-run summary from the accumulated robocopy
     // tables, or null when nothing parsed (parse failure, zero folders, or a
-    // localized table the parser did not recognise).
+    // localized table the parser did not recognize).
     private string? BuildRunSummary()
     {
         var p = _summaryParser;

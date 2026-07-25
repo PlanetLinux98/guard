@@ -11,6 +11,29 @@ public static class ScheduledTasks
 {
     public sealed record ApplyResult(string? Error, string? NextRun);
 
+    // A PowerShell helper that renders a DateTime as "yyyy-MM-dd HH:mm" without
+    // a format string. The bug this fixes: .ToString('yyyy-MM-dd HH:mm') follows
+    // the OS locale's CALENDAR, so a Thai or Saudi Windows reports a Buddhist or
+    // Hijri year (verified: th-TH gives 2569-07-25, ar-SA gives 1448-02-11).
+    // Every caller wraps the query in catch {}, so a bad value here surfaces as
+    // a wrong date rather than an error.
+    //
+    // DateTime.Year/Month/Day are Gregorian whatever the culture, and
+    // Int32.ToString('00') is only padding, so composing from the parts is
+    // correct everywhere. Passing InvariantCulture would work equally well
+    // (including under Constrained Language Mode, which restricts method
+    // invocation on non-core types, not static property access); this spelling
+    // is simply the one with nothing culture-shaped left in it.
+    private const string PsFormatDate =
+        "function GuardDate($d){ if ($null -eq $d) { return '' }; " +
+        "$d.Year.ToString('0000')+'-'+$d.Month.ToString('00')+'-'+$d.Day.ToString('00')+' '+" +
+        "$d.Hour.ToString('00')+':'+$d.Minute.ToString('00') };";
+
+    // The next-run query for one task, as a PowerShell expression yielding the
+    // formatted string (empty when the task is absent or has no next run).
+    private static string PsNextRun(string taskName) =>
+        "(GuardDate (Get-ScheduledTaskInfo -TaskName '" + taskName + "' -ErrorAction Stop).NextRunTime)";
+
     // Applies the whole scheduled-task state for a save in ONE PowerShell call:
     // register-or-remove the timed task, drop the legacy pre-0.3 name,
     // register-or-remove the on-connect task, query the next run. Batching
@@ -87,8 +110,8 @@ public static class ScheduledTasks
         {
             sb.Append("Unregister-ScheduledTask -TaskName '" + GuardPaths.OnConnectTaskName + "' -Confirm:$false -ErrorAction SilentlyContinue;");
         }
-        sb.Append("try { Write-Output ('NEXT ' + (Get-ScheduledTaskInfo -TaskName '" + GuardPaths.FileTaskName +
-                  "' -ErrorAction Stop).NextRunTime.ToString('yyyy-MM-dd HH:mm')) } catch { }");
+        sb.Append(PsFormatDate)
+          .Append("try { Write-Output ('NEXT ' + " + PsNextRun(GuardPaths.FileTaskName) + ") } catch { }");
 
         string output;
         try { output = ProcessRunner.RunPowerShellCapture(sb.ToString()); }
@@ -116,6 +139,99 @@ public static class ScheduledTasks
         string? connErr = connSb.Length > 0 ? "On-connect task: " + connSb : null;
         string? err = fileErr != null && connErr != null ? fileErr + "\n\n" + connErr : fileErr ?? connErr;
         return new ApplyResult(err, next);
+    }
+
+    // Remaining names the backup tasks that survived the attempt, so the caller
+    // can say which ones rather than claiming a clean sweep it did not verify.
+    public sealed record RemoveResult(List<string> Remaining, bool ImageTaskRemains, string? Error);
+
+    // Unregisters every task GUARD registers, whatever the current settings say.
+    //
+    // This exists because the tasks live in WINDOWS, not in GUARD's folder: a
+    // portable app that is deleted (or a winget install that is uninstalled)
+    // takes its exe and its scripts away but leaves the registrations behind,
+    // and the on-connect task then wakes every 15 minutes forever to run
+    // something that is no longer there. Turning the schedules off and saving
+    // does the same job, but only while GUARD still exists to do it - so this
+    // is the deliberate "I am about to remove GUARD" exit.
+    //
+    // The two backup tasks plus the pre-0.3 name come off non-elevated. The
+    // system image task is a SYSTEM / highest-privileges registration, so
+    // removing it needs Administrator; whether one is still registered is
+    // reported back rather than assumed, so a user who never scheduled an image
+    // is never shown a UAC prompt.
+    public static RemoveResult RemoveAll()
+    {
+        string[] backupTasks =
+            { GuardPaths.FileTaskName, GuardPaths.LegacyFileTaskName, GuardPaths.OnConnectTaskName };
+
+        var sb = new StringBuilder();
+        foreach (var name in backupTasks)
+            sb.Append("Unregister-ScheduledTask -TaskName '" + name + "' -Confirm:$false -ErrorAction SilentlyContinue;");
+
+        // Verified, not assumed. Every Unregister above is SilentlyContinue, and
+        // RunPowerShellCapture returns stdout without inspecting the exit code,
+        // so nothing so far can tell success from failure - and there are real
+        // ways to fail: a task registered by another account, a disabled Task
+        // Scheduler service, PowerShell blocked by policy, the capture timeout
+        // killing the process. Telling the user their tasks are gone when they
+        // are not is the exact failure this whole feature exists to prevent.
+        sb.Append("foreach ($n in @(");
+        for (int i = 0; i < backupTasks.Length; i++)
+            sb.Append(i > 0 ? ",'" : "'").Append(backupTasks[i]).Append('\'');
+        sb.Append(")) { try { Get-ScheduledTask -TaskName $n -ErrorAction Stop | Out-Null;")
+          .Append(" Write-Output ('LEFT ' + $n) } catch { } };");
+        // Positive control. A missing task and a broken task subsystem throw the
+        // SAME exception from Get-ScheduledTask, so the loop above going quiet
+        // proves nothing on its own: a stopped Task Scheduler service or an
+        // unloadable ScheduledTasks module would look exactly like a clean
+        // sweep, and the user would be told their tasks were removed while they
+        // were still registered. Enumerating ANY task proves the query works.
+        sb.Append("try { if (@(Get-ScheduledTask -ErrorAction Stop).Count -gt 0)")
+          .Append(" { Write-Output 'QUERYOK' } } catch { };");
+        sb.Append("try { Get-ScheduledTask -TaskName '" + GuardPaths.SystemImageTaskName +
+                  "' -ErrorAction Stop | Out-Null; Write-Output 'IMAGE 1' } catch { Write-Output 'IMAGE 0' };");
+        // Sentinel: "ran and found nothing left" and "never really ran" are both
+        // silent otherwise, and they call for opposite responses.
+        sb.Append("Write-Output 'DONE'");
+
+        string output;
+        try { output = ProcessRunner.RunPowerShellCapture(sb.ToString()); }
+        catch (Exception ex) { return new RemoveResult(new List<string>(), false, ex.Message); }
+
+        if (!output.Contains("DONE", StringComparison.Ordinal))
+            return new RemoveResult(new List<string>(), false,
+                "Windows did not confirm the change, so the tasks may still be registered.");
+        if (!output.Contains("QUERYOK", StringComparison.Ordinal))
+            return new RemoveResult(new List<string>(), false,
+                "Windows would not report on its scheduled tasks, so GUARD cannot confirm they were"
+                + " removed. Check Task Scheduler for tasks whose names begin with \"GUARD\".");
+
+        var remaining = new List<string>();
+        foreach (var raw in output.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("LEFT ", StringComparison.Ordinal)) remaining.Add(line.Substring(5));
+        }
+        return new RemoveResult(remaining, output.Contains("IMAGE 1", StringComparison.Ordinal), null);
+    }
+
+    // The elevated half of RemoveAll; separate so the caller can confirm before
+    // raising the UAC prompt. Returns null on success, else the reason.
+    public static string? RemoveSystemImageTask()
+    {
+        // Same verify-don't-assume reasoning as RemoveAll: the Unregister is
+        // SilentlyContinue, so without the read-back this could only ever report
+        // success. Exit 3 means the task survived.
+        string script = "Unregister-ScheduledTask -TaskName '" + GuardPaths.SystemImageTaskName +
+                        "' -Confirm:$false -ErrorAction SilentlyContinue; " +
+                        "try { Get-ScheduledTask -TaskName '" + GuardPaths.SystemImageTaskName +
+                        "' -ErrorAction Stop | Out-Null; exit 3 } catch { exit 0 }";
+        int code = ProcessRunner.RunPowerShellElevatedCode(script, out var err);
+        if (code == 0) return null;
+        if (code == 3) return "The system image task is still registered.";
+        if (code == ProcessRunner.ElevationDeclined) return "The system image task " + err;
+        return "The system image task could not be removed" + (err != null ? " - " + err : ".");
     }
 
     // Registers (or removes) the "GUARD System Image" task. Unlike the backup
@@ -259,10 +375,9 @@ public static class ScheduledTasks
     public static StartupState QueryStartupState()
     {
         var sb = new StringBuilder();
-        sb.Append("try { Write-Output ('NEXT ' + (Get-ScheduledTaskInfo -TaskName '" + GuardPaths.FileTaskName +
-                  "' -ErrorAction Stop).NextRunTime.ToString('yyyy-MM-dd HH:mm')) } catch { };");
-        sb.Append("try { Write-Output ('NEXTIMG ' + (Get-ScheduledTaskInfo -TaskName '" + GuardPaths.SystemImageTaskName +
-                  "' -ErrorAction Stop).NextRunTime.ToString('yyyy-MM-dd HH:mm')) } catch { };");
+        sb.Append(PsFormatDate);
+        sb.Append("try { Write-Output ('NEXT ' + " + PsNextRun(GuardPaths.FileTaskName) + ") } catch { };");
+        sb.Append("try { Write-Output ('NEXTIMG ' + " + PsNextRun(GuardPaths.SystemImageTaskName) + ") } catch { };");
         sb.Append("foreach ($n in @('" + GuardPaths.FileTaskName + "','" + GuardPaths.OnConnectTaskName +
                   "','" + GuardPaths.SystemImageTaskName + "')) {")
           .Append("try { $t = Get-ScheduledTask -TaskName $n -ErrorAction Stop; $a = $t.Actions[0];")
@@ -310,8 +425,7 @@ public static class ScheduledTasks
     {
         try
         {
-            string ps = "try { (Get-ScheduledTaskInfo -TaskName '" + name +
-                "' -ErrorAction Stop).NextRunTime.ToString('yyyy-MM-dd HH:mm') } catch { '' }";
+            string ps = PsFormatDate + "try { " + PsNextRun(name) + " } catch { '' }";
             string outp = ProcessRunner.RunPowerShellCapture(ps).Trim();
             return string.IsNullOrEmpty(outp) ? null : outp;
         }

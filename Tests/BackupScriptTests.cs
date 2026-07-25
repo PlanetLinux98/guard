@@ -22,8 +22,13 @@ public class BackupScriptTests
         string additive = BackupScript.Generate(cfg);
         Assert.Contains("/E ", additive);
         Assert.DoesNotContain("/MIR", additive);
-        // The junction guard is not optional in either mode.
-        Assert.Contains("/XJ", additive);
+        // The junction guard is not optional in either mode, and it must stay
+        // scoped to DIRECTORY junctions: plain /XJ also excludes file-level
+        // reparse points, which is what a OneDrive Files On-Demand placeholder
+        // is, so it could silently drop every non-resident file from the backup.
+        Assert.Contains("/XJD", additive);
+        Assert.DoesNotContain("/XJ ", additive);
+        Assert.DoesNotContain("/XJF", additive);
     }
 
     [Fact]

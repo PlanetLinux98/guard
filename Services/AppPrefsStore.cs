@@ -58,6 +58,8 @@ public static class AppPrefsStore
                 case "App.StartupPage": p.StartupPage = val; break;
                 case "Notifications.OnFailure": p.NotifyFailure = val == "1"; break;
                 case "Notifications.OnSuccess": p.NotifySuccess = val == "1"; break;
+                case "App.DeclinedMoves": p.DeclinedMoves = val; break;
+                case "App.AcknowledgedEmpty": p.AcknowledgedEmpty = val; break;
             }
         }
         return p;
@@ -76,6 +78,8 @@ public static class AppPrefsStore
         sb.AppendLine("[App]");
         sb.AppendLine("Theme=" + p.Theme);
         sb.AppendLine("StartupPage=" + p.StartupPage);
+        sb.AppendLine("DeclinedMoves=" + p.DeclinedMoves);
+        sb.AppendLine("AcknowledgedEmpty=" + p.AcknowledgedEmpty);
         sb.AppendLine();
         sb.AppendLine("[Notifications]");
         sb.AppendLine("OnFailure=" + (p.NotifyFailure ? "1" : "0"));

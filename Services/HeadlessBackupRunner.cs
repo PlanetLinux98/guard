@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using GuardWui3.Models;
@@ -47,6 +48,20 @@ public static class HeadlessBackupRunner
             return 2;
         }
 
+        // Measured BEFORE the run, reported after it.
+        //
+        // This has to happen first because Mirror mode makes the backup match
+        // the source: a run whose source has gone empty PURGES the destination,
+        // so a check made afterwards finds both sides empty and can never fire.
+        // That killed this warning in precisely the configuration where it
+        // matters most - the nightly run that silently deleted the only copy.
+        //
+        // Cost is small enough to pay on the every-15-minutes on-connect fire
+        // too: each source walk stops at its first file, and an unreachable
+        // destination makes CheckSources return immediately, which is the same
+        // one probe the script's own gate already does.
+        var preRun = CheckBeforeRun(prefs);
+
         int code;
         try
         {
@@ -54,7 +69,7 @@ public static class HeadlessBackupRunner
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WorkingDirectory = GuardPaths.BaseDir,
+                WorkingDirectory = GuardPaths.DataDir,
             };
             psi.ArgumentList.Add("/c");
             psi.ArgumentList.Add(GuardPaths.ScriptPath);
@@ -82,9 +97,29 @@ public static class HeadlessBackupRunner
             code = 2;
         }
 
+        // A clean run whose sources have gone empty is the one outcome that
+        // looks healthy and is not: robocopy copies an empty folder without
+        // complaint, so the log says FINISHED OK and nothing else would ever
+        // mention it. Reported under the FAILURE preference rather than the
+        // success one - success toasts are off by default, which is exactly how
+        // a backup holding none of the user's documents would stay invisible.
+        //
+        // Only when the DESTINATION still holds files from those folders (see
+        // SaveValidation.CheckSources): a folder that was always empty, which on
+        // a stock Windows profile means Contacts and often Music, must never
+        // produce a nightly notification.
+        string? vanishedNote = code == 0 ? DescribeVanished(preRun) : null;
+        if (vanishedNote != null && prefs.NotifyFailure)
+            ToastNotifier.Show("GUARD backup", vanishedNote);
+
         switch (code)
         {
-            case 0 when prefs.NotifySuccess:
+            // Suppressed when the warning above already fired: two toasts for
+            // one run is noise, and "finished successfully" directly after
+            // "files have gone missing" reads as a contradiction. Not an early
+            // return, which would also have swallowed the success toast for
+            // anyone who wanted successes but not failures.
+            case 0 when prefs.NotifySuccess && vanishedNote == null:
                 ToastNotifier.Show("GUARD backup", scheduled
                     ? "The scheduled backup finished successfully."
                     : "Today's backup finished successfully (destination connected).");
@@ -102,5 +137,57 @@ public static class HeadlessBackupRunner
                 break;
         }
         return code;
+    }
+
+    // What the sources looked like before the run. MirrorPurges records whether
+    // this run was going to delete the backup's copies to match an empty source,
+    // which is only true for Mirror WITHOUT versioning - a versioned run mirrors
+    // into a fresh dated folder, so the previous days' copies survive until the
+    // prune and the alarming wording would be false.
+    private sealed record PreRunHealth(List<SaveValidation.VanishedSource> Vanished, bool MirrorPurges);
+
+    // Re-reads the saved configuration rather than taking it from the run: the
+    // script is standalone and reports no per-folder counts, so the sources are
+    // probed directly. Null when there is nothing to say. Best effort - a
+    // failure here must never turn a finished backup into a reported problem.
+    private static PreRunHealth? CheckBeforeRun(AppPrefs prefs)
+    {
+        try
+        {
+            var cfg = SettingsStore.Load();
+            // Reachability first. Without a destination there is no history to
+            // compare against, so the result is provably empty - and walking
+            // every source tree to establish that would cost a full sweep on
+            // each of the on-connect task's 96 fires a day, with the backup
+            // drive unplugged, on battery.
+            if (!SaveValidation.DestinationReachable(cfg)) return null;
+            var health = SaveValidation.CheckSources(cfg, SaveValidation.SourceCheckCap);
+            // Honours the same acknowledgements the window does, or a folder the
+            // user has already said is deliberately empty would still toast
+            // every night - the exact nagging the acknowledgement exists to end.
+            var report = SaveValidation.Unacknowledged(health.Vanished, prefs.AcknowledgedEmpty);
+            if (report.Count == 0) return null;
+            return new PreRunHealth(report, cfg.Mode == "Mirror" && !cfg.Versioned);
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Log("scheduled-run", "source health check failed", ex);
+            return null;
+        }
+    }
+
+    private static string? DescribeVanished(PreRunHealth? pre)
+    {
+        if (pre is null || pre.Vanished.Count == 0) return null;
+        string what = pre.Vanished.Count == 1
+            ? "the folder " + Environment.ExpandEnvironmentVariables(pre.Vanished[0].Source)
+            : pre.Vanished.Count + " of the folders being backed up";
+        // Past tense for the purge: by the time this is spoken the run has
+        // already matched the backup to the empty source.
+        return pre.MirrorPurges
+            ? "The backup finished, but " + what + " had nothing to copy, so mirroring has now removed"
+              + " its backup copies as well. Open GUARD to check."
+            : "The backup finished, but " + what + " had nothing to copy while the backup still holds"
+              + " files from it. Open GUARD to check.";
     }
 }

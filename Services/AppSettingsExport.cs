@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -242,7 +243,7 @@ public static class AppSettingsExport
     {
         var manifest = new AppSettingsManifest
         {
-            Exported = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+            Exported = DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
             Machine = Environment.MachineName,
             UserProfile = Environment.UserName,
             RestoreNote = "To restore: in GUARD, App Management tab, press Import List and pick the " +
@@ -262,7 +263,7 @@ public static class AppSettingsExport
         sb.AppendLine("GUARD app settings backup");
         sb.AppendLine("=========================");
         sb.AppendLine();
-        sb.AppendLine("Created " + DateTime.Now.ToString("yyyy-MM-dd HH:mm") +
+        sb.AppendLine("Created " + DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) +
                       " on " + Environment.MachineName +
                       " for Windows user " + Environment.UserName + ".");
         sb.AppendLine();

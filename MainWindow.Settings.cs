@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 using GuardWui3.Models;
 using GuardWui3.Services;
@@ -108,8 +109,16 @@ public sealed partial class MainWindow
     // greys out while auto-check is off, like the schedule sections' dependents.
     private void UpdateAutoInstallEnabledState()
     {
-        if (ChkUpdateAutoInstall != null)
-            ChkUpdateAutoInstall.IsEnabled = ChkUpdateAutoCheck.IsChecked == true;
+        if (ChkUpdateAutoInstall == null) return;
+        // Also off for a winget install, where GUARD never self-installs (see
+        // ShowUpdateDialogAsync). A checkbox that ticks, persists and does
+        // nothing is the same silent-lie bug class this whole branch is about,
+        // so it is disabled and says why rather than quietly ignored.
+        bool winget = GuardPaths.IsWingetManaged;
+        ChkUpdateAutoInstall.IsEnabled = !winget && ChkUpdateAutoCheck.IsChecked == true;
+        ToolTipService.SetToolTip(ChkUpdateAutoInstall, winget
+            ? "Not available for a winget install: update with \"winget upgrade PlanetLinux98.GUARD\""
+            : "When a check finds a new version, download it in the background and apply it after you close GUARD, instead of asking first");
     }
 
     // Read by the headless helper (HeadlessBackupRunner) at its next run; no
@@ -142,6 +151,129 @@ public sealed partial class MainWindow
     }
 
     // =====================================================================
+    //  SCHEDULED TASK REMOVAL
+    // =====================================================================
+
+    // The deliberate "I am about to remove GUARD" exit; see ScheduledTasks.RemoveAll
+    // for why it has to exist separately from turning the schedules off.
+    // Reentrancy is held off with a flag rather than by disabling the button:
+    // the confirm dialog hands focus back to it, and disabling a focused control
+    // lets WinUI throw focus at an arbitrary neighbour, which a screen reader
+    // announces over whatever it was saying (see BeginRunBusy for the same
+    // problem on the run buttons).
+    private bool _removingTasks;
+
+    private async void OnRemoveScheduledTasks(object sender, RoutedEventArgs e)
+    {
+        if (_removingTasks) return;
+        if (!await ShowConfirmAsync("GUARD",
+            "Remove GUARD's scheduled tasks from Windows?\n\n"
+            + "This unregisters the scheduled backup, the on-connect check, and the scheduled system"
+            + " image, and switches those schedules off in your settings. Your generated scripts and"
+            + " your existing backups are not touched, and you can switch the schedules back on at any"
+            + " time with Save Settings.\n\n"
+            + "Do this before deleting or uninstalling GUARD: the tasks are registered with Windows, so"
+            + " they would otherwise keep firing at an app that is no longer there.",
+            "Remove", "Cancel")) return;
+
+        _removingTasks = true;
+        try
+        {
+            // Spoken, not just shown: the batched PowerShell call takes seconds
+            // and the button stays enabled, so without this there is no cue that
+            // anything is happening.
+            AnnounceNotification("Removing GUARD's scheduled tasks...");
+            var result = await System.Threading.Tasks.Task.Run(ScheduledTasks.RemoveAll);
+            if (result.Error != null)
+            {
+                await ShowMessageAsync("GUARD", "Could not remove the scheduled tasks:\n\n" + result.Error
+                    + "\n\nGUARD's settings have been left as they were.");
+                return;
+            }
+            if (result.Remaining.Count > 0)
+            {
+                // Settings deliberately NOT changed: switching the schedules off
+                // here would stop GUARD ever re-registering or healing a task
+                // that is demonstrably still in Windows.
+                await ShowMessageAsync("GUARD",
+                    "These scheduled tasks could not be removed:\n\n" + string.Join("\n", result.Remaining)
+                    + "\n\nThey may belong to another user account, or Windows may have refused the change."
+                    + " GUARD's settings have been left as they were, so you can try again.");
+                return;
+            }
+
+            // Only asked when one is actually registered, so nobody who never
+            // scheduled an image has to answer a UAC prompt.
+            string? imageError = null;
+            bool imageRemoved = false;
+            if (result.ImageTaskRemains)
+            {
+                if (await ShowConfirmAsync("GUARD",
+                    "The backup tasks are gone. A scheduled system image is also registered.\n\n"
+                    + "It runs as the system account, so removing it needs Administrator approval.\n\n"
+                    + "Remove it as well?", "Remove", "Leave it"))
+                {
+                    imageError = await System.Threading.Tasks.Task.Run(ScheduledTasks.RemoveSystemImageTask);
+                    imageRemoved = imageError == null;
+                }
+            }
+
+            // The image schedule is only switched off when its task is actually
+            // gone. Left on when the removal failed or was declined, so GUARD and
+            // Windows still agree about a task that is still going to fire.
+            ClearScheduleStateAfterRemoval(alsoImage: imageRemoved || !result.ImageTaskRemains);
+
+            await ShowMessageAsync("GUARD", imageError != null
+                ? "The backup tasks were removed. " + imageError
+                : "GUARD's scheduled tasks have been removed from Windows.");
+        }
+        finally { _removingTasks = false; }
+    }
+
+    // Bring the saved settings and the on-screen controls in line with what was
+    // just unregistered, so nothing offers to "re-register" a task the user
+    // deliberately removed.
+    //
+    // The on-disk settings are re-read and flipped rather than written from the
+    // live config: _cfg carries the File Backup page's two-way-bound folder and
+    // exclusion edits, so saving it here would silently commit changes the user
+    // never pressed Save for (the reason SettingsStore's saves are section
+    // scoped). The dirty flags are restored, not cleared, for the same reason -
+    // unticking the boxes below sets them, but any edit that was already
+    // pending is still pending.
+    private void ClearScheduleStateAfterRemoval(bool alsoImage)
+    {
+        bool wasDirty = _dirty, wasImageDirty = _imageDirty;
+        try
+        {
+            var onDisk = SettingsStore.Load();
+            onDisk.ScheduleEnabled = false;
+            onDisk.TriggerOnConnect = false;
+            if (alsoImage) onDisk.ImageScheduleEnabled = false;
+            SettingsStore.Save(onDisk);
+        }
+        catch (Exception ex) { DebugLog.Log("tasks", "could not persist the schedule-off state", ex); }
+
+        ChkSchedule.IsChecked = false;
+        ChkOnConnect.IsChecked = false;
+        _cfg.ScheduleEnabled = false;
+        _cfg.TriggerOnConnect = false;
+        LblNextRun.Text = "Next run: (no scheduled task)";
+        if (alsoImage)
+        {
+            ChkImageSchedule.IsChecked = false;
+            _cfg.ImageScheduleEnabled = false;
+            _imageTaskStale = false;
+            _lastImageScheduleSig = ImageScheduleSignature(_cfg);
+            LblImageNextRun.Text = "Next run: (no scheduled image)";
+        }
+        _dirty = wasDirty;
+        _imageDirty = wasImageDirty;
+        RefreshScriptStatus(announce: false);
+        RefreshImageStatus(announce: false);
+    }
+
+    // =====================================================================
     //  UPDATE CHECKS
     // =====================================================================
 
@@ -158,7 +290,7 @@ public sealed partial class MainWindow
         // never race the deletion.
         await System.Threading.Tasks.Task.Run(Updater.CleanupStage);
         if (!_prefs.UpdateAutoCheck) return;
-        string today = DateTime.Now.ToString("yyyy-MM-dd");
+        string today = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         if (_prefs.LastUpdateCheck == today) return;
         var rel = await Updater.FetchLatestAsync();
         // Offline or API trouble: don't stamp the day, so the next launch retries.
@@ -169,7 +301,10 @@ public sealed partial class MainWindow
         if (rel.TagName == _prefs.SkippedVersion) return;
         _availableRelease = rel;
 
-        if (_prefs.UpdateAutoInstall && Updater.BaseDirWritable())
+        // Never stage a silent self-install over a winget-managed folder; the
+        // InfoBar below still announces the release, and the dialog explains the
+        // winget route.
+        if (_prefs.UpdateAutoInstall && !GuardPaths.IsWingetManaged && Updater.BaseDirWritable())
         {
             try
             {
@@ -227,7 +362,7 @@ public sealed partial class MainWindow
                     "Could not check for updates. Check your internet connection and try again.");
                 return;
             }
-            _prefs.LastUpdateCheck = DateTime.Now.ToString("yyyy-MM-dd");
+            _prefs.LastUpdateCheck = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             AppPrefsStore.Save(_prefs);
             if (!Updater.IsNewer(rel.TagName))
             {
@@ -247,6 +382,18 @@ public sealed partial class MainWindow
 
     private async System.Threading.Tasks.Task ShowUpdateDialogAsync(GitHubRelease rel)
     {
+        // A winget install belongs to winget. Self-updating would extract over
+        // the package folder behind winget's back, leaving its recorded version
+        // stale - and the next `winget upgrade` would then delete the folder and
+        // reinstall anyway. Point at the supported route instead.
+        if (GuardPaths.IsWingetManaged)
+        {
+            await ShowMessageAsync("GUARD",
+                "GUARD " + rel.TagName + " is available.\n\nThis copy was installed with winget, so"
+                + " update it the same way:\n\n    winget upgrade PlanetLinux98.GUARD\n\nYour settings"
+                + " are kept outside the install folder, so they survive the upgrade.");
+            return;
+        }
         // The apply script rewrites the install folder, so self-update needs it
         // writable; when it isn't, be honest and point at the Releases page.
         if (!Updater.BaseDirWritable())

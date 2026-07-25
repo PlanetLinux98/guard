@@ -302,7 +302,7 @@ public sealed partial class MainWindow : Window
             // inside is always app-list.json (no numbered names). ----
             var file = new AppListFile
             {
-                Exported = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                Exported = DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
                 Machine = Environment.MachineName
             };
             var items = new List<AppListItem>();
@@ -404,7 +404,7 @@ public sealed partial class MainWindow : Window
     // each export's list and settings stay paired and repeats never collide.
     private static string MakeUniqueExportDir(string dest)
     {
-        string baseName = "app-export-" + DateTime.Now.ToString("yyyy-MM-dd_HHmm");
+        string baseName = "app-export-" + DateTime.Now.ToString("yyyy-MM-dd_HHmm", CultureInfo.InvariantCulture);
         string dir = Path.Combine(dest, baseName);
         for (int n = 2; Directory.Exists(dir); n++) dir = Path.Combine(dest, baseName + "-" + n);
         return dir;
@@ -939,7 +939,7 @@ public sealed partial class MainWindow : Window
     // a "(n/m) <Found> <Name> [<Id>]" header (the bracketed id and the (n/m)
     // counter are locale-neutral structure; the verb and result lines are not).
     // A block counts as failed when it carries a failure marker and no success
-    // marker; anything unrecognised is left uncounted, so a localized winget
+    // marker; anything unrecognized is left uncounted, so a localized winget
     // just yields an empty list and the caller uses winget's exit code instead.
     private static readonly System.Text.RegularExpressions.Regex UpdateHeaderRx =
         new(@"^\(\d+/\d+\)\s+\S+\s+(.+?)\s+\[[^\]]+\]",
