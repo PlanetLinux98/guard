@@ -102,6 +102,15 @@ public sealed partial class MainWindow : Window
     // output box instead so the run is not interrupted by a modal.
     private List<string> _missingSources = new();
 
+    // Sources that have stopped holding anything to copy while the backup still
+    // holds files from them, plus sources that could not be read at all (see
+    // SaveValidation.CheckSources). Neither is a condition the script reports at
+    // run time: robocopy copies an empty folder without complaint, so nothing
+    // else in GUARD would ever mention it. Refreshed by a save, by a run, and by
+    // a background probe at launch; RefreshScriptStatus folds the first into the
+    // resting status line.
+    private SaveValidation.SourceHealth _sourceHealth = SaveValidation.SourceHealth.None;
+
     // Destination/source paths from the last save whose % does not resolve as
     // an environment variable; cmd would silently mangle them in the generated
     // script. Advisory, surfaced the same two ways as _missingSources.
@@ -301,7 +310,14 @@ public sealed partial class MainWindow : Window
             StartSpaceStatusCheck(announce: false);
 
         // Settings page (guard-prefs.ini): seed its controls and apply the theme.
+        // BEFORE the source-health probe below, which reads _prefs (the
+        // acknowledgement list) and can write it back.
         InitializeSettingsPage();
+
+        // Only once something is saved: the check compares each source against
+        // what the backup already holds, so before the first save there is
+        // nothing to compare against.
+        if (File.Exists(GuardPaths.ScriptPath)) StartSourceHealthCheck();
 
         AppWindow.Closing += OnAppWindowClosing;
         // A staged update (Install and Relaunch, or the install-on-exit mode) is
@@ -313,13 +329,17 @@ public sealed partial class MainWindow : Window
         // constructor: selecting a nav page kicks that page's lazy work, and
         // nothing reachable from here may touch the not-yet-live visual tree
         // (the XamlRoot fail-fast; see UpdateSaveEnabled's guard).
-        DispatcherQueue.TryEnqueue(() =>
+        DispatcherQueue.TryEnqueue(async () =>
         {
             ApplyStartupPage();
             // Land keyboard focus on the selected page item in the nav, not the
             // bare pane: NVDA otherwise announces only "GUARD, pane" and the
             // user must Tab once before the nav is reachable.
             (Nav.SelectedItem as Control)?.Focus(FocusState.Programmatic);
+            // Awaited, and ahead of the update check: only one ContentDialog may
+            // be open at a time, and "your documents may not be in the backup"
+            // outranks "a new version is available".
+            await CheckMovedFoldersAsync();
             _ = AutoUpdateCheckAsync();
         });
     }
@@ -599,8 +619,15 @@ public sealed partial class MainWindow : Window
             var last = BackupHealth.ReadLog(GuardPaths.LogPath);
             if (last is null)
             {
-                _fileStatusBrush = new SolidColorBrush(StatusGreen);
-                _fileStatusText = "Backup settings saved. No backup has run yet.";
+                // Normally nothing to add: the vanished check needs a backup to
+                // compare against, so before the first run it finds nothing. Not
+                // guaranteed though - a destination carrying files from an
+                // earlier install, with no log beside it, reaches here with
+                // something to say.
+                _fileStatusBrush = new SolidColorBrush(
+                    VanishedToReport.Count > 0 ? StatusAmber : StatusGreen);
+                _fileStatusText = "Backup settings saved. No backup has run yet."
+                    + VanishedStatusSuffix();
             }
             else
             {
@@ -624,6 +651,25 @@ public sealed partial class MainWindow : Window
                     amber = false;
                     text = "Last backup succeeded " + when + ".";
                 }
+                // A wiped destination outranks everything else here: the log
+                // saying a backup succeeded lives next to the exe, so it keeps
+                // reporting that run in green long after the drive it wrote to
+                // was reformatted or emptied. Only said once a run HAS happened,
+                // since an empty destination before the first one is normal.
+                if (_sourceHealth.DestinationEmpty)
+                {
+                    _fileStatusBrush = new SolidColorBrush(StatusAmber);
+                    _fileStatusText = "Backup destination is empty - the backup may have been deleted."
+                        + " Run a backup to rebuild it.";
+                    UpdateSaveEnabled();
+                    CommitPageStatus(0, announce);
+                    return;
+                }
+                // A vanished source never makes the run itself fail, so a healthy
+                // "succeeded" line is exactly where it has to be said, or the one
+                // state that looks fine is the one that hides the problem.
+                if (VanishedToReport.Count > 0) amber = true;
+                text += VanishedStatusSuffix();
                 _fileStatusBrush = new SolidColorBrush(amber ? StatusAmber : StatusGreen);
                 _fileStatusText = text;
             }
@@ -631,6 +677,26 @@ public sealed partial class MainWindow : Window
         UpdateSaveEnabled();
         CommitPageStatus(0, announce);
     }
+
+    // The status-line tail for sources that have gone empty while the backup
+    // still holds their files, or "" when there are none. Terse like the rest of
+    // the bar; Mirror mode names the consequence, since there the next run
+    // deletes the copies rather than merely failing to add to them.
+    private string VanishedStatusSuffix()
+    {
+        int n = VanishedToReport.Count;
+        if (n == 0) return "";
+        string what = n == 1 ? "1 folder has" : n + " folders have";
+        return MirrorPurges
+            ? " Warning: " + what + " nothing left to back up; the next backup will delete the copies."
+            : " Warning: " + what + " nothing left to back up.";
+    }
+
+    // Whether the next run will delete the backup's copies to match an emptied
+    // source. Mirror ALONE is not enough: a versioned run mirrors into a fresh
+    // dated folder, so the previous days' copies survive until the prune and the
+    // "will delete" wording would be false.
+    private bool MirrorPurges => _cfg.Mode == "Mirror" && !_cfg.Versioned;
 
     // Save Settings is redundant once the on-disk script already matches the
     // saved config (nothing edited since the last save): a no-op save would just

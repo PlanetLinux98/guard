@@ -88,11 +88,18 @@ for a newer release and offers to install it, and it can update fully
 automatically if you prefer (see [The Settings page](#the-settings-page)).
 
 There is no uninstaller because none is needed: GUARD never writes to the
-registry for its own settings and never writes outside its folder. To remove a
-manually downloaded copy, turn off any scheduled backup (see
-[Schedule](#schedule)) and delete the folder; if you installed through winget,
-run `winget uninstall --id PlanetLinux98.GUARD` (turn off the scheduled backup
-first).
+registry for its own settings, and a copy you extracted yourself writes nothing
+outside its own folder.
+
+To remove GUARD, first use **Remove GUARD's Scheduled Tasks** on the Settings
+page - the schedules are registered with Windows, not stored in GUARD's folder,
+so deleting the app without removing them leaves them firing at something that
+is no longer there. Then delete the folder, or run
+`winget uninstall --id PlanetLinux98.GUARD` if you installed it that way.
+
+A winget install also keeps its settings and logs in `%LOCALAPPDATA%\GUARD`
+(see [Where your files live](#where-your-files-live-portability)); winget does
+not remove that folder, so delete it too if you want no trace left.
 
 ## Your first backup
 
@@ -250,7 +257,35 @@ opening GUARD, turn on notifications (see the Settings page): failures notify
 by default, successes only if you opt in. The status bar also reports the last
 run's outcome the next time you open GUARD.
 
-Three situations GUARD handles for you:
+Six situations GUARD handles for you:
+
+- **Windows moves one of your personal folders.** The seven folders GUARD
+  offers by default - Documents, Desktop, Pictures and so on - can be relocated
+  by Windows: OneDrive's "Back up your folders" moves several of them under
+  your OneDrive folder, and a folder's Properties, Location tab can send one
+  anywhere. The old location is usually left behind *empty*, so a backup
+  pointed at it would copy nothing and still report success. GUARD tracks which
+  Windows folder each of those rows follows, notices when one moves, and offers
+  at its next launch to follow it. It never moves on its own - a backup tool
+  should not change what it protects without telling you - and if you say no,
+  it does not ask again for that move. A folder that moves somewhere else later
+  is a new question, so it asks about that one. Editing a row's path yourself
+  stops GUARD tracking it: you have said where you want it.
+- **A folder you back up goes empty.** If a source folder has nothing left to
+  copy *and* your backup still holds files copied from it before, GUARD warns
+  you - in the status line, when you save, when a backup runs, and in the
+  notification for unattended runs. Both halves matter: a folder that was
+  always empty is not a problem and never triggers this. In Mirror mode the
+  warning is more urgent, because mirroring makes the backup match the source,
+  so the next run would delete those copies too. If you emptied the folder on
+  purpose, choose **Don't warn again** when you save; GUARD forgets that
+  answer if the folder ever has files in it again, so a real later
+  disappearance still gets reported.
+- **Your backup itself disappears.** GUARD keeps its own records next to the
+  app, not on the backup drive, so a reformatted or emptied destination would
+  otherwise still show "Last backup succeeded". If the destination is reachable
+  but empty while GUARD's records show a backup has run, it says so and asks you
+  to run a backup to rebuild it.
 
 - **Your backup drive changes letters.** If the destination was `E:\Backups`
   and the drive comes back as `F:`, the backup follows it automatically (GUARD
@@ -658,6 +693,24 @@ line the next time you open GUARD. The first notification GUARD shows registers
 its name with Windows notifications - a one-time entry for your user account,
 and the one thing GUARD writes outside its folder besides the scheduled tasks.
 
+### Scheduled tasks
+
+GUARD's schedules are registered with Windows Task Scheduler, not stored in
+GUARD's folder. That means deleting GUARD - or uninstalling it with
+`winget uninstall` - leaves them behind, waking up on their timer to run an app
+that is no longer there.
+
+**Remove GUARD's Scheduled Tasks** (Alt+T) unregisters all of them: the
+scheduled backup, the on-connect check, and the scheduled system image. Do this
+before you delete or uninstall GUARD.
+
+Your generated scripts and your existing backups are untouched. The schedules
+are switched off in your settings to match, so GUARD and Windows agree; turn
+them back on any time with **Save Settings**. The system image task runs as the
+SYSTEM account, so removing that one asks for Administrator approval - and only
+when such a task actually exists. If Windows refuses to remove a task, GUARD
+says which one and leaves your settings alone so you can try again.
+
 ### App reinstalls
 
 This card appears only when winget is missing from the PC. **Install winget**
@@ -706,8 +759,16 @@ Everything GUARD knows lives in its own folder, next to `GUARD.exe`:
 | `Logs\app-update_last.log` | The output of the most recent Update All Apps run. |
 | `Logs\update_last.log` | The log of the most recent self-update. |
 | `Logs\crash_last.log` | Written only if GUARD ever crashes; include it when reporting a problem. |
-| `Logs\debug_last.log` | Optional diagnostics, written only when a `debug.flag` file sits next to GUARD.exe. |
+| `Logs\debug_last.log` | Optional diagnostics, written only when a `debug.flag` file sits next to GUARD.exe (or in GUARD's settings folder). |
 | `USER_GUIDE.html` | This manual; the Help button (F1) opens it in your browser. |
+
+**One exception: GUARD installed with winget.** winget owns the folder it
+installs into and deletes it outright on `winget upgrade` and
+`winget uninstall` - so anything GUARD wrote there would be destroyed by the
+next upgrade. A winget install therefore keeps its settings, generated scripts
+and logs in `%LOCALAPPDATA%\GUARD` instead, and updates through
+`winget upgrade PlanetLinux98.GUARD` rather than updating itself. A GUARD folder
+you extracted yourself is unaffected by all of this and stays fully portable.
 
 Because everything is in one folder, **moving the folder moves the app and its
 settings together**: copy the `GUARD` folder to another PC or a USB stick and

@@ -10,6 +10,11 @@ public static class AtomicFile
 {
     public static void WriteAllText(string path, string contents)
     {
+        // The folder may not exist yet: under a winget install GUARD's working
+        // files live in %LOCALAPPDATA%\GUARD, which nothing else creates before
+        // the first save (see GuardPaths.DataDir).
+        string? dir = Path.GetDirectoryName(path);
+        if (dir is { Length: > 0 }) Directory.CreateDirectory(dir);
         string tmp = path + ".tmp";
         File.WriteAllText(tmp, contents);
         // File.Replace needs an existing destination; first-ever save moves.

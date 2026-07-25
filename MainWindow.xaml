@@ -995,6 +995,23 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Scheduled tasks: the removal exit. GUARD's tasks are
+                                 registered with Windows, not stored in GUARD's folder,
+                                 so deleting the app (or uninstalling it via winget)
+                                 leaves them behind firing at an exe that is gone. -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Scheduled tasks" Style="{StaticResource CardTitle}" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="GUARD's schedules are registered with Windows Task Scheduler, not kept in GUARD's folder. If you plan to delete or uninstall GUARD, remove them first, or they stay behind trying to run an app that is no longer there." />
+                                    <Button x:Name="BtnRemoveTasks" Content="Remove GUARD's Scheduled Tasks" AccessKey="T"
+                                            Margin="0,4,0,0"
+                                            ToolTipService.ToolTip="Unregister the scheduled backup, the on-connect check and the scheduled system image; your settings and existing backups are not touched"
+                                            Click="OnRemoveScheduledTasks" />
+                                </StackPanel>
+                            </Border>
+
                             <!-- winget: shown only while winget is missing (lazy
                                  probe on the page's first visit, like the wbadmin
                                  check; ProbeWingetForSettings). A successful

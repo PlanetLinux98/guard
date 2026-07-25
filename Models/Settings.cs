@@ -85,14 +85,12 @@ public sealed class Settings
         DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday,
     };
 
-    public static ObservableCollection<FolderPair> DefaultFolders() => new()
-    {
-        new FolderPair(true, @"%USERPROFILE%\Documents",  "Documents"),
-        new FolderPair(true, @"%USERPROFILE%\Videos",     "Videos"),
-        new FolderPair(true, @"%USERPROFILE%\Desktop",    "Desktop"),
-        new FolderPair(true, @"%USERPROFILE%\Pictures",   "Pictures"),
-        new FolderPair(true, @"%USERPROFILE%\Music",      "Music"),
-        new FolderPair(true, @"%USERPROFILE%\Favorites",  "Favorites"),
-        new FolderPair(true, @"%USERPROFILE%\Contacts",   "Contacts"),
-    };
+    // Resolved from Windows' own known folders rather than hard-coded as
+    // %USERPROFILE%\Documents and friends: OneDrive folder backup and the
+    // Location tab both move these, and the vacated folder is often left behind
+    // empty, so the literal path would back up nothing and still report success.
+    // Lives in Services (it needs the shell API); this stays the single entry
+    // point so there is one source of truth for the default list.
+    public static ObservableCollection<FolderPair> DefaultFolders()
+        => Services.KnownFolders.DefaultFolderPairs();
 }

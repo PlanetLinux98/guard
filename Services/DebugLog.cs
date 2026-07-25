@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 
 namespace GuardWui3.Services;
@@ -18,7 +19,11 @@ public static class DebugLog
     {
         try
         {
+            // Looked for beside the exe AND beside the working files: under a
+            // winget install those are different folders, and the exe folder is
+            // the one a user naturally drops the flag into.
             return File.Exists(Path.Combine(GuardPaths.BaseDir, "debug.flag"))
+                || File.Exists(Path.Combine(GuardPaths.DataDir, "debug.flag"))
                 || Environment.GetEnvironmentVariable("GUARD_DEBUG") == "1";
         }
         catch { return false; }
@@ -29,11 +34,11 @@ public static class DebugLog
         if (!Enabled) return;
         try
         {
-            string path = Path.Combine(GuardPaths.BaseDir, @"Logs\debug_last.log");
+            string path = Path.Combine(GuardPaths.DataDir, @"Logs\debug_last.log");
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             lock (Gate)
                 File.AppendAllText(path,
-                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [" + area + "] " + message + Environment.NewLine);
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + "  [" + area + "] " + message + Environment.NewLine);
         }
         catch { }
     }
@@ -45,11 +50,11 @@ public static class DebugLog
     {
         try
         {
-            string path = Path.Combine(GuardPaths.BaseDir, @"Logs\crash_last.log");
+            string path = Path.Combine(GuardPaths.DataDir, @"Logs\crash_last.log");
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             lock (Gate)
                 File.WriteAllText(path,
-                    "GUARD " + GuardPaths.AppVersion + " crashed " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                    "GUARD " + GuardPaths.AppVersion + " crashed " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
                     + " (" + source + ")" + Environment.NewLine + Environment.NewLine
                     + (ex?.ToString() ?? "(no exception object)") + Environment.NewLine);
         }

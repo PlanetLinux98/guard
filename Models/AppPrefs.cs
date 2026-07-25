@@ -17,4 +17,18 @@ public sealed class AppPrefs
     // nightly success toast is noise most people will not want.
     public bool NotifyFailure = true;
     public bool NotifySuccess = false;
+    // Moves of a tracked personal folder the user has declined to follow, as
+    // ";"-separated "<folder>><new path>" keys (see KnownFolders.Moved.Key).
+    // The destination is part of the key on purpose: keyed on the folder NAME
+    // alone, declining "Documents moved to OneDrive" would also silence
+    // "Documents moved to D:\Docs" years later, which is a different question.
+    public string DeclinedMoves = "";
+    // Sources the user has acknowledged as deliberately empty, as ";"-separated
+    // expanded paths. Needed because in Additive mode the backup never loses the
+    // files it already holds, so a folder emptied on purpose satisfies the
+    // vanished condition for ever: without a way to say "yes, I know", the
+    // warning would repeat on every launch, every save and every scheduled run
+    // with no way to stop it. Cleared for a path automatically once that folder
+    // has content again, so a real later disappearance still speaks up.
+    public string AcknowledgedEmpty = "";
 }

@@ -36,11 +36,38 @@ public sealed partial class FolderPair : INotifyPropertyChanged
         set { if (_subFolder != value) { _subFolder = value; OnChanged(nameof(SubFolder)); OnChanged(nameof(Caption)); } }
     }
 
-    public FolderPair(bool include, string source, string subFolder)
+    // Which Windows known folder this row TRACKS ("Documents"), or empty for a
+    // literal path the user chose themselves.
+    //
+    // GUARD deliberately keeps both this and Source. The identity records what
+    // the user meant ("my Documents"); Source records the location actually
+    // being backed up right now. They agree until Windows moves the folder -
+    // OneDrive's "Back up your folders", or the folder's Location tab - and
+    // GUARD then asks before following, because an unattended run must never
+    // silently change what it protects. Until the answer comes, Source is what
+    // the generated script keeps using.
+    //
+    // Not a notifying property: nothing binds to it, and it does not belong in
+    // the row's spoken Caption (the user cares where the folder IS, which
+    // DisplaySource already says).
+    public string KnownFolder { get; set; } = "";
+
+    public bool IsKnownFolder => KnownFolder.Length > 0;
+
+    // The user deliberately gave this row a path of its own, so GUARD must not
+    // adopt an identity for it again. Persisted separately from KnownFolder
+    // because "never had one" and "had one, cleared on purpose" need opposite
+    // treatment at load: without this, editing a row back to a path that happens
+    // to match an old default would be silently re-tracked on the next launch,
+    // and the offer to follow would come back.
+    public bool Pinned { get; set; }
+
+    public FolderPair(bool include, string source, string subFolder, string knownFolder = "")
     {
         _include = include;
         _source = source;
         _subFolder = subFolder;
+        KnownFolder = knownFolder ?? "";
     }
 
     // Spoken name for the row's checkbox (the role announces checked state).

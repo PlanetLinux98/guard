@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -210,7 +211,7 @@ public static class AppSettingsRestore
     // restores in the same second (or a leftover from a prior run) never collide.
     private static string MakeAsidePath(string target)
     {
-        string baseName = target.TrimEnd('\\') + ".guard-old-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        string baseName = target.TrimEnd('\\') + ".guard-old-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
         string aside = baseName;
         for (int n = 1; Directory.Exists(aside) || File.Exists(aside); n++)
             aside = baseName + "-" + n;

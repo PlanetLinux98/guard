@@ -27,10 +27,18 @@ public static class BackupScript
         int keep = Math.Clamp(cfg.VersionsToKeep, 1, 365);
         string exDirs = JoinTokens(cfg.EffectiveExcludeDirs());
         string exFiles = JoinTokens(cfg.EffectiveExcludeFiles());
-        // /XJ is MANDATORY: skips junction points. Without it the hidden
+        // /XJD is MANDATORY: skips DIRECTORY junctions. Without it the hidden
         // My Music / My Pictures / My Videos junctions in Documents cause
         // failed-directory errors on every run.
-        string optsCommon = mirror + " /R:2 /W:5 /MT:16 /NP /NDL /XJ";
+        //
+        // /XJD, not the broader /XJ this used to pass: /XJ excludes junctions
+        // for files as well, and a "file junction" means any file-level reparse
+        // point - which is exactly what a cloud sync placeholder is. Under
+        // OneDrive Files On-Demand an online-only file carries the reparse
+        // attribute, so /XJ could quietly leave every non-resident file out of
+        // the backup and still finish clean. Only the directory junctions above
+        // ever justified the flag, so the exclusion is narrowed to them.
+        string optsCommon = mirror + " /R:2 /W:5 /MT:16 /NP /NDL /XJD";
         string optsTail = "";
         if (exDirs.Length > 0) optsTail += " /XD " + exDirs;
         if (exFiles.Length > 0) optsTail += " /XF " + exFiles;
@@ -178,7 +186,8 @@ public static class BackupScript
             sb.AppendLine("REM Versioned mode: each run copies into a dated subfolder of DEST and");
             sb.AppendLine("REM the oldest dated folders beyond KEEP are pruned after a clean run.");
             sb.AppendLine("set \"STAMP=\"");
-            sb.AppendLine("for /f %%I in ('powershell -NoProfile -Command \"Get-Date -Format yyyy-MM-dd\"') do set \"STAMP=%%I\"");
+            sb.AppendLine("for /f %%I in ('powershell -NoProfile -EncodedCommand "
+                + DateStampEncoded() + "') do set \"STAMP=%%I\"");
             sb.AppendLine("if not defined STAMP (");
             sb.AppendLine("   echo ERROR: could not compute the date stamp for the versioned backup - aborting.");
             sb.AppendLine("   >\"%LOG%\" echo ERROR: could not compute the date stamp for the versioned backup - aborting.");
@@ -308,6 +317,25 @@ public static class BackupScript
             sb.AppendLine();
         }
         return sb.ToString();
+    }
+
+    // The dated folder name for a versioned run, base64-encoded (UTF-16,
+    // -EncodedCommand) like DriftLookupEncoded below so no quoting survives into
+    // the batch line.
+    //
+    // NOT `Get-Date -Format yyyy-MM-dd`, which was the bug: -Format follows the
+    // OS locale's CALENDAR, so a Thai or Saudi Windows names the version folders
+    // with a Buddhist or Hijri year (2569-.., 1448-..). The prune below picks
+    // what to delete by LEXICOGRAPHIC order (dir /o:n), so once such a machine
+    // changed locale the new 2026-.. folders would sort oldest and be deleted
+    // first, destroying the newest backups while keeping the ancient ones.
+    // Year/Month/Day are Gregorian whatever the culture and ToString('00') is
+    // only padding, so composing from the parts is stable everywhere.
+    private static string DateStampEncoded()
+    {
+        string ps = "$d = Get-Date; Write-Output ($d.Year.ToString('0000')+'-'+" +
+                    "$d.Month.ToString('00')+'-'+$d.Day.ToString('00'))";
+        return Convert.ToBase64String(Encoding.Unicode.GetBytes(ps));
     }
 
     // The one-line PowerShell that maps the recorded volume serial back to its

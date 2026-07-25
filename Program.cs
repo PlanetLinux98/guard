@@ -37,6 +37,12 @@ public static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             DebugLog.Crash(e.ExceptionObject as Exception, "AppDomain");
 
+        // Before anything reads a setting or a script: under a winget install
+        // the working files live outside the package folder (see
+        // GuardPaths.DataDir), and both the window and the headless run below
+        // must see them in the same place.
+        GuardPaths.MigrateWorkingFiles();
+
         if (args.Length >= 2 && args[0] == "--run-backup")
             return HeadlessBackupRunner.Run(args[1]);
 

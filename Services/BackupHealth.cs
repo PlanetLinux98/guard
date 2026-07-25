@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -126,9 +127,9 @@ public static class BackupHealth
     // Spoken-friendly local phrasing for the status line.
     public static string FriendlyWhen(DateTime when, DateTime now)
     {
-        string clock = when.ToString("HH:mm");
+        string clock = when.ToString("HH:mm", CultureInfo.InvariantCulture);
         if (when.Date == now.Date) return "today at " + clock;
         if (when.Date == now.Date.AddDays(-1)) return "yesterday at " + clock;
-        return "on " + when.ToString("yyyy-MM-dd") + " at " + clock;
+        return "on " + when.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " at " + clock;
     }
 }

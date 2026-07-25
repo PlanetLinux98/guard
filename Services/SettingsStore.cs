@@ -9,6 +9,10 @@ namespace GuardWui3.Services;
 
 public static class SettingsStore
 {
+    // Written into [FolderKinds] for a row the user pinned to their own path.
+    // Not a valid identity, so it can never collide with a folder name.
+    private const string PinnedMarker = "-";
+
     public static Settings Load()
     {
         var cfg = new Settings { Folders = Settings.DefaultFolders() };
@@ -35,6 +39,11 @@ public static class SettingsStore
     {
         var section = "";
         var folders = new ObservableCollection<FolderPair>();
+        // The ini index each accepted row came from. Rows failing validation are
+        // skipped, so a row's list position is NOT its ini index, and
+        // [FolderKinds] is keyed by the latter.
+        var folderKeys = new List<int>();
+        var folderKinds = new Dictionary<int, string>();
         bool sawFolders = false;
         var excludes = new ObservableCollection<ExcludeItem>();
         // Legacy (pre-preset) excludes were two free-text line lists; collect
@@ -68,7 +77,26 @@ public static class SettingsStore
                 // blank value reach BackupScript, which trusts Source/SubFolder
                 // are already clean and non-empty.
                 if (parts.Length == 3 && IsValidFolderEntry(parts[1], parts[2]))
+                {
                     folders.Add(new FolderPair(parts[0] == "1", parts[1], parts[2]));
+                    folderKeys.Add(int.TryParse(key.Trim(), out int fi) ? fi : -1);
+                }
+                continue;
+            }
+
+            // Its own section rather than a fourth field in [Folders]: an older
+            // GUARD splits those lines into exactly three parts, so a fourth
+            // would land inside the subfolder, fail its validity check and
+            // silently drop the row. An unknown SECTION is simply ignored, so a
+            // downgrade keeps every folder and loses only the identities.
+            if (section == "FolderKinds")
+            {
+                // "-" marks a row the user pinned to a path of their own, which
+                // must be remembered as distinct from a row that simply never
+                // had an identity - see FolderPair.Pinned.
+                if (int.TryParse(key.Trim(), out int ki)
+                    && (val.Trim() == PinnedMarker || KnownFolders.IsKnownIdentity(val.Trim())))
+                    folderKinds[ki] = val.Trim();
                 continue;
             }
 
@@ -131,7 +159,20 @@ public static class SettingsStore
                     break;
             }
         }
-        if (sawFolders) cfg.Folders = folders;
+        if (sawFolders)
+        {
+            for (int i = 0; i < folders.Count; i++)
+            {
+                if (folderKeys[i] < 0 || !folderKinds.TryGetValue(folderKeys[i], out var kind)) continue;
+                if (kind == PinnedMarker) folders[i].Pinned = true;
+                else folders[i].KnownFolder = kind;
+            }
+            cfg.Folders = folders;
+        }
+        // Rows written before GUARD tracked identities adopt theirs from the old
+        // hard-coded default paths. Silent on purpose: it does not change what is
+        // backed up, it only lets GUARD notice later if that folder moves.
+        KnownFolders.AdoptIdentities(cfg.Folders);
         if (sawNewExcludes) cfg.Excludes = excludes;
         else if (legacyDirs.Length > 0 || legacyFiles.Length > 0)
             MigrateLegacyExcludes(cfg, legacyDirs, legacyFiles);
@@ -304,6 +345,15 @@ public static class SettingsStore
         {
             var f = cfg.Folders[i];
             sb.AppendLine(i + "=" + (f.Include ? "1" : "0") + "|" + f.Source + "|" + f.SubFolder);
+        }
+        sb.AppendLine();
+        sb.AppendLine("[FolderKinds]");
+        sb.AppendLine("; index=the Windows folder that row follows (\"-\" = a path you chose yourself)");
+        for (int i = 0; i < cfg.Folders.Count; i++)
+        {
+            var f = cfg.Folders[i];
+            if (f.IsKnownFolder) sb.AppendLine(i + "=" + f.KnownFolder);
+            else if (f.Pinned) sb.AppendLine(i + "=" + PinnedMarker);
         }
         sb.AppendLine();
         sb.AppendLine("[Excludes]");

@@ -70,7 +70,11 @@ public static class WingetBootstrap
         return null;
     }
 
-    private static string StageDir => Path.Combine(Path.GetTempPath(), "GUARD-winget");
+    // Keyed to the install folder for the same reason Updater.StageDir is: two
+    // portable copies sharing one staging folder let each wipe the other's
+    // half-finished download (DownloadAsync starts by deleting the folder).
+    private static string StageDir =>
+        Path.Combine(Path.GetTempPath(), "GUARD-winget-" + GuardPaths.InstallId);
 
     // What the whole install will pull down (the bundle plus its dependencies
     // zip, which is itself ~100 MB), for the dialog's "N MB" status line.
@@ -214,6 +218,15 @@ public static class WingetBootstrap
     public static void Cleanup()
     {
         try { if (Directory.Exists(StageDir)) Directory.Delete(StageDir, recursive: true); }
+        catch { }
+        // The pre-0.6 unsuffixed folder, which nothing knows the name of any
+        // more: an interrupted download left up to a few hundred MB there and it
+        // would otherwise sit in %TEMP% forever.
+        try
+        {
+            string legacy = Path.Combine(Path.GetTempPath(), "GUARD-winget");
+            if (Directory.Exists(legacy)) Directory.Delete(legacy, recursive: true);
+        }
         catch { }
     }
 }
