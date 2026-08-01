@@ -191,13 +191,20 @@ public static class Updater
     {
         string script = Path.Combine(StageDir, "guard-update.cmd");
         File.WriteAllText(script,
-            GenerateApplyScript(zipPath, relaunch, GuardPaths.BaseDir, Environment.ProcessId));
+            GenerateApplyScript(zipPath, relaunch, GuardPaths.BaseDir, Environment.ProcessId,
+                Path.GetFileName(GuardPaths.ExePath)));
         return script;
     }
 
     // Split from WriteApplyScript so the generated text is testable without
     // touching disk (the BackupScript Write/Generate split).
-    public static string GenerateApplyScript(string zipPath, bool relaunch, string appDir, int pid)
+    // exeName defaults for the tests' benefit; production passes GUARD's real
+    // filename. The two uses below must not assume "GUARD.exe": on a renamed
+    // portable copy the IMAGENAME filter would match nothing, so the wait falls
+    // straight through and the extract races files the app still holds open,
+    // and the relaunch would start a file that does not exist.
+    public static string GenerateApplyScript(string zipPath, bool relaunch, string appDir, int pid,
+        string exeName = "GUARD.exe")
     {
         var sb = new StringBuilder();
         sb.AppendLine("@echo off");
@@ -221,7 +228,7 @@ public static class Updater
         sb.AppendLine("REM IMAGENAME filter guards against the PID being reused by another process.");
         sb.AppendLine("set /a TRIES=0");
         sb.AppendLine(":wait");
-        sb.AppendLine("tasklist /FI \"PID eq %PID%\" /FI \"IMAGENAME eq GUARD.exe\" 2>nul | find \" %PID% \" >nul");
+        sb.AppendLine("tasklist /FI \"PID eq %PID%\" /FI \"IMAGENAME eq " + exeName + "\" 2>nul | find \" %PID% \" >nul");
         sb.AppendLine("if errorlevel 1 goto :apply");
         sb.AppendLine("set /a TRIES+=1");
         sb.AppendLine("if %TRIES% geq 120 (");
@@ -252,7 +259,7 @@ public static class Updater
         sb.AppendLine(">>\"%LOG%\" echo Update applied %date% %time%");
         sb.AppendLine("del /q \"%ZIP%\" >nul 2>nul");
         if (relaunch)
-            sb.AppendLine("start \"\" \"%APPDIR%\\GUARD.exe\"");
+            sb.AppendLine("start \"\" \"%APPDIR%\\" + exeName + "\"");
         sb.AppendLine("endlocal");
         return sb.ToString();
     }

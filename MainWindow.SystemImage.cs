@@ -293,8 +293,11 @@ public sealed partial class MainWindow : Window
             {
                 // Same guard as SaveAllAsync: a failed write must not escape
                 // this async-void path and crash GUARD.
+                // Names the folder GUARD actually writes to, which is not the
+                // exe's folder under a winget install (see GuardPaths.DataDir).
                 await ShowMessageAsync("GUARD", "Could not save the settings:\n\n" + ex.Message
-                    + "\n\nGUARD writes its settings and image script into the folder GUARD.exe is in, so that folder must be writable.");
+                    + "\n\nGUARD writes its settings and image script into this folder, which must be"
+                    + " writable:\n\n" + GuardPaths.DataDir);
                 return false;
             }
             _imageDirty = false;
@@ -676,6 +679,11 @@ public sealed partial class MainWindow : Window
         AnnounceNotification("Checking the destination for existing system images. This needs Administrator approval.");
         string target = SystemImageScript.TargetArg(_cfg);
         string log = GuardPaths.ImageVersionsLogPath;
+        // The redirect below is the only thing that writes this log, and a
+        // redirect into a folder that does not exist fails: unlike the image
+        // run, this path never goes through the generated script that would
+        // have created Logs\ on the way.
+        GuardPaths.EnsureLogsDir();
         // *> catches wbadmin's stderr too ("No backups were found..." lands
         // there); the exit code is not trusted for success (localized wbadmin
         // uses it inconsistently for the empty case), the text is the answer.

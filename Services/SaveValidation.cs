@@ -62,7 +62,20 @@ public static class SaveValidation
     private const FileAttributes CloudPlaceholder =
         (FileAttributes)0x00400000 | (FileAttributes)0x00040000 | FileAttributes.Offline;
 
-    private static bool IsLinkNotContent(FileAttributes a)
+    // DIRECTORIES only. Files are never skipped: the script passes /XJD, which
+    // excludes directory junctions and nothing else, so robocopy copies a file
+    // reparse point's contents and a walk that skipped them would measure a real
+    // source as empty - and "empty while the backup still holds files from it"
+    // is the Mirror-mode alarm that says the next run will DELETE those copies.
+    // A false one there is the worst outcome this file can produce.
+    //
+    // Not a literal match for /XJD, which excludes directory symlinks and
+    // junctions: this excludes any directory reparse point except a cloud
+    // placeholder. The two agree on every tag seen in practice (junction, mount
+    // point, placeholder). An exotic fourth tag would be skipped here yet copied
+    // by robocopy - undercounting, which is the direction that can raise the
+    // false alarm above, so that is where to look if one ever turns up.
+    private static bool IsLinkDirNotContent(FileAttributes a)
         => (a & FileAttributes.ReparsePoint) != 0 && (a & CloudPlaceholder) == 0;
 
     // Shell metadata that is not the user's data. A folder holding only these
@@ -203,7 +216,7 @@ public static class SaveValidation
     private static List<string> SplitAck(string? raw)
     {
         var list = new List<string>();
-        foreach (var p in (raw ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var p in (raw ?? "").Split(AppPrefs.ListSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
             var t = p.Trim();
             if (t.Length > 0) list.Add(t);
@@ -236,7 +249,7 @@ public static class SaveValidation
             foreach (var v in vanished)
                 if (string.Equals(AckKey(v.Source), a, StringComparison.OrdinalIgnoreCase))
                 { live.Add(a); break; }
-        return string.Join(";", live);
+        return string.Join(AppPrefs.ListSeparator, live);
     }
 
     public static string AddAcknowledged(
@@ -248,7 +261,7 @@ public static class SaveValidation
             string key = AckKey(v.Source);
             if (!HasKey(ack, key)) ack.Add(key);
         }
-        return string.Join(";", ack);
+        return string.Join(AppPrefs.ListSeparator, ack);
     }
 
     // The destination folders a previous run's files could be sitting in. In
@@ -312,7 +325,8 @@ public static class SaveValidation
     // Whether the tree holds at least one file the backup would actually copy.
     // Mirrors TrySumTree's rules (the same exclusion tokens, and links skipped
     // the way robocopy's /XJD skips directory junctions) but returns the moment
-    // it finds one. See IsLinkNotContent for why a cloud placeholder counts.
+    // it finds one. See IsLinkDirNotContent for why files are never skipped and
+    // why a cloud placeholder still counts as content.
     //
     // A failure to enumerate the ROOT is reported as Unreadable rather than
     // Empty; deeper failures are not, since a partial walk that found files has
@@ -332,14 +346,13 @@ public static class SaveValidation
             {
                 foreach (var f in dir.EnumerateFiles())
                 {
-                    if (IsLinkNotContent(f.Attributes)) continue;
                     if (MatchesAny(f.Name, exFiles)) continue;
                     if (IsNotUserData(f.Name)) continue;
                     return TreeContent.HasFiles;
                 }
                 foreach (var d in dir.EnumerateDirectories())
                 {
-                    if (IsLinkNotContent(d.Attributes)) continue;
+                    if (IsLinkDirNotContent(d.Attributes)) continue;
                     if (MatchesAny(d.Name, exDirs)) continue;
                     stack.Push(d);
                 }
@@ -543,7 +556,7 @@ public static class SaveValidation
 
     // Walks one source tree adding file sizes to total, honouring the exclusion
     // tokens the generated script passes to robocopy (/XD folder names, /XF file
-    // patterns; wildcards allowed) and skipping reparse points like /XJ, so both
+    // patterns; wildcards allowed) and skipping directory links like /XJD, so both
     // size figures track what robocopy would copy. The source root itself is
     // never name-matched (robocopy /XD only excludes subdirectories). Returns
     // false when the deadline or token cut the walk short (total holds a partial
@@ -561,14 +574,13 @@ public static class SaveValidation
             {
                 foreach (var f in dir.EnumerateFiles())
                 {
-                    if (IsLinkNotContent(f.Attributes)) continue;
                     if (MatchesAny(f.Name, exFiles)) continue;
                     total += f.Length;
                     if (DateTime.UtcNow > deadline) return false;
                 }
                 foreach (var d in dir.EnumerateDirectories())
                 {
-                    if (IsLinkNotContent(d.Attributes)) continue;
+                    if (IsLinkDirNotContent(d.Attributes)) continue;
                     if (MatchesAny(d.Name, exDirs)) continue;
                     stack.Push(d);
                 }

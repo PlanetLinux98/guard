@@ -15,20 +15,19 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - GUARD warns when a folder has nothing left to back up while your backup still
   holds files from it - in the status line, on save, on each run, and in the
   notification for unattended runs. "Don't warn again" silences a folder you
-  emptied on purpose. In Mirror mode the warning is sharper, because the next
-  run deletes those copies.
+  emptied on purpose; in Mirror mode the warning is sharper, because the next run
+  deletes those copies. A folder GUARD cannot read is reported as unreadable
+  rather than empty.
 - GUARD warns when the backup destination is empty but its records show a backup
   has run, which means the backup was deleted or the drive reformatted.
-- Source folders GUARD cannot read are now reported as such, instead of being
-  described as empty.
 
 ### Changed
-- Installed with winget, GUARD now keeps its settings, generated scripts and
-  logs in `%LOCALAPPDATA%\GUARD` instead of the install folder, and updates
-  through `winget upgrade` rather than updating itself. `winget upgrade` and
-  `winget uninstall` delete the whole install folder, so settings kept there
-  were destroyed by the next upgrade. A GUARD folder you extracted yourself is
-  unaffected and stays fully portable.
+- Installed with winget, GUARD now keeps its settings, scripts and logs in
+  `%LOCALAPPDATA%\GUARD` and updates through `winget upgrade` rather than
+  updating itself: winget deletes its whole install folder on upgrade and
+  uninstall, destroying anything kept there. That deletion happens before this
+  version first runs, so set your settings up once more afterwards and they will
+  survive from then on. A folder you extracted yourself stays fully portable.
 
 ### Fixed
 - The default backup folders were fixed paths (`%USERPROFILE%\Documents` and so
@@ -36,20 +35,25 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   folder's Location tab - GUARD backed up the empty folder left behind and still
   reported success. GUARD now tracks which Windows folder each default row
   follows and offers to follow a move.
-- Versioned backups named their dated folders using the system locale's
-  calendar, so on a Thai or Arabic Windows they were Buddhist or Hijri dates.
-  Because pruning picks the oldest folder by name, a later locale change could
-  make it delete the newest backups first.
+- Every date GUARD showed or wrote followed the system locale's calendar, so on
+  a Thai or Arabic Windows the "Next run" times, the status line, exported file
+  names and the versioned backup folders all carried Buddhist or Hijri dates.
+  The folder names were the dangerous one: pruning picks the oldest by name, so
+  a later locale change could make it delete the newest backups first. If you
+  are on such a Windows with existing versioned backups, delete the old
+  wrongly-named folders once - they would otherwise count as your newest
+  versions for ever.
 - Online-only OneDrive files could be left out of backups: the generated script
   excluded file-level reparse points along with the directory junctions it meant
-  to skip. Backup size estimates ignored them for the same reason.
-- Dates GUARD shows and writes followed the system locale's calendar, so on a
-  Thai or Arabic Windows the "Next run" times, the status line and exported file
-  names all showed a Buddhist or Hijri date.
+  to skip, and size estimates ignored them for the same reason. If this affected
+  you, expect a long first backup while OneDrive downloads them.
 - Folder paths in warnings and notifications were shown unexpanded, so a screen
   reader read out "percent USERPROFILE percent backslash".
 - Two portable copies of GUARD installing winget at once shared one download
   folder, so each could wipe the other's half-finished download.
+- Building recovery media, and "View Existing Images", failed with nothing to
+  show on a copy where no backup had been saved yet: both write their progress
+  straight into a `Logs` folder that only a saved backup had created.
 - GUARD installed via `winget install` would not launch, and a scheduled backup
   task saved under that install would silently never run: winget's portable
   packages launch through a symlink Windows reports as the app's real location,
