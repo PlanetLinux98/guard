@@ -331,6 +331,12 @@ public sealed partial class RecoveryMediaDialog : ContentDialog
         try
         {
             try { File.Delete(GuardPaths.RecoveryMediaCancelPath); } catch { }
+            // Before the log is touched, by this or by the elevated script: the
+            // build script runs under ErrorActionPreference=Stop and writes the
+            // log as its FIRST action, so a missing Logs\ killed it instantly,
+            // and its trap could not report why either - it logs too. The
+            // wizard was then left tailing a file nobody could create.
+            GuardPaths.EnsureLogsDir();
             // Clear any prior run's log so the tail doesn't briefly show a stale
             // error before the elevated script truncates and rewrites it.
             try { File.WriteAllText(GuardPaths.RecoveryMediaLogPath, ""); } catch { }

@@ -884,7 +884,7 @@ public sealed partial class MainWindow : Window
     private async System.Threading.Tasks.Task<string> RunElevatedUpdateAllAsync()
     {
         string log = GuardPaths.AppUpdateLogPath;
-        try { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(log)!); } catch { }
+        GuardPaths.EnsureLogsDir();
         try { System.IO.File.WriteAllText(log, ""); } catch { }
         var tail = new LogTail(log, startAtEnd: false);
 

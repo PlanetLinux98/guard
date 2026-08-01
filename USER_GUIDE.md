@@ -708,8 +708,11 @@ Your generated scripts and your existing backups are untouched. The schedules
 are switched off in your settings to match, so GUARD and Windows agree; turn
 them back on any time with **Save Settings**. The system image task runs as the
 SYSTEM account, so removing that one asks for Administrator approval - and only
-when such a task actually exists. If Windows refuses to remove a task, GUARD
-says which one and leaves your settings alone so you can try again.
+when such a task actually exists. Choose **Leave it** and the image task stays
+registered and still runs; GUARD says so rather than reporting a clean sweep, and
+its schedule stays switched on so the two still agree. If Windows refuses to
+remove a task, GUARD says which one and leaves your settings alone so you can
+try again.
 
 ### App reinstalls
 

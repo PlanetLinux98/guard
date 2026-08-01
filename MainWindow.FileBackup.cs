@@ -618,12 +618,12 @@ public sealed partial class MainWindow : Window
         // Prune the declined list to moves that still apply, so a folder that
         // has since been put back does not leave a stale entry silencing a
         // future move to the same place.
-        var declined = new List<string>(_prefs.DeclinedMoves.Split(';', StringSplitOptions.RemoveEmptyEntries));
+        var declined = new List<string>(_prefs.DeclinedMoves.Split(AppPrefs.ListSeparator, StringSplitOptions.RemoveEmptyEntries));
         var live = new List<string>();
         foreach (var m in moved) if (declined.Contains(m.Key)) live.Add(m.Key);
         if (live.Count != declined.Count)
         {
-            _prefs.DeclinedMoves = string.Join(";", live);
+            _prefs.DeclinedMoves = string.Join(AppPrefs.ListSeparator, live);
             AppPrefsStore.Save(_prefs);
         }
 
@@ -657,7 +657,7 @@ public sealed partial class MainWindow : Window
             // repeating this at every launch would be nagging about something
             // GUARD has already declined to do.
             foreach (var m in blocked) live.Add(m.Key);
-            _prefs.DeclinedMoves = string.Join(";", live);
+            _prefs.DeclinedMoves = string.Join(AppPrefs.ListSeparator, live);
             AppPrefsStore.Save(_prefs);
         }
         if (offer.Count == 0) return;
@@ -695,7 +695,7 @@ public sealed partial class MainWindow : Window
         if (answer != ContentDialogResult.Primary)
         {
             foreach (var m in offer) live.Add(m.Key);
-            _prefs.DeclinedMoves = string.Join(";", live);
+            _prefs.DeclinedMoves = string.Join(AppPrefs.ListSeparator, live);
             AppPrefsStore.Save(_prefs);
             return;
         }
@@ -718,7 +718,7 @@ public sealed partial class MainWindow : Window
             _dirty = false;
             RefreshScriptStatus(announce: false);
             foreach (var m in offer) live.Add(m.Key);
-            _prefs.DeclinedMoves = string.Join(";", live);
+            _prefs.DeclinedMoves = string.Join(AppPrefs.ListSeparator, live);
             AppPrefsStore.Save(_prefs);
             await ShowMessageAsync("GUARD",
                 "GUARD has left the folder list as it was. Edit the folder yourself once the problem"
@@ -793,16 +793,31 @@ public sealed partial class MainWindow : Window
             // dirty tracking via OnFolderItemChanged, and the row keeps its
             // position and focus memory.
             //
-            // Choosing a different path PINS the row: the user has named a
-            // location, so GUARD must stop tracking the Windows folder and stop
-            // offering to move it. Only on an actual change, so opening Edit and
-            // pressing OK without touching anything leaves tracking alone.
-            if (!string.Equals(f.Source, dlg.SourcePath, StringComparison.OrdinalIgnoreCase))
+            // Choosing a different FOLDER pins the row: the user has named a
+            // location, so GUARD stops tracking the Windows one and stops
+            // offering to follow its moves.
+            //
+            // Compared EXPANDED, which is the whole difficulty: a tracked row
+            // stores %USERPROFILE%\Documents, while Browse fills the field from
+            // the folder picker as C:\Users\<name>\Documents. Compared raw,
+            // opening Edit, browsing to the very folder the row already tracks
+            // and pressing OK read as a change - silently pinning the row. That
+            // is permanent (AdoptIdentities never re-adopts a pinned row), so an
+            // ordinary re-confirmation quietly ended the move tracking that this
+            // whole feature exists to provide. Re-confirming must be a no-op.
+            bool sameFolder = string.Equals(
+                Expand(f.Source).TrimEnd('\\', '/'),
+                Expand(dlg.SourcePath).TrimEnd('\\', '/'),
+                StringComparison.OrdinalIgnoreCase);
+            if (!sameFolder)
             {
                 f.KnownFolder = "";
                 f.Pinned = true;
+                f.Source = dlg.SourcePath;
             }
-            f.Source = dlg.SourcePath;
+            // Source deliberately untouched when it is the same folder: a
+            // tracked row keeps its %USERPROFILE%-relative spelling, which is
+            // what keeps the generated script portable (see KnownFolders.Encode).
             f.SubFolder = dlg.SubFolder;
         }
     }

@@ -65,7 +65,9 @@ targets **.NET 10 + Windows App SDK 2.2.0** (WinUI 3).
 - **Built-in updater**: a daily check against GitHub Releases offers new
   versions (with readable release notes), verifies the download against the
   release's checksum, and can optionally install updates on exit; Windows
-  notifications report unattended backup outcomes (failures by default).
+  notifications report unattended backup outcomes (failures by default). A copy
+  installed with winget updates through `winget upgrade` instead, since winget
+  owns that folder.
 - **Dark / light Mica theming** that follows the Windows setting automatically.
 - **Screen-reader-first design** is the reason this app exists; accessibility is
   woven through every control. See the [User Manual](USER_GUIDE.md) for details.
@@ -98,7 +100,9 @@ native DLLs that cannot be merged into the AOT binary), so the release is the
 whole folder - which GUARD already ships as. Being a portable app, GUARD writes
 its working files (`backup-settings.ini`, `guard-backup.cmd`, `Logs\`) next to
 `GUARD.exe` in that folder, so shipping a folder keeps everything together
-instead of littering the folder the zip was downloaded to. Requires the VS 2022
+instead of littering the folder the zip was downloaded to. (Installed with
+winget those files live in `%LOCALAPPDATA%\GUARD` instead: winget deletes its
+package folder on every upgrade, so nothing GUARD needs can be kept there.) Requires the VS 2022
 Build Tools "Desktop development with C++" workload for the AOT link step (see
 [NativeAOT](#nativeaot)).
 
@@ -149,7 +153,8 @@ shipped artifact, but a working build for anyone without the C++ tools AOT needs
 ## Usage
 
 GUARD has four pages: **File Backup**, **System Image**, **App Management**,
-and **Settings** (update options, theme, startup page). For a full,
+and **Settings** (update options, theme, startup page, and removing GUARD's
+scheduled tasks before you uninstall). For a full,
 step-by-step walkthrough of every control and workflow, see the
 [User Manual](USER_GUIDE.md) (or press F1 in the app).
 

@@ -9,6 +9,17 @@ namespace GuardWui3.Services;
 // Every path derives from the exe folder, so the whole folder stays portable.
 public static class GuardPaths
 {
+    // GUARD's own exe, resolved. Everything that has to name the running app -
+    // the scheduled-task actions, the single-instance match, the window icon -
+    // uses THIS rather than rebuilding BaseDir + "GUARD.exe": the filename is
+    // not GUARD's to assume. A copy the user renamed would otherwise register a
+    // task action pointing at a file that does not exist, lose its title-bar
+    // icon, and stop recognizing itself as already running.
+    //
+    // Declared before BaseDir: static field initialisers run in textual order,
+    // so the other way round BaseDir would be built from a null.
+    public static readonly string ExePath = ResolveExePath();
+
     // Resolve from the real exe, not AppContext.BaseDirectory: the single-file
     // build self-extracts native libs, pointing BaseDirectory at a temp cache.
     // ProcessPath is the apphost exe, so working files land next to it (portable).
@@ -16,7 +27,7 @@ public static class GuardPaths
     // root, and trimming that yields "E:", a drive-RELATIVE path that resolves
     // against E:'s current directory - so an exe run from a USB stick's root
     // would scatter its working files.
-    public static readonly string BaseDir = ResolveBaseDir();
+    public static readonly string BaseDir = Path.GetDirectoryName(ExePath)!;
 
     // ProcessPath reflects the path CreateProcess was invoked with, not the
     // file's real location: winget's portable packages launch through an NTFS
@@ -30,7 +41,7 @@ public static class GuardPaths
     // symlinked/junctioned ancestor directory - GetFinalPathNameByHandle asks
     // the OS for the canonical path of the actually-open file, resolving every
     // reparse point in the chain, wherever it sits.
-    private static string ResolveBaseDir()
+    private static string ResolveExePath()
     {
         string exePath = Environment.ProcessPath!;
         try
@@ -46,8 +57,16 @@ public static class GuardPaths
             if (len > 0 && len < sb.Capacity)
                 exePath = StripExtendedPrefix(sb.ToString());
         }
-        catch { /* unreadable path - fall back to the invoked one */ }
-        return Path.GetDirectoryName(exePath)!;
+        // Unreadable path: fall back to the invoked one. Deliberately silent -
+        // DebugLog cannot be called from here. Its Enabled check reads BaseDir
+        // and DataDir, which are declared BELOW this field and so are still null
+        // while this initialiser runs; the reentrant call would throw, be
+        // swallowed, and report logging as disabled. If this ever does fire the
+        // symptom is indirect: IsWingetManaged goes false for a real winget
+        // install (the unresolved alias path has no "WinGet\Packages" in it) and
+        // the working files go back to sitting next to the alias.
+        catch { }
+        return exePath;
     }
 
     // GetFinalPathNameByHandle always returns the \\?\ (or \\?\UNC\) extended-
@@ -150,15 +169,35 @@ public static class GuardPaths
                          "guard-system-image.cmd", "onconnect-stamp.txt",
                      })
             {
-                string from = Path.Combine(BaseDir, name), to = Path.Combine(DataDir, name);
-                // Never overwrite: a file already in DataDir is the live one.
-                if (File.Exists(from) && !File.Exists(to)) File.Move(from, to);
+                // Each move guarded on its own: one locked or unreadable file
+                // must not abandon the rest, which would leave the settings in
+                // one folder and the script that reads them in the other - a
+                // split state worse than either whole one.
+                try
+                {
+                    string from = Path.Combine(BaseDir, name), to = Path.Combine(DataDir, name);
+                    // Never overwrite: a file already in DataDir is the live one.
+                    if (File.Exists(from) && !File.Exists(to)) File.Move(from, to);
+                }
+                catch (Exception ex) { DebugLog.Log("paths", "could not move " + name, ex); }
             }
             string logsFrom = Path.Combine(BaseDir, "Logs"), logsTo = Path.Combine(DataDir, "Logs");
             if (Directory.Exists(logsFrom) && !Directory.Exists(logsTo))
                 Directory.Move(logsFrom, logsTo);
         }
         catch (Exception ex) { DebugLog.Log("paths", "could not migrate working files", ex); }
+    }
+
+    // Nothing creates Logs\ up front. The generated scripts do their own `md`,
+    // so anything that goes through them is covered - but the elevated flows
+    // that redirect straight into a log (recovery media, wbadmin get versions,
+    // winget upgrade --all) are reachable before any backup has ever been
+    // saved, and a redirect into a folder that is not there just fails. Under a
+    // winget install DataDir starts out empty too, so this is not only the
+    // never-saved case any more.
+    public static void EnsureLogsDir()
+    {
+        try { Directory.CreateDirectory(Path.Combine(DataDir, "Logs")); } catch { }
     }
 
     public static string IniPath => Path.Combine(DataDir, "backup-settings.ini");

@@ -206,6 +206,7 @@ public sealed partial class MainWindow
             // scheduled an image has to answer a UAC prompt.
             string? imageError = null;
             bool imageRemoved = false;
+            bool imageLeft = false;
             if (result.ImageTaskRemains)
             {
                 if (await ShowConfirmAsync("GUARD",
@@ -216,16 +217,32 @@ public sealed partial class MainWindow
                     imageError = await System.Threading.Tasks.Task.Run(ScheduledTasks.RemoveSystemImageTask);
                     imageRemoved = imageError == null;
                 }
+                // "Leave it" is the CLOSE button, which ShowConfirmAsync also
+                // returns for a dialog that never opened - so this covers both,
+                // and both mean the same thing here: a task is still registered.
+                else imageLeft = true;
             }
 
             // The image schedule is only switched off when its task is actually
             // gone. Left on when the removal failed or was declined, so GUARD and
             // Windows still agree about a task that is still going to fire.
-            ClearScheduleStateAfterRemoval(alsoImage: imageRemoved || !result.ImageTaskRemains);
+            bool persisted = ClearScheduleStateAfterRemoval(
+                alsoImage: imageRemoved || !result.ImageTaskRemains);
 
-            await ShowMessageAsync("GUARD", imageError != null
-                ? "The backup tasks were removed. " + imageError
-                : "GUARD's scheduled tasks have been removed from Windows.");
+            // Never claims more than was done. Saying "removed from Windows"
+            // while the SYSTEM image task is still registered would send the
+            // user off to delete GUARD believing it was safe, which is the one
+            // outcome this whole feature exists to prevent - and it is why
+            // RemoveAll verifies rather than assumes.
+            await ShowMessageAsync("GUARD",
+                (imageError != null ? "The backup tasks were removed. " + imageError
+                 : imageLeft
+                     ? "The backup tasks were removed. The scheduled system image was left in place, so"
+                       + " it will still run. Remove it here before you delete GUARD."
+                     : "GUARD's scheduled tasks have been removed from Windows.")
+                + (persisted ? "" : "\n\nGUARD could not update its own settings file, so it still has"
+                    + " these schedules switched on. They are gone from Windows either way, but do not"
+                    + " press Save Settings unless you want them back."));
         }
         finally { _removingTasks = false; }
     }
@@ -241,9 +258,16 @@ public sealed partial class MainWindow
     // scoped). The dirty flags are restored, not cleared, for the same reason -
     // unticking the boxes below sets them, but any edit that was already
     // pending is still pending.
-    private void ClearScheduleStateAfterRemoval(bool alsoImage)
+    // Returns false when the settings file could not be updated. Reported to the
+    // caller rather than swallowed: the tasks really are gone from Windows, but
+    // the saved settings still say the schedules are on, so the next launch
+    // shows them ticked and the next Save Settings would register them again.
+    // Telling the user their schedules are off when the file says otherwise is
+    // the same silent lie the rest of this feature verifies its way out of.
+    private bool ClearScheduleStateAfterRemoval(bool alsoImage)
     {
         bool wasDirty = _dirty, wasImageDirty = _imageDirty;
+        bool persisted = true;
         try
         {
             var onDisk = SettingsStore.Load();
@@ -252,7 +276,11 @@ public sealed partial class MainWindow
             if (alsoImage) onDisk.ImageScheduleEnabled = false;
             SettingsStore.Save(onDisk);
         }
-        catch (Exception ex) { DebugLog.Log("tasks", "could not persist the schedule-off state", ex); }
+        catch (Exception ex)
+        {
+            persisted = false;
+            DebugLog.Log("tasks", "could not persist the schedule-off state", ex);
+        }
 
         ChkSchedule.IsChecked = false;
         ChkOnConnect.IsChecked = false;
@@ -271,6 +299,7 @@ public sealed partial class MainWindow
         _imageDirty = wasImageDirty;
         RefreshScriptStatus(announce: false);
         RefreshImageStatus(announce: false);
+        return persisted;
     }
 
     // =====================================================================

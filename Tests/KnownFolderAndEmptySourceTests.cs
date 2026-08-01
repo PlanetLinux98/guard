@@ -317,6 +317,84 @@ public class SourceHealthTests
         Assert.Equal(ack, SaveValidation.PruneAcknowledged(both, ack));
     }
 
+    // The identities are only worth tracking if they survive being written out
+    // and read back. [FolderKinds] is keyed by the row's INI index, not its list
+    // position, so a row dropped for invalid content must not shift the rest -
+    // that desync would silently re-point identities at the wrong folders.
+    [Fact]
+    public void FolderIdentitiesAndPinningSurviveAnIniRoundTrip()
+    {
+        var cfg = new Settings { Dest = @"D:\Backup" };
+        cfg.Folders.Clear();
+        cfg.Folders.Add(new FolderPair(true, @"%USERPROFILE%\Documents", "Documents", "Documents"));
+        cfg.Folders.Add(new FolderPair(true, @"D:\Mine", "Mine") { Pinned = true });
+        cfg.Folders.Add(new FolderPair(false, @"%USERPROFILE%\Music", "Music", "Music"));
+
+        var back = SettingsStore.ParseIni(SettingsStore.BuildIni(cfg));
+
+        Assert.Equal(3, back.Folders.Count);
+        Assert.Equal("Documents", back.Folders[0].KnownFolder);
+        Assert.False(back.Folders[0].Pinned);
+        // Pinned must round-trip as DISTINCT from "never had an identity", or
+        // AdoptIdentities re-adopts the row on the next launch and the follow
+        // prompt the user dismissed comes back.
+        Assert.Equal("", back.Folders[1].KnownFolder);
+        Assert.True(back.Folders[1].Pinned);
+        Assert.Equal("Music", back.Folders[2].KnownFolder);
+        Assert.False(back.Folders[2].Include);
+    }
+
+    // An ini row that fails validation is skipped, so list position stops
+    // matching ini index from that row on. The identities must still land on
+    // the rows they belong to.
+    [Fact]
+    public void SkippedFolderRowDoesNotShiftTheIdentityMapping()
+    {
+        string ini = string.Join("\r\n",
+            "[Folders]",
+            "0=1|" + @"%USERPROFILE%\Documents" + "|Documents",
+            "1=1||Broken",                     // no source: dropped by validation
+            "2=1|" + @"%USERPROFILE%\Music" + "|Music",
+            "",
+            "[FolderKinds]",
+            "0=Documents",
+            "2=Music",
+            "");
+
+        var back = SettingsStore.ParseIni(ini);
+
+        Assert.Equal(2, back.Folders.Count);
+        Assert.Equal("Documents", back.Folders[0].KnownFolder);
+        // Would be "" if the mapping had been keyed on list position instead.
+        Assert.Equal("Music", back.Folders[1].KnownFolder);
+    }
+
+    // A semicolon is a legal Windows filename character, so it must not be what
+    // separates the stored entries: split on one and "Q3;final" becomes two keys
+    // that match nothing, silently dropping the answer the user gave. Guards the
+    // separator choice itself, which is the thing a later tidy-up would break.
+    [Fact]
+    public void AcknowledgementSurvivesSemicolonsInFolderNames()
+    {
+        var odd = new SaveValidation.VanishedSource(@"C:\Data\Q3;final", "Q3");
+        var plain = new SaveValidation.VanishedSource(@"C:\Data\Pics", "Pictures");
+        var both = new List<SaveValidation.VanishedSource> { odd, plain };
+
+        string ack = SaveValidation.AddAcknowledged(new[] { odd }, "");
+        Assert.DoesNotContain(AppPrefs.ListSeparator, ack);
+
+        // Only the semicolon folder is silenced; the other still reports.
+        var report = SaveValidation.Unacknowledged(both, ack);
+        Assert.Single(report);
+        Assert.Equal(@"C:\Data\Pics", report[0].Source);
+
+        // And it round-trips through a second entry, where a bad separator would
+        // corrupt the boundary between the two.
+        string two = SaveValidation.AddAcknowledged(new[] { plain }, ack);
+        Assert.Empty(SaveValidation.Unacknowledged(both, two));
+        Assert.Equal(two, SaveValidation.PruneAcknowledged(both, two));
+    }
+
     // A walk that runs out of time must not answer either question. "Empty" is
     // the quiet answer for a source and the ALARM for a destination, so a single
     // fallback cannot be safe for both - the budget is forced to zero here on a

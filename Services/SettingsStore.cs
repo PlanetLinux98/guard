@@ -26,7 +26,7 @@ public static class SettingsStore
         // thing and hand back a fresh default Settings, same as a missing file.
         try
         {
-            return LoadFrom(cfg);
+            return LoadFrom(cfg, File.ReadAllLines(GuardPaths.IniPath));
         }
         catch (Exception ex)
         {
@@ -35,7 +35,11 @@ public static class SettingsStore
         }
     }
 
-    private static Settings LoadFrom(Settings cfg)
+    // Lines passed in rather than read here, so the parse can be exercised
+    // without an on-disk ini: GuardPaths.IniPath is fixed to the running exe's
+    // data folder, which left the [FolderKinds] index mapping and the folder
+    // identities untested. See ParseIni.
+    private static Settings LoadFrom(Settings cfg, string[] lines)
     {
         var section = "";
         var folders = new ObservableCollection<FolderPair>();
@@ -50,7 +54,7 @@ public static class SettingsStore
         // them and migrate after the loop only when no new-format keys exist.
         bool sawNewExcludes = false;
         string legacyDirs = "", legacyFiles = "";
-        foreach (var raw in File.ReadAllLines(GuardPaths.IniPath))
+        foreach (var raw in lines)
         {
             var line = raw.Trim();
             if (line.Length == 0 || line.StartsWith(";")) continue;
@@ -311,7 +315,16 @@ public static class SettingsStore
         Save(s);
     }
 
-    public static void Save(Settings cfg)
+    public static void Save(Settings cfg) => AtomicFile.WriteAllText(GuardPaths.IniPath, BuildIni(cfg));
+
+    // The parse half as a pure function, for tests: the save/load round trip is
+    // where the folder identities live or die, and [FolderKinds] is keyed by ini
+    // index rather than list position - the kind of mapping that breaks quietly.
+    internal static Settings ParseIni(string ini)
+        => LoadFrom(new Settings { Folders = Settings.DefaultFolders() },
+                    ini.Replace("\r\n", "\n").Split('\n'));
+
+    internal static string BuildIni(Settings cfg)
     {
         var sb = new StringBuilder();
         sb.AppendLine("; GUARD settings - generated file. Edit via GUARD.exe.");
@@ -367,7 +380,7 @@ public static class SettingsStore
         sb.AppendLine("[AppList]");
         sb.AppendLine("Dest=" + cfg.AppListDest);
         sb.AppendLine("ExportSettings=" + (cfg.ExportAppSettings ? "1" : "0"));
-        AtomicFile.WriteAllText(GuardPaths.IniPath, sb.ToString());
+        return sb.ToString();
     }
 
     // Legacy multi-line exclude values were stored with line breaks collapsed

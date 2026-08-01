@@ -77,10 +77,10 @@ public static class ScheduledTasks
         // the same script hidden and raises the outcome toast; see Program /
         // HeadlessBackupRunner. -MultipleInstances IgnoreNew plus the script's
         // own run lock keep overlapping fires from colliding on the log.
-        // BaseDir, not Environment.ProcessPath directly: BaseDir already resolves
+        // GuardPaths.ExePath, not Environment.ProcessPath: it already resolves
         // the winget-portable symlink to the real exe, so a task saved while
         // running through that alias still registers a launchable action.
-        string exe = ProcessRunner.PsQuote(Path.Combine(GuardPaths.BaseDir, "GUARD.exe"));
+        string exe = ProcessRunner.PsQuote(GuardPaths.ExePath);
         var sb = new StringBuilder();
         if (cfg.ScheduleEnabled)
         {
@@ -411,7 +411,7 @@ public static class ScheduledTasks
     public static bool IsCurrentBackupAction(TaskActionInfo a)
     {
         string exe = (a.Execute ?? "").Trim().Trim('"');
-        return string.Equals(exe, Path.Combine(GuardPaths.BaseDir, "GUARD.exe"), StringComparison.OrdinalIgnoreCase)
+        return string.Equals(exe, GuardPaths.ExePath, StringComparison.OrdinalIgnoreCase)
             && (a.Arguments ?? "").TrimStart().StartsWith("--run-backup", StringComparison.Ordinal);
     }
 

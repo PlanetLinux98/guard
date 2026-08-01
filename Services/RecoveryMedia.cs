@@ -117,7 +117,13 @@ public static class RecoveryMedia
         sb.AppendLine("trap { try { Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue | Out-Null } catch {}; Log ('ERROR: ' + $_); exit 1 }");
         sb.AppendLine("'' | Out-File -FilePath $log -Encoding UTF8");
         sb.AppendLine("Remove-Item $cancel -Force -ErrorAction SilentlyContinue");
-        sb.AppendLine("Log ('Recovery media build  ' + (Get-Date))");
+        // Composed from the parts, not (Get-Date): the default rendering follows
+        // the OS calendar, so a Thai or Saudi Windows stamped this log with a
+        // Buddhist or Hijri year. Cosmetic here, but it is the same trap the
+        // version-folder names fell into (see BackupScript.DateStampEncoded).
+        sb.AppendLine("$n = Get-Date; Log ('Recovery media build  ' + " +
+            "$n.Year.ToString('0000')+'-'+$n.Month.ToString('00')+'-'+$n.Day.ToString('00')+" +
+            "' '+$n.Hour.ToString('00')+':'+$n.Minute.ToString('00'))");
         sb.AppendLine("Log ('ISO: ' + $iso)");
         sb.AppendLine("Pct 2");
         // 1. Validate the ISO before touching the disk.

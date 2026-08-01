@@ -1107,9 +1107,9 @@ public sealed partial class MainWindow : Window
 
     private void SetWindowIcon()
     {
-        // GuardPaths.BaseDir, not raw Environment.ProcessPath: consistent with
-        // every other self-path use in the app (see GuardPaths.ResolveBaseDir).
-        string exe = Path.Combine(GuardPaths.BaseDir, "GUARD.exe");
+        // GuardPaths.ExePath, not raw Environment.ProcessPath: consistent with
+        // every other self-path use in the app (see GuardPaths.ResolveExePath).
+        string exe = GuardPaths.ExePath;
         ExtractIconExW(exe, 0, out nint big, out nint small, 1);
         if (small != 0) SendMessageW(WindowHandle, WM_SETICON, 0, small); // ICON_SMALL
         if (big != 0) SendMessageW(WindowHandle, WM_SETICON, 1, big);     // ICON_BIG
