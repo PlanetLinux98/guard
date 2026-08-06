@@ -32,6 +32,38 @@ public class BackupScriptTests
     }
 
     [Fact]
+    public void AMissingSourceMakesTheRunReportErrorsRatherThanSuccess()
+    {
+        // A source that is not there was not copied, so the run must not end on
+        // FINISHED OK / RC=0: an external disk that did not mount otherwise gave
+        // a green status line and a "finished successfully" toast forever.
+        string s = BackupScript.Generate(BaseSettings());
+        int skip = IndexOf(s, "SKIP source not found");
+        Assert.True(skip >= 0, "the not-found branch should log a SKIP line");
+        int haderr = s.IndexOf("set \"HADERR=1\"", skip, System.StringComparison.Ordinal);
+        int eof = s.IndexOf("goto :eof", skip, System.StringComparison.Ordinal);
+        Assert.True(haderr > skip && haderr < eof,
+            "the not-found branch must set HADERR before it returns");
+    }
+
+    [Fact]
+    public void DotSubfoldersEmitTheSameDestinationTheMirrorGuardKeysOn()
+    {
+        // The guard normalizes "." away, so the generated path must too, or the
+        // script would write somewhere the save was never checked against.
+        var cfg = BaseSettings();
+        cfg.Folders.Clear();
+        cfg.Folders.Add(new FolderPair(true, @"C:\A", @".\Docs"));
+        Assert.Contains(@"""%DEST%\Docs""", BackupScript.Generate(cfg));
+
+        // "." alone means the destination root, spelled "." so the quoted
+        // argument never ends in a backslash.
+        cfg.Folders.Clear();
+        cfg.Folders.Add(new FolderPair(true, @"C:\A", "."));
+        Assert.Contains(@"""%DEST%\.""", BackupScript.Generate(cfg));
+    }
+
+    [Fact]
     public void RunLockAndExitCodesAreEmitted()
     {
         string s = BackupScript.Generate(BaseSettings());
@@ -120,17 +152,35 @@ public class BackupScriptTests
 
         string update = Updater.GenerateApplyScript(
             @"C:\Users\Élise\AppData\Local\Temp\GUARD-update-X\GUARD.zip",
-            relaunch: true, appDir: @"C:\Users\Élise\GUARD", pid: 1234);
+            relaunch: true, appDir: @"C:\Users\Élise\GUARD");
         Assert.Contains("chcp 65001 >nul", update);
         Assert.True(IndexOf(update, "chcp 65001") < IndexOf(update, "Élise"));
         // The relaunch variant must still restart from the install folder.
         Assert.Contains("start \"\" \"%APPDIR%\\GUARD.exe\"", update);
         Assert.DoesNotContain("start \"\"",
-            Updater.GenerateApplyScript(@"C:\z.zip", relaunch: false, appDir: @"C:\G", pid: 1));
+            Updater.GenerateApplyScript(@"C:\z.zip", relaunch: false, appDir: @"C:\G"));
     }
 
     private static int IndexOf(string haystack, string needle)
         => haystack.IndexOf(needle, System.StringComparison.Ordinal);
+
+    [Fact]
+    public void TheApplierWaitsForEveryGuardInstanceNotJustTheWindowPid()
+    {
+        // The scheduled backup runs a SECOND GUARD.exe, so a PID-only wait
+        // cleared while that one still held the exe open and tar then overwrote
+        // part of the install and skipped the rest.
+        string s = Updater.GenerateApplyScript(
+            @"C:\stage\GUARD.zip", relaunch: false, appDir: @"C:\Tools\GUARD");
+        Assert.Contains("tasklist /FI \"IMAGENAME eq GUARD.exe\"", s);
+        Assert.DoesNotContain("PID eq", s);
+
+        // A renamed portable copy must still be matched by its real filename,
+        // or the wait falls straight through again.
+        string renamed = Updater.GenerateApplyScript(
+            @"C:\stage\GUARD.zip", relaunch: false, appDir: @"C:\Tools\G", exeName: "Backup.exe");
+        Assert.Contains("tasklist /FI \"IMAGENAME eq Backup.exe\"", renamed);
+    }
 
     [Fact]
     public void UpdateScriptSurvivesDriveRootAndPercentInstallPaths()
@@ -140,19 +190,19 @@ public class BackupScriptTests
         // parser), so a root install could never self-update. The root embeds
         // as X:\. because "X:" alone is drive-relative.
         string root = Updater.GenerateApplyScript(
-            @"C:\stage\GUARD.zip", relaunch: false, appDir: @"E:\", pid: 7);
+            @"C:\stage\GUARD.zip", relaunch: false, appDir: @"E:\");
         Assert.Contains("set \"APPDIR=E:\\.\"", root);
 
         // cmd drops an unmatched % when it parses a batch line, so a literal %
         // in either embedded path must be escaped as %%.
         string pct = Updater.GenerateApplyScript(
-            @"C:\100% temp\GUARD.zip", relaunch: false, appDir: @"C:\100% backups\GUARD", pid: 7);
+            @"C:\100% temp\GUARD.zip", relaunch: false, appDir: @"C:\100% backups\GUARD");
         Assert.Contains("set \"APPDIR=C:\\100%% backups\\GUARD\"", pct);
         Assert.Contains("set \"ZIP=C:\\100%% temp\\GUARD.zip\"", pct);
 
         // A normal install path passes through untouched.
         string plain = Updater.GenerateApplyScript(
-            @"C:\stage\GUARD.zip", relaunch: false, appDir: @"C:\Tools\GUARD", pid: 7);
+            @"C:\stage\GUARD.zip", relaunch: false, appDir: @"C:\Tools\GUARD");
         Assert.Contains("set \"APPDIR=C:\\Tools\\GUARD\"", plain);
     }
 

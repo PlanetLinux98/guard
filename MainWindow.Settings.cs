@@ -292,6 +292,7 @@ public sealed partial class MainWindow
             ChkImageSchedule.IsChecked = false;
             _cfg.ImageScheduleEnabled = false;
             _imageTaskStale = false;
+            _imageTaskUnapplied = false;
             _lastImageScheduleSig = ImageScheduleSignature(_cfg);
             LblImageNextRun.Text = "Next run: (no scheduled image)";
         }

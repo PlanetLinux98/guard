@@ -294,7 +294,7 @@ public static class SaveValidation
 
     private static bool BackupHoldsFilesFor(List<string> roots, string? subFolder, DateTime deadline)
     {
-        string sub = (subFolder ?? "").Trim().Trim('\\');
+        string sub = NormalizeSubFolder(subFolder);
         foreach (var root in roots)
         {
             try
@@ -400,6 +400,27 @@ public static class SaveValidation
         return bad;
     }
 
+    // The one place that decides what a destination subfolder MEANS, so the
+    // conflict guard, the empty-source check and the generated script can never
+    // disagree about it. Drops "." segments and collapses stray separators, so
+    // "." and ".\Documents" resolve to the same destinations as "" and
+    // "Documents" instead of keying as distinct ones: a "." pair otherwise
+    // passed MirrorSubfolderConflicts (its ".\" key prefix-matched nothing) and
+    // then had robocopy /MIR the destination ROOT, purging every other pair's
+    // backup on the next run. ".." never reaches here - both validators reject
+    // it outright, because it would climb out of the destination entirely.
+    public static string NormalizeSubFolder(string? subFolder)
+    {
+        var parts = new List<string>();
+        foreach (var seg in (subFolder ?? "").Split('\\'))
+        {
+            string t = seg.Trim();
+            if (t.Length == 0 || t == ".") continue;
+            parts.Add(t);
+        }
+        return string.Join("\\", parts);
+    }
+
     // Mirror-mode destination collisions, which must BLOCK a save like the
     // source/destination overlap: /MIR deletes destination files not present in
     // its own source, so two included pairs whose subfolders coincide (or nest)
@@ -413,7 +434,7 @@ public static class SaveValidation
         foreach (var f in folders)
         {
             if (!f.Include) continue;
-            string sub = (f.SubFolder ?? "").Trim().Trim('\\');
+            string sub = NormalizeSubFolder(f.SubFolder);
             // Empty (root) keys as "" so it prefixes everything; non-empty keys
             // end in a separator so prefix tests match whole segments only.
             keys.Add((sub.Length > 0 ? sub + "\\" : "",
