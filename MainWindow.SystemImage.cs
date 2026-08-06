@@ -92,6 +92,11 @@ public sealed partial class MainWindow : Window
             _imageStatusBrush = new SolidColorBrush(StatusAmber);
             _imageStatusText = "GUARD's folder has moved - click Save Settings to repoint the scheduled image (needs Administrator approval).";
         }
+        else if (_imageTaskUnapplied)
+        {
+            _imageStatusBrush = new SolidColorBrush(StatusAmber);
+            _imageStatusText = "The image schedule is saved but Windows has no matching task - click Save Settings to try again (needs Administrator approval).";
+        }
         else
         {
             // Same health-first idea as the File Backup status: once images
@@ -141,7 +146,7 @@ public sealed partial class MainWindow : Window
     private void UpdateImageSaveEnabled()
     {
         if (BtnSaveImage == null || _imageRunning) return;
-        bool enable = _imageDirty || _imageTaskStale || !File.Exists(GuardPaths.SystemImageScriptPath);
+        bool enable = _imageDirty || _imageTaskStale || _imageTaskUnapplied || !File.Exists(GuardPaths.SystemImageScriptPath);
         // See UpdateSaveEnabled: guard on the XAML root so the constructor-time
         // seeded status does not query focus before Content.XamlRoot exists.
         if (!enable && BtnSaveImage.IsEnabled && Content?.XamlRoot is not null &&
@@ -317,8 +322,24 @@ public sealed partial class MainWindow : Window
                     // A successful re-apply also repoints a task left behind by
                     // a folder move (the stale flag forced sig to differ).
                     _imageTaskStale = false;
-                    UpdateImageSaveEnabled();
+                    _imageTaskUnapplied = false;
                 }
+                else
+                {
+                    // The settings reached disk but Windows did not take the
+                    // schedule change, so the two now disagree. Say so and keep
+                    // Save enabled: the status went green and clean here even on
+                    // failure, which left "make an unrelated edit first" as the
+                    // only way back to the button. Worse, the startup signature
+                    // is computed from the SAVED config, so the next launch found
+                    // sig == _lastImageScheduleSig and never retried - the page
+                    // promised monthly images that were never registered, or hid
+                    // a SYSTEM task that was still firing on schedule.
+                    _imageTaskUnapplied = true;
+                    _imageStatusBrush = new SolidColorBrush(StatusAmber);
+                    SetImageStatusText("Image settings saved, but the schedule was not applied - click Save Settings to try again.");
+                }
+                UpdateImageSaveEnabled();
                 LblImageNextRun.Text = applied.NextRun == null
                     ? "Next run: (no scheduled image)" : "Next run: " + applied.NextRun;
             }

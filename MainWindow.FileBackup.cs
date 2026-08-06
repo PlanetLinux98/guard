@@ -555,8 +555,10 @@ public sealed partial class MainWindow : Window
 
         bool healBackup = false;
         bool imageStale = false;
+        bool imageSeen = false;
         foreach (var a in state.Actions)
         {
+            if (a.Name == GuardPaths.SystemImageTaskName) imageSeen = true;
             if (a.Name == GuardPaths.FileTaskName && _cfg.ScheduleEnabled
                 && !ScheduledTasks.IsCurrentBackupAction(a)) healBackup = true;
             else if (a.Name == GuardPaths.OnConnectTaskName && _cfg.TriggerOnConnect
@@ -580,6 +582,20 @@ public sealed partial class MainWindow : Window
         if (imageStale)
         {
             _imageTaskStale = true;
+            _lastImageScheduleSig = "";   // force the next save to re-apply
+            RefreshImageStatus(announce: false);
+        }
+        // A task that is MISSING writes no ACT line at all, so the loop above
+        // cannot see it: the schedule was saved but never registered (the one UAC
+        // prompt was declined, or the register failed), or something removed it
+        // since. Without this the saved config and the startup signature agree
+        // forever, so the apply is never retried and the page keeps showing a
+        // green "Image settings saved" for images that will never be taken.
+        // Gated on QueryOk: an empty action list from a query that did not run is
+        // not evidence the task is gone.
+        else if (state.QueryOk && _cfg.ImageScheduleEnabled && !imageSeen)
+        {
+            _imageTaskUnapplied = true;
             _lastImageScheduleSig = "";   // force the next save to re-apply
             RefreshImageStatus(announce: false);
         }

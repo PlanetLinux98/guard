@@ -13,6 +13,28 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   development build needs from what only the shipping NativeAOT build needs, and
   notes that the clone must carry tags for MinVer to version a build correctly.
 
+### Fixed
+- A folder pair whose destination subfolder was `.` (or started with `.\`) backed
+  up to the destination root rather than to its own folder, and the Mirror-mode
+  collision check did not recognize it as the root, so the save was allowed and
+  the next run's `/MIR` deleted every other folder's backup. Destination
+  subfolders now resolve the same way in the check and in the generated script.
+- A run whose source folders were all missing (an external drive that did not
+  mount, a share that was down) still finished OK, so the status line stayed
+  green and an unattended run reported that the backup had succeeded. A source
+  that is not there is now reported as an error rather than skipped silently.
+- Self-update waited only for the GUARD window to close, not for a scheduled
+  backup running in its own GUARD process, so an update applied while one was
+  running could unpack over files still in use and leave the folder part old and
+  part new. It now waits for every GUARD process, and abandons the update rather
+  than unpacking if one will not exit.
+- The scheduled system image reported success whether or not Windows accepted the
+  change, so an image schedule could keep firing after it was switched off, or
+  never be registered after it was switched on, while the page showed the
+  schedule as saved and Save was disabled so it could not be retried. Switching
+  it off is now verified, a failed apply says so and leaves Save available, and a
+  schedule whose task has gone missing is spotted at launch.
+
 ## [0.5.3] - 2026-08-01
 
 ### Added

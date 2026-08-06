@@ -249,13 +249,27 @@ public static class ScheduledTasks
     // or here-string fragility can corrupt it.
     public static ApplyResult ApplySystemImage(Settings cfg)
     {
+        // Turning the schedule OFF reads the task back, the same verify-don't-assume
+        // RemoveSystemImageTask does and for the same reason: the Unregister is
+        // SilentlyContinue, so the bare "exit 0" this used to end on reported
+        // success whatever actually happened. A SYSTEM/Highest wbadmin task that
+        // survived then kept firing on schedule while the UI showed no schedule.
+        // Exit 3 means the task is still there. (Registration needs no equivalent:
+        // schtasks /Create propagates its own exit code.)
         string script = cfg.ImageScheduleEnabled
             ? BuildSystemImageRegisterScript(cfg)
             : "Unregister-ScheduledTask -TaskName '" + GuardPaths.SystemImageTaskName +
-              "' -Confirm:$false -ErrorAction SilentlyContinue; exit 0";
+              "' -Confirm:$false -ErrorAction SilentlyContinue; " +
+              "try { Get-ScheduledTask -TaskName '" + GuardPaths.SystemImageTaskName +
+              "' -ErrorAction Stop | Out-Null; exit 3 } catch { exit 0 }";
 
-        if (!ProcessRunner.RunPowerShellElevated(script, out var err))
+        int code = ProcessRunner.RunPowerShellElevatedCode(script, out var err);
+        if (code == ProcessRunner.ElevationDeclined || code == ProcessRunner.ElevationLaunchFailed)
             return new ApplyResult("System image schedule " + err, null);
+        if (code == 3)
+            return new ApplyResult("System image schedule could not be turned off: the task is still registered.", null);
+        if (code != 0)
+            return new ApplyResult("System image schedule did not complete (exit code " + code + ").", null);
 
         // Querying task info is read-only, so the next run reads back un-elevated.
         string? next = cfg.ImageScheduleEnabled ? QueryNextRun(GuardPaths.SystemImageTaskName) : null;
@@ -361,7 +375,12 @@ public static class ScheduledTasks
     }
 
     public sealed record TaskActionInfo(string Name, string Execute, string Arguments);
-    public sealed record StartupState(string? NextRun, string? ImageNextRun, List<TaskActionInfo> Actions);
+    // QueryOk distinguishes "Windows reported and the task is not there" from
+    // "the query itself failed", which an empty Actions list alone cannot: the
+    // caller treats a missing image task as a schedule that needs re-applying,
+    // and must not raise that on a query that never ran. Same reasoning as
+    // RemoveAll's QUERYOK marker.
+    public sealed record StartupState(string? NextRun, string? ImageNextRun, List<TaskActionInfo> Actions, bool QueryOk);
 
     // One batched launch-time query: the backup and image tasks' next runs plus
     // each GUARD task's registered action. Both next runs, because only a
@@ -382,16 +401,20 @@ public static class ScheduledTasks
                   "','" + GuardPaths.SystemImageTaskName + "')) {")
           .Append("try { $t = Get-ScheduledTask -TaskName $n -ErrorAction Stop; $a = $t.Actions[0];")
           .Append("Write-Output ('ACT ' + $n + '|' + $a.Execute + '|' + $a.Arguments) } catch { } }");
+        // Last, so it is only reached once the enumeration above completed.
+        sb.Append("Write-Output 'QUERYOK'");
 
         string? next = null, imageNext = null;
+        bool queryOk = false;
         var actions = new List<TaskActionInfo>();
         try
         {
             foreach (var raw in ProcessRunner.RunPowerShellCapture(sb.ToString()).Split('\n'))
             {
                 var line = raw.Trim();
-                // NEXTIMG first: its marker shares the NEXT prefix.
-                if (line.StartsWith("NEXTIMG ")) imageNext = line.Substring(8);
+                if (line == "QUERYOK") queryOk = true;
+                // NEXTIMG before NEXT: its marker shares the NEXT prefix.
+                else if (line.StartsWith("NEXTIMG ")) imageNext = line.Substring(8);
                 else if (line.StartsWith("NEXT ")) next = line.Substring(5);
                 else if (line.StartsWith("ACT "))
                 {
@@ -402,7 +425,7 @@ public static class ScheduledTasks
             }
         }
         catch (Exception ex) { DebugLog.Log("tasks", "startup task query failed", ex); }
-        return new StartupState(next, imageNext, actions);
+        return new StartupState(next, imageNext, actions, queryOk);
     }
 
     // Whether a registered backup-task action launches THIS install's exe in

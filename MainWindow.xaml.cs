@@ -160,6 +160,13 @@ public sealed partial class MainWindow : Window
     // folder moved); only an elevated save can fix it, so it rides the status
     // line until then. See CheckScheduledTasksAtLaunch.
     private bool _imageTaskStale;
+    // The saved image schedule and what Windows actually has do not agree: the
+    // elevated apply failed or was declined, or the task was missing at launch.
+    // Separate from _imageTaskStale (the task exists but points at an old
+    // folder) because the wording differs, and from _imageDirty because the
+    // settings ARE saved - only the schedule did not land. Keeps Save enabled so
+    // the apply can be retried without inventing an unrelated edit first.
+    private bool _imageTaskUnapplied;
     // Last-applied schedule signature: registering the SYSTEM task needs a UAC
     // prompt, so a save only re-applies (prompts) when one of these changed.
     private string _lastImageScheduleSig = "";

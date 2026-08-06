@@ -112,6 +112,49 @@ public class SaveValidationTests
         };
         Assert.Empty(SaveValidation.MirrorSubfolderConflicts(fine));
     }
+
+    [Fact]
+    public void MirrorConflictsCatchDotSubfoldersResolvingToTheSameDestination()
+    {
+        // "." IS the destination root, so a Mirror pair using it purges every
+        // other pair's output. It used to key as ".\", which prefix-matched
+        // nothing, so the save passed and the next run ran /MIR over the root.
+        var dot = new List<FolderPair>
+        {
+            new(true, @"C:\A", "."),
+            new(true, @"C:\B", "Docs"),
+        };
+        Assert.Single(SaveValidation.MirrorSubfolderConflicts(dot));
+
+        // ".\Docs" and "Docs" are one folder, so each run purged the other.
+        var dotted = new List<FolderPair>
+        {
+            new(true, @"C:\A", @".\Docs"),
+            new(true, @"C:\B", "Docs"),
+        };
+        Assert.Single(SaveValidation.MirrorSubfolderConflicts(dotted));
+
+        // Normalizing must not invent conflicts between genuinely distinct rows.
+        var fine = new List<FolderPair>
+        {
+            new(true, @"C:\A", @".\Docs"),
+            new(true, @"C:\B", @"Pictures\"),
+        };
+        Assert.Empty(SaveValidation.MirrorSubfolderConflicts(fine));
+    }
+
+    [Fact]
+    public void NormalizeSubFolderDropsDotSegmentsAndStraySeparators()
+    {
+        Assert.Equal("", SaveValidation.NormalizeSubFolder(null));
+        Assert.Equal("", SaveValidation.NormalizeSubFolder("."));
+        Assert.Equal("", SaveValidation.NormalizeSubFolder(@".\"));
+        Assert.Equal("Docs", SaveValidation.NormalizeSubFolder(@".\Docs"));
+        Assert.Equal("Docs", SaveValidation.NormalizeSubFolder(@"\Docs\"));
+        Assert.Equal("Docs", SaveValidation.NormalizeSubFolder("  Docs  "));
+        Assert.Equal(@"Docs\Inner", SaveValidation.NormalizeSubFolder(@"Docs\.\Inner"));
+        Assert.Equal(@"Docs\Inner", SaveValidation.NormalizeSubFolder(@"Docs\\Inner"));
+    }
 }
 
 public class AppSettingsRestoreTests

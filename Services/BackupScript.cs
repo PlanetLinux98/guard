@@ -238,7 +238,9 @@ public static class BackupScript
             // legacy one) must not leave the quoted destination ending in \",
             // which robocopy's parser reads as an escaped quote; "." keeps an
             // empty subfolder meaning "the destination root itself".
-            string sub = f.SubFolder.Trim().Trim('\\');
+            // NormalizeSubFolder is what MirrorSubfolderConflicts keys on, so
+            // the path emitted here is always the one the guard cleared.
+            string sub = SaveValidation.NormalizeSubFolder(f.SubFolder);
             sb.AppendLine("if defined GUARD_UI echo @@PROGRESS@@ " + (i + 1) + " " + inc.Count + " " + MarkerSafe(f.SubFolder));
             sb.AppendLine("call :backup \"" + SourceArg(f.Source) + "\" \"" + runDest + "\\" + (sub.Length > 0 ? sub : ".") + "\"");
         }
@@ -270,10 +272,18 @@ public static class BackupScript
         sb.AppendLine("goto :eof");
         sb.AppendLine();
         sb.AppendLine(":backup");
+        // A source that is not there was NOT copied, so the run must not report
+        // success. Without HADERR a run whose sources were all offline (an
+        // external disk that did not mount, a share that was down) still wrote
+        // FINISHED OK and returned RC=0, so the status line went green and the
+        // unattended toast said the backup succeeded - the same "protected while
+        // backing up nothing" trap the zero-included-folders guard blocks at save
+        // time, except this one only appears once the run is unattended.
         sb.AppendLine("if not exist \"%~1\" (");
         sb.AppendLine("   echo SKIP  source not found: \"%~1\"");
         sb.AppendLine("   >>\"%LOG%\" echo.");
         sb.AppendLine("   >>\"%LOG%\" echo SKIP source not found: \"%~1\"");
+        sb.AppendLine("   set \"HADERR=1\"");
         sb.AppendLine("   goto :eof");
         sb.AppendLine(")");
         sb.AppendLine("echo Backing up: \"%~1\"");
