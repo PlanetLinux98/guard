@@ -82,9 +82,29 @@ targets **.NET 10 + Windows App SDK 2.2.0** (WinUI 3).
 - winget (optional) for automatic app reinstalls. Without it, the app list is
   still read from the registry and can be exported for reference, and GUARD
   offers to install winget itself where it is missing.
-- To **build from source** you need the .NET 10 SDK (see [Building](#building)).
+- To **build from source** you need the .NET 10 SDK, and more for the shipping
+  build (see [Build prerequisites](#build-prerequisites)).
 
 ## Building
+
+### Build prerequisites
+
+A development build needs only the first row. The others are needed solely by
+the shipping NativeAOT build.
+
+| | Needed for | Notes |
+|---|---|---|
+| **.NET 10 SDK** | Everything | GUARD targets `net10.0-windows10.0.19041.0`. The Windows App SDK arrives through NuGet, and the build is self-contained, so there is no separate runtime to install |
+| **VS 2022 Build Tools**, "Desktop development with C++" | `publish-release.cmd`, `publish-aot.cmd` | The NativeAOT link step needs `link.exe` plus the MSVC and Windows SDK libraries. Keep the default install location: the scripts call `vcvars64.bat` there by absolute path, and put the VS Installer folder on PATH so the AOT target can find `vswhere.exe` by bare name |
+| **Python 3** with `markdown` | `publish-release.cmd` | Renders `USER_GUIDE.md` into the `USER_GUIDE.html` the release ships, and fails the build on a broken internal anchor. `pip install markdown` |
+| **Python** `resvg_py` and `pillow` | Only regenerating the app icon | `Assets\make-icon.py` rebuilds the committed `GUARD.ico` from the SVG masters. Not part of any build |
+
+Clone with tags (a plain `git clone`, not a shallow one): the version is computed
+from git tags by MinVer, so a clone without them produces wrongly versioned
+builds.
+
+Run the tests with `dotnet test Tests\GUARD.Tests.csproj`; they need no tooling
+beyond the SDK.
 
 ### Shipping build: NativeAOT release zip (recommended)
 

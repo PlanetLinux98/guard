@@ -8,6 +8,11 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+### Changed
+- The README now lists the build prerequisites in one table, separating what a
+  development build needs from what only the shipping NativeAOT build needs, and
+  notes that the clone must carry tags for MinVer to version a build correctly.
+
 ## [0.5.3] - 2026-08-01
 
 ### Added
