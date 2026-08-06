@@ -8,14 +8,16 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-08-06
+
 ### Changed
 - The README now lists the build prerequisites in one table, separating what a
   development build needs from what only the shipping NativeAOT build needs, and
   notes that the clone must carry tags for MinVer to version a build correctly.
 
 ### Fixed
-- A folder pair whose destination subfolder was `.` (or started with `.\`) backed
-  up to the destination root rather than to its own folder, and the Mirror-mode
+- A folder pair whose destination subfolder was `.` (or started with `.\`) would have 
+  backed up to the destination root rather than to its own folder, and the Mirror-mode
   collision check did not recognize it as the root, so the save was allowed and
   the next run's `/MIR` deleted every other folder's backup. Destination
   subfolders now resolve the same way in the check and in the generated script.
@@ -880,7 +882,8 @@ shipping as a single self-contained `GUARD.exe`.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/PlanetLinux98/guard/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/PlanetLinux98/guard/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/PlanetLinux98/guard/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/PlanetLinux98/guard/compare/v0.5.0...v0.5.1
