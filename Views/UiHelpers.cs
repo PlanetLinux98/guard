@@ -2,9 +2,39 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace GuardWui3.Views;
+
+// Shared list-focus memory. TabFocusNavigation="Once" always re-enters a list at
+// its FIRST row, so without this every trip out to the buttons beneath a list
+// and back costs the user their place - which on a long list, with a screen
+// reader, is the difference between usable and not. Lives here rather than in
+// MainWindow because the restore dialog's list needs exactly the same
+// behaviour, and a focus rule that exists in two copies is one that will drift.
+public static class ListFocus
+{
+    // Redirect keyboard focus entering a list from OUTSIDE to the row that last
+    // held it. A remembered element whose XamlRoot is null was detached (its row
+    // was removed or filtered out) - ignore it and let the default first-row
+    // behaviour stand.
+    public static void Restore(ItemsControl list, FrameworkElement? remembered, GettingFocusEventArgs args)
+    {
+        if (args.InputDevice != FocusInputDeviceKind.Keyboard) return;
+        if (remembered is null || remembered.XamlRoot is null) return;
+        if (args.OldFocusedElement is DependencyObject old && IsDescendant(list, old)) return; // moving within the list
+        if (args.NewFocusedElement is DependencyObject nw && !IsDescendant(list, nw)) return;  // not actually entering it
+        if (args.TrySetNewFocusedElement(remembered)) args.Handled = true;
+    }
+
+    public static bool IsDescendant(DependencyObject ancestor, DependencyObject? node)
+    {
+        for (var d = node; d is not null; d = VisualTreeHelper.GetParent(d))
+            if (ReferenceEquals(d, ancestor)) return true;
+        return false;
+    }
+}
 
 // Small UI helpers shared by MainWindow and the dialogs (previously duplicated).
 internal static class UiHelpers

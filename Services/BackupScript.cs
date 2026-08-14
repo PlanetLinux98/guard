@@ -365,29 +365,11 @@ public static class BackupScript
         return Convert.ToBase64String(Encoding.Unicode.GetBytes(ps));
     }
 
-    // A quoted path argument must never end in a backslash: robocopy parses \"
-    // as an escaped quote and mangles every argument after it. A bare or
-    // slashed drive root becomes "X:\." ("X:" alone is drive-relative and
-    // would resolve against that drive's current directory).
-    private static string SourceArg(string source)
-    {
-        string s = (source ?? "").Trim();
-        if (s.Length == 2 && s[1] == ':') return s + "\\.";
-        if (!s.EndsWith("\\")) return s;
-        string t = s.TrimEnd('\\');
-        return t.Length == 2 && t[1] == ':' ? t + "\\." : t;
-    }
+    // Shared with the restore runner, which passes the same paths to robocopy
+    // without a shell; see RobocopyPath for the rules and why they are one copy.
+    private static string SourceArg(string source) => RobocopyPath.Arg(source);
 
-    // DEST composes as %DEST%\<sub>, so it must not end in a backslash - except
-    // a drive root, which keeps "X:\" ("X:" alone is drive-relative; the
-    // "E:\\Sub" the composition then yields is harmless to robocopy and cmd).
-    private static string DestValue(string dest)
-    {
-        string d = (dest ?? "").Trim();
-        if (d.Length == 2 && d[1] == ':') return d + "\\";
-        string t = d.TrimEnd('\\');
-        return t.Length == 2 && t[1] == ':' ? t + "\\" : t;
-    }
+    private static string DestValue(string dest) => RobocopyPath.Root(dest);
 
     // Strip characters that would break a batch `echo` so a subfolder name is
     // safe to embed in an @@PROGRESS@@ marker line.

@@ -209,6 +209,19 @@ public static class GuardPaths
     // Preview (Test) runs write here instead of LogPath, so a preview never
     // overwrites the real last-backup log BackupHealth and Open Last Log read.
     public static string PreviewLogPath => Path.Combine(DataDir, @"Logs\backup_preview.log");
+    // The generated script's single-run lock. Named here because the restore
+    // runner opens the SAME file to keep a scheduled backup out while files are
+    // being copied back (see RestoreRunner.TryTakeRunLock); the script's own
+    // path for it is composed in batch, so the two must not drift.
+    public static string RunLockPath => Path.Combine(DataDir, @"Logs\backup-running.lock");
+    // File Restore: its own log, kept apart from backup_last.log so a restore
+    // never overwrites the record of the last backup (which is what tells the
+    // user whether the copies they are restoring from are current).
+    public static string RestoreLogPath => Path.Combine(DataDir, @"Logs\restore_last.log");
+    // Scratch log for the folder being restored right now. Robocopy cannot
+    // append a Unicode log, so each folder writes its own and it is folded into
+    // RestoreLogPath afterwards.
+    public static string RestorePartLogPath => Path.Combine(DataDir, @"Logs\restore-part.log");
     // HTML, not the .md source: every PC opens .html in a browser, while .md
     // often has no file association and Help dead-ended on Windows' picker.
     public static string ManualPath => Path.Combine(BaseDir, "USER_GUIDE.html");

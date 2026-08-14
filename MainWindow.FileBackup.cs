@@ -1186,9 +1186,12 @@ public sealed partial class MainWindow : Window
         // through SetProgress would also clear Indeterminate and reset the max,
         // turning the nav ring from a spinner into a stalled 0% arc and snapping
         // a run that was at 60% back to zero.
-        FileProgressLabel.Text = "Stopping the backup...";
-        Progress(0, p => p.Text = "Stopping the backup...");
-        AnnounceNotification("Stopping the backup...");
+        // Named for whichever job the button is actually stopping; the two share
+        // both the button and _runCts (they can never run at the same time).
+        string stopping = _restoreRunning ? "Stopping the restore..." : "Stopping the backup...";
+        FileProgressLabel.Text = stopping;
+        Progress(0, p => p.Text = stopping);
+        AnnounceNotification(stopping);
     }
 
     // Lock out the actions that conflict with a running backup. Save Settings is
@@ -1208,15 +1211,19 @@ public sealed partial class MainWindow : Window
         SetNavBusy(0, busy);
         if (busy)
         {
-            _fileRunLauncher = BeginRunBusy(BtnStopBackup, BtnSave, BtnRunNow, BtnPreview);
+            _fileRunLauncher = BeginRunBusy(BtnStopBackup, BtnSave, BtnRunNow, BtnPreview, BtnRestore);
             BtnSave.IsEnabled = false;
             BtnRunNow.IsEnabled = false;
             BtnPreview.IsEnabled = false;
+            // Restoring INTO a folder the running backup is copying OUT of would
+            // have each fighting the other over the same files.
+            BtnRestore.IsEnabled = false;
         }
         else
         {
             BtnRunNow.IsEnabled = true;
             BtnPreview.IsEnabled = true;
+            BtnRestore.IsEnabled = true;
             UpdateSaveEnabled();
             EndRunBusy(BtnStopBackup, _fileRunLauncher);
             _fileRunLauncher = null;

@@ -41,14 +41,19 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Window-wide page jumps: Ctrl+1 File Backup, Ctrl+2 System Image,
-             Ctrl+3 App Management, Ctrl+4 Settings. On the root Grid so they
-             fire from anywhere; one handler maps the key to the nav item. -->
+        <!-- Window-wide page jumps, in pane order: Ctrl+1 Protection Status,
+             Ctrl+2 File Backup, Ctrl+3 System Image, Ctrl+4 App Management,
+             Ctrl+5 Settings. On the root Grid so they fire from anywhere; one
+             handler maps the key to the nav item. The numbers follow the pane
+             rather than staying where they were when Protection Status was
+             added: a shortcut that stops matching the visible order is a
+             permanent trap, and matching it costs one relearn. -->
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Modifiers="Control" Key="Number1" Invoked="OnPageAccelerator" />
             <KeyboardAccelerator Modifiers="Control" Key="Number2" Invoked="OnPageAccelerator" />
             <KeyboardAccelerator Modifiers="Control" Key="Number3" Invoked="OnPageAccelerator" />
             <KeyboardAccelerator Modifiers="Control" Key="Number4" Invoked="OnPageAccelerator" />
+            <KeyboardAccelerator Modifiers="Control" Key="Number5" Invoked="OnPageAccelerator" />
         </Grid.KeyboardAccelerators>
 
         <!-- Left navigation replaces the old Pivot: it reclaims the oversized tab
@@ -96,6 +101,14 @@
                      the compact icon rail (narrower than ExpandedModeThresholdWidth) the
                      label and ring are hidden; SR users still get the name, the HelpText
                      and the existing finish notification. -->
+                <!-- Protection Status runs no job of its own, so it carries no
+                     progress ring; its Content is a plain string, from which a
+                     NavigationViewItem still derives its own UIA name. -->
+                <NavigationViewItem x:Name="NavDashboard" Tag="status" Content="Protection Status">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE9D9;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem x:Name="NavFile" Tag="file" IsSelected="True"
                                     AutomationProperties.Name="File Backup">
                     <NavigationViewItem.Icon>
@@ -157,6 +170,104 @@
                  OnNavSelectionChanged); a single MainWindow keeps every named
                  control and binding in one place. -->
             <Grid>
+                <!-- ========================= PROTECTION STATUS ========================= -->
+                <!-- Answers "am I actually protected right now?" in one screen.
+                     Every fact on it comes from ProtectionStatus, which the File
+                     Backup and System Image status bars also read, so this page
+                     can never quietly disagree with them.
+
+                     Each card is a named UIA group, so a screen reader announces
+                     the pillar once on entry and stays quiet while moving inside
+                     it. None of the status lines carries an
+                     AutomationProperties.Name: a static name would override the
+                     live text as the UIA Name, and the review cursor would then
+                     read the label instead of the state. -->
+                <Grid x:Name="DashboardPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel HorizontalAlignment="Stretch" Margin="16" Spacing="12">
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6" AutomationProperties.Name="Overall protection">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Ellipse x:Name="DashOverallDot" Width="14" Height="14" VerticalAlignment="Center"
+                                                 AutomationProperties.AccessibilityView="Raw" />
+                                        <TextBlock x:Name="DashOverallText" FontSize="18" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="DashOverallDetail" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6" AutomationProperties.Name="File Backup status">
+                                    <TextBlock Text="Your files" Style="{StaticResource CardTitle}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Ellipse x:Name="DashFileDot" Width="10" Height="10" VerticalAlignment="Center"
+                                                 AutomationProperties.AccessibilityView="Raw" />
+                                        <TextBlock x:Name="DashFileText" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="DashFileDetail" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                                        <Button Content="Go to File Backup" AccessKey="B" Click="OnDashGoFile" />
+                                        <Button Content="Open Last Log" AccessKey="L" Click="OnOpenLog" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6" AutomationProperties.Name="System Image status">
+                                    <TextBlock Text="Your whole PC" Style="{StaticResource CardTitle}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Ellipse x:Name="DashImageDot" Width="10" Height="10" VerticalAlignment="Center"
+                                                 AutomationProperties.AccessibilityView="Raw" />
+                                        <TextBlock x:Name="DashImageText" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="DashImageDetail" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                                        <Button Content="Go to System Image" AccessKey="I" Click="OnDashGoImage" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6" AutomationProperties.Name="App Management status">
+                                    <TextBlock Text="Your programs" Style="{StaticResource CardTitle}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Ellipse x:Name="DashAppsDot" Width="10" Height="10" VerticalAlignment="Center"
+                                                 AutomationProperties.AccessibilityView="Raw" />
+                                        <TextBlock x:Name="DashAppsText" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="DashAppsDetail" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                                        <Button Content="Go to App Management" AccessKey="M" Click="OnDashGoApps" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <Border Grid.Row="1" BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            Padding="16,10">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button x:Name="BtnDashRefresh" Content="Check Again" AccessKey="C"
+                                    Style="{ThemeResource AccentButtonStyle}"
+                                    ToolTipService.ToolTip="Re-read the backup logs and destinations and update this page"
+                                    Click="OnDashRefresh" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
                 <!-- ============================ FILE BACKUP ============================ -->
                 <Grid x:Name="FileBackupPage">
                     <Grid.RowDefinitions>
@@ -503,6 +614,14 @@
                             <Button x:Name="BtnStopBackup" Content="Stop Backup" AccessKey="T" IsEnabled="False"
                                     ToolTipService.ToolTip="Stop the running backup"
                                     Click="OnStopBackup" />
+                            <!-- Restore sits with the run buttons, not among the
+                                 openers: it is the other half of what this page
+                                 does, and the one thing a user looks for after
+                                 losing a file. The picking happens in a dialog;
+                                 the run itself streams into this page. -->
+                            <Button x:Name="BtnRestore" Content="Restore..." AccessKey="F"
+                                    ToolTipService.ToolTip="Copy files from the backup back into their original folders"
+                                    Click="OnRestoreFiles" />
                             <Border Width="1" Margin="4,2" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                             <Button Content="Open Last Log" AccessKey="L"
                                     ToolTipService.ToolTip="Open the last backup log"

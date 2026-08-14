@@ -39,6 +39,15 @@ targets **.NET 10 + Windows App SDK 2.2.0** (WinUI 3).
   pattern exclusions, so common cases need no wildcard typing.
 - **Preview (dry-run)** mode, per-folder progress, a plain-language run summary,
   and a saved log of the last run.
+- **File Restore**: copies files from a backup back into the folders they came
+  from, listing what is actually in the backup (so it works on a PC that has
+  never been set up) and offering a dated version to restore from. The default
+  puts back what is missing and never replaces newer work; a second mode
+  replaces files whatever their date, after showing what would change. Neither
+  ever deletes, and a backup and a restore can never run at the same time.
+- **Protection Status page**: whether your files, your whole PC and your
+  programs are actually protected right now, judged from the run logs and the
+  destinations themselves rather than from your settings.
 - **Optional dated backup versions**: keep a configurable number of dated copies
   instead of just the latest.
 - **Scheduling**: run on any mix of weekdays at a set time, and/or
@@ -160,8 +169,8 @@ shipped artifact, but a working build for anyone without the C++ tools AOT needs
 |---|---|
 | `Models/` | FolderPair, AppEntry, Settings, AppListFile, exclude and app-settings models (+ System.Text.Json source-gen context) |
 | `Services/` | Settings I/O, backup-script generation, scheduled tasks, winget + registry scan, app-settings export/restore, system-image + recovery-media scripting, the updater, JSON I/O, process helpers |
-| `MainWindow.xaml(.cs)` | All four pages and all wiring (code-behind split into per-page partial files) |
-| `Views/` | The ContentDialogs (folder, exclude, about, app-import, app-settings export/restore, recovery-media, restore-help, update, winget-install) and the status-bar host |
+| `MainWindow.xaml(.cs)` | All five pages and all wiring (code-behind split into per-page partial files) |
+| `Views/` | The ContentDialogs (folder, exclude, about, app-import, app-settings export/restore, file-restore, recovery-media, restore-help, update, winget-install) and the status-bar host |
 | `Tests/` | Linked-source unit tests (`GUARD.Tests.csproj`, not shipped) |
 | `Assets/` | App icon: SVG masters, `make-icon.py`, and the committed `GUARD.ico` + 256 px PNG |
 | `publish-release.cmd` | Build the shipping NativeAOT `GUARD` and stage it into `GUARD.zip` |
@@ -172,8 +181,8 @@ shipped artifact, but a working build for anyone without the C++ tools AOT needs
 
 ## Usage
 
-GUARD has four pages: **File Backup**, **System Image**, **App Management**,
-and **Settings** (update options, theme, startup page, and removing GUARD's
+GUARD has five pages: **Protection Status**, **File Backup**, **System Image**,
+**App Management**, and **Settings** (update options, theme, startup page, and removing GUARD's
 scheduled tasks before you uninstall). For a full,
 step-by-step walkthrough of every control and workflow, see the
 [User Manual](USER_GUIDE.md) (or press F1 in the app).

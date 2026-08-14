@@ -51,6 +51,10 @@ public sealed partial class MainWindow : Window
             _imageDirty = wasDirty;
         }
         RefreshImageStatus(announce: false);
+        // The Protection Status page can be the one that triggers this probe, and
+        // it renders before the answer lands; repaint it so a Home PC stops
+        // reading as "no image settings saved".
+        if (_activePage == 4) RefreshDashboard(announce: false);
 
         // First visit with image settings saved but no image made yet: show
         // the destination space, as the File Backup page does on launch. Once
@@ -72,15 +76,15 @@ public sealed partial class MainWindow : Window
         // the stale pre-run one while a dead share stalled the free query).
         _imageSpaceSeq++;
         // Terse on purpose, like RefreshScriptStatus: one bar line.
-        if (!_imageAvailable)
+        bool imageSaved = File.Exists(GuardPaths.SystemImageScriptPath);
+        if (!_imageAvailable || !imageSaved)
         {
+            // Both of these are protection states rather than page states, so
+            // their wording comes from ProtectionStatus like the health lines
+            // below; see RefreshScriptStatus for why there is only one copy.
             _imageStatusBrush = new SolidColorBrush(StatusAmber);
-            _imageStatusText = "System imaging is unavailable on this Windows edition (wbadmin not found). Recovery media still works.";
-        }
-        else if (!File.Exists(GuardPaths.SystemImageScriptPath))
-        {
-            _imageStatusBrush = new SolidColorBrush(StatusAmber);
-            _imageStatusText = "No image settings saved yet - choose a destination and click Save Settings.";
+            _imageStatusText = ProtectionStatus
+                .SystemImage(_cfg, _imageAvailable, imageSaved, null, DateTime.Now).Headline;
         }
         else if (_imageDirty)
         {
@@ -103,36 +107,14 @@ public sealed partial class MainWindow : Window
             // have run, report how the last one went rather than when the
             // settings file was written. The SYSTEM scheduled image cannot
             // toast (session 0), so this line is where its outcome surfaces.
-            var now = DateTime.Now;
             var last = BackupHealth.ReadLog(GuardPaths.SystemImageLogPath);
-            if (last is null)
-            {
-                _imageStatusBrush = new SolidColorBrush(StatusGreen);
-                _imageStatusText = "Image settings saved. No image created yet.";
-            }
-            else
-            {
-                string when = BackupHealth.FriendlyWhen(last.When, now);
-                var expected = _cfg.ImageScheduleEnabled
-                    ? BackupHealth.PreviousScheduledImage(_cfg.ImageCadence, _cfg.ImageWeeklyDay,
-                        _cfg.ImageMonthlyDay, _cfg.ImageScheduleTime, now)
-                    : null;
-                bool amber = true;
-                string text;
-                if (last.Outcome == RunOutcome.Errors)
-                    text = "Last system image had errors (" + when + ") - open the last log.";
-                else if (last.Outcome == RunOutcome.DidNotComplete)
-                    text = "Last system image did not complete (" + when + ") - open the last log.";
-                else if (BackupHealth.IsOverdue(last, expected, now))
-                    text = "System image overdue - last succeeded " + when + ".";
-                else
-                {
-                    amber = false;
-                    text = "Last system image succeeded " + when + ".";
-                }
-                _imageStatusBrush = new SolidColorBrush(amber ? StatusAmber : StatusGreen);
-                _imageStatusText = text;
-            }
+            var status = ProtectionStatus.SystemImage(_cfg, true, true, last, DateTime.Now);
+            // "No image created yet" keeps its green dot here (the settings ARE
+            // saved), while the dashboard still counts it as not protected; see
+            // the matching carve-out in RefreshScriptStatus.
+            bool green = status.Level == ProtectionLevel.Protected || last is null;
+            _imageStatusBrush = new SolidColorBrush(green ? StatusGreen : StatusAmber);
+            _imageStatusText = status.Headline;
         }
         UpdateImageSaveEnabled();
         CommitPageStatus(2, announce);

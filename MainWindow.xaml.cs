@@ -401,10 +401,11 @@ public sealed partial class MainWindow : Window
         args.Handled = true;
         object? item = sender.Key switch
         {
-            Windows.System.VirtualKey.Number1 => NavFile,
-            Windows.System.VirtualKey.Number2 => NavImage,
-            Windows.System.VirtualKey.Number3 => NavApps,
-            Windows.System.VirtualKey.Number4 => Nav.SettingsItem,
+            Windows.System.VirtualKey.Number1 => NavDashboard,
+            Windows.System.VirtualKey.Number2 => NavFile,
+            Windows.System.VirtualKey.Number3 => NavImage,
+            Windows.System.VirtualKey.Number4 => NavApps,
+            Windows.System.VirtualKey.Number5 => Nav.SettingsItem,
             _ => null,
         };
         if (item is null) return;
@@ -421,7 +422,7 @@ public sealed partial class MainWindow : Window
         // can fire during it (NavFile.IsSelected="True"), before the rest of the
         // constructor runs, so guard on the pages existing.
         if (FileBackupPage == null || AppMgmtPage == null || SystemImagePage == null
-            || SettingsPage == null) return;
+            || SettingsPage == null || DashboardPage == null) return;
         // The built-in Settings footer item has no Tag; it flags itself here.
         if (args.IsSettingsSelected)
         {
@@ -429,6 +430,7 @@ public sealed partial class MainWindow : Window
             FileBackupPage.Visibility = Visibility.Collapsed;
             SystemImagePage.Visibility = Visibility.Collapsed;
             AppMgmtPage.Visibility = Visibility.Collapsed;
+            DashboardPage.Visibility = Visibility.Collapsed;
             SettingsPage.Visibility = Visibility.Visible;
             // Probe for winget once, lazily, like the app scan and the wbadmin
             // check: the card only appears when winget is actually missing.
@@ -438,11 +440,30 @@ public sealed partial class MainWindow : Window
         }
         SettingsPage.Visibility = Visibility.Collapsed;
         string tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "file";
-        if (tag == "apps")
+        if (tag == "status")
+        {
+            _activePage = 4;
+            FileBackupPage.Visibility = Visibility.Collapsed;
+            SystemImagePage.Visibility = Visibility.Collapsed;
+            AppMgmtPage.Visibility = Visibility.Collapsed;
+            DashboardPage.Visibility = Visibility.Visible;
+            // The wbadmin probe is lazy, like the app scan: without it this page
+            // would report a Home PC as "no image settings saved" rather than
+            // "imaging is unavailable here", which reads as the user's fault.
+            // The probe repaints this page itself when it lands.
+            if (!_imageChecked) { _imageChecked = true; CheckImageAvailability(); }
+            // Recomputed on every visit, not cached: the whole point of the page
+            // is that the answer changes when a drive is unplugged or a
+            // scheduled run fails. announce:false - the nav is already speaking
+            // the page name, and the two would be read jumbled.
+            RefreshDashboard(announce: false);
+        }
+        else if (tag == "apps")
         {
             _activePage = 1;
             FileBackupPage.Visibility = Visibility.Collapsed;
             SystemImagePage.Visibility = Visibility.Collapsed;
+            DashboardPage.Visibility = Visibility.Collapsed;
             AppMgmtPage.Visibility = Visibility.Visible;
             // announceStart:false - the nav is already announcing the newly
             // selected page; announcing the scan start at the same instant makes
@@ -455,6 +476,7 @@ public sealed partial class MainWindow : Window
             _activePage = 2;
             FileBackupPage.Visibility = Visibility.Collapsed;
             AppMgmtPage.Visibility = Visibility.Collapsed;
+            DashboardPage.Visibility = Visibility.Collapsed;
             SystemImagePage.Visibility = Visibility.Visible;
             // Probe for wbadmin once, lazily, like the app scan: absent on Home,
             // where imaging self-disables. Repaint the status silently afterwards.
@@ -466,6 +488,7 @@ public sealed partial class MainWindow : Window
             _activePage = 0;
             AppMgmtPage.Visibility = Visibility.Collapsed;
             SystemImagePage.Visibility = Visibility.Collapsed;
+            DashboardPage.Visibility = Visibility.Collapsed;
             FileBackupPage.Visibility = Visibility.Visible;
         }
         // Repaint the status bar for the new page silently; switching pages is
@@ -566,24 +589,13 @@ public sealed partial class MainWindow : Window
         => RestoreListFocus(AppListControl, _lastAppFocus, args);
 
     // When keyboard focus enters a list from outside, redirect it to the row that
-    // last held focus instead of the first row. A remembered element whose XamlRoot
-    // is null was detached (its row was removed or filtered out) - ignore it and let
-    // the default first-row behaviour stand.
+    // last held focus instead of the first row. Shared with the restore dialog's
+    // own list; see Views.ListFocus.
     private static void RestoreListFocus(ItemsControl list, FrameworkElement? remembered, GettingFocusEventArgs args)
-    {
-        if (args.InputDevice != FocusInputDeviceKind.Keyboard) return;
-        if (remembered is null || remembered.XamlRoot is null) return;
-        if (args.OldFocusedElement is DependencyObject old && IsDescendant(list, old)) return; // moving within the list
-        if (args.NewFocusedElement is DependencyObject nw && !IsDescendant(list, nw)) return;  // not actually entering it
-        if (args.TrySetNewFocusedElement(remembered)) args.Handled = true;
-    }
+        => Views.ListFocus.Restore(list, remembered, args);
 
     private static bool IsDescendant(DependencyObject ancestor, DependencyObject? node)
-    {
-        for (var d = node; d is not null; d = VisualTreeHelper.GetParent(d))
-            if (ReferenceEquals(d, ancestor)) return true;
-        return false;
-    }
+        => Views.ListFocus.IsDescendant(ancestor, node);
 
     // Status-dot colours: green = saved and healthy, amber = needs attention
     // (unsaved changes, nothing saved yet, or low destination space).
@@ -600,7 +612,7 @@ public sealed partial class MainWindow : Window
     private void CommitPageStatus(int page, bool announce)
     {
         UpdateStatusBar();
-        string text = page == 2 ? _imageStatusText : _fileStatusText;
+        string text = page == 2 ? _imageStatusText : page == 4 ? _dashStatusText : _fileStatusText;
         if (announce && _activePage == page && text != _lastAnnouncedStatus)
             Announce(StatusBarText);
         if (_activePage == page) _lastAnnouncedStatus = text;
@@ -662,82 +674,35 @@ public sealed partial class MainWindow : Window
             // explicit confirmation instead - see SaveAllAsync): the useful
             // fact here is not that settings are saved but whether backups
             // are actually happening.
-            var now = DateTime.Now;
+            //
+            // The rules themselves live in ProtectionStatus, which the
+            // Protection Status page also reads: two copies of "am I protected"
+            // would agree the day they were written and drift from then on,
+            // and a health display that quietly disagrees with itself is the
+            // one bug nobody would think to check for.
             var last = BackupHealth.ReadLog(GuardPaths.LogPath);
-            if (last is null)
-            {
-                // Normally nothing to add: the vanished check needs a backup to
-                // compare against, so before the first run it finds nothing. Not
-                // guaranteed though - a destination carrying files from an
-                // earlier install, with no log beside it, reaches here with
-                // something to say.
-                _fileStatusBrush = new SolidColorBrush(
-                    VanishedToReport.Count > 0 ? StatusAmber : StatusGreen);
-                _fileStatusText = "Backup settings saved. No backup has run yet."
-                    + VanishedStatusSuffix();
-            }
-            else
-            {
-                string when = BackupHealth.FriendlyWhen(last.When, now);
-                var expected = _cfg.ScheduleEnabled
-                    ? BackupHealth.PreviousScheduledRun(_cfg.ScheduleDays, _cfg.ScheduleTime, now)
-                    : null;
-                bool amber = true;
-                string text;
-                if (last.Outcome == RunOutcome.Errors)
-                    text = "Last backup had errors (" + when + ") - open the last log.";
-                else if (last.Outcome == RunOutcome.DidNotComplete)
-                    text = "Last backup did not complete (" + when + ") - open the last log.";
-                else if (BackupHealth.IsOverdue(last, expected, now))
-                    text = "Backup overdue - last succeeded " + when + ".";
-                else if (_cfg.TriggerOnConnect && !_cfg.ScheduleEnabled
-                         && now - last.When > BackupHealth.OnConnectStale)
-                    text = "Last backup was over a week ago (" + when + ") - connect your backup drive.";
-                else
-                {
-                    amber = false;
-                    text = "Last backup succeeded " + when + ".";
-                }
-                // A wiped destination outranks everything else here: the log
-                // saying a backup succeeded lives next to the exe, so it keeps
-                // reporting that run in green long after the drive it wrote to
-                // was reformatted or emptied. Only said once a run HAS happened,
-                // since an empty destination before the first one is normal.
-                if (_sourceHealth.DestinationEmpty)
-                {
-                    _fileStatusBrush = new SolidColorBrush(StatusAmber);
-                    _fileStatusText = "Backup destination is empty - the backup may have been deleted."
-                        + " Run a backup to rebuild it.";
-                    UpdateSaveEnabled();
-                    CommitPageStatus(0, announce);
-                    return;
-                }
-                // A vanished source never makes the run itself fail, so a healthy
-                // "succeeded" line is exactly where it has to be said, or the one
-                // state that looks fine is the one that hides the problem.
-                if (VanishedToReport.Count > 0) amber = true;
-                text += VanishedStatusSuffix();
-                _fileStatusBrush = new SolidColorBrush(amber ? StatusAmber : StatusGreen);
-                _fileStatusText = text;
-            }
+            var status = ProtectionStatus.FileBackup(_cfg, last, DateTime.Now,
+                _sourceHealth.DestinationEmpty, VanishedToReport.Count, MirrorPurges);
+            // The dot reports the SETTINGS state as well as health, so a saved
+            // configuration that simply has not run yet stays green here, as it
+            // always has, even though the dashboard counts it as not protected
+            // yet. (The vanished check needs a backup to compare against, so it
+            // normally finds nothing before the first run - but a destination
+            // carrying files from an earlier install, with no log beside it,
+            // reaches here with something to say.)
+            bool green = status.Level == ProtectionLevel.Protected
+                || (last is null && VanishedToReport.Count == 0);
+            _fileStatusBrush = new SolidColorBrush(green ? StatusGreen : StatusAmber);
+            _fileStatusText = status.Headline;
         }
         UpdateSaveEnabled();
         CommitPageStatus(0, announce);
     }
 
     // The status-line tail for sources that have gone empty while the backup
-    // still holds their files, or "" when there are none. Terse like the rest of
-    // the bar; Mirror mode names the consequence, since there the next run
-    // deletes the copies rather than merely failing to add to them.
+    // still holds their files, or "" when there are none.
     private string VanishedStatusSuffix()
-    {
-        int n = VanishedToReport.Count;
-        if (n == 0) return "";
-        string what = n == 1 ? "1 folder has" : n + " folders have";
-        return MirrorPurges
-            ? " Warning: " + what + " nothing left to back up; the next backup will delete the copies."
-            : " Warning: " + what + " nothing left to back up.";
-    }
+        => ProtectionStatus.VanishedSuffix(VanishedToReport.Count, MirrorPurges);
 
     // Whether the next run will delete the backup's copies to match an emptied
     // source. Mirror ALONE is not enough: a versioned run mirrors into a fresh
@@ -755,7 +720,12 @@ public sealed partial class MainWindow : Window
     // stranded on a control that just went unavailable.
     private void UpdateSaveEnabled()
     {
-        if (BtnSave == null || _backupRunning) return;
+        // _restoreRunning as well as _backupRunning: a restore also owns this
+        // button (SetRestoreBusy disables it), and every dirty handler ends up
+        // here - so typing one character in the destination field mid-restore
+        // handed Save Settings back, and saving would rewrite guard-backup.cmd
+        // and re-register the scheduled tasks while files were being copied.
+        if (BtnSave == null || _backupRunning || _restoreRunning) return;
         bool enable = _dirty || !File.Exists(GuardPaths.ScriptPath);
         // The focus rescue only matters after the window is up; this also runs
         // during construction (seeded status), when Content.XamlRoot is still
@@ -793,6 +763,17 @@ public sealed partial class MainWindow : Window
             // state for the dot to reflect.
             StatusDot.Visibility = Visibility.Collapsed;
             StatusBarText.Text = "Settings are saved as soon as you change them.";
+        }
+        else if (_activePage == 4)
+        {
+            // The dashboard's dot reports protection rather than a saved/unsaved
+            // state, which is the same green-or-amber question the other pages
+            // ask; the text says it in words either way. No dot until the first
+            // check lands, or it would sit there in the PREVIOUS page's colour
+            // next to a line that only says the check is still running.
+            StatusDot.Visibility = _dashStatusBrush != null ? Visibility.Visible : Visibility.Collapsed;
+            if (_dashStatusBrush != null) StatusDot.Fill = _dashStatusBrush;
+            StatusBarText.Text = _dashStatusText;
         }
         else
         {
@@ -884,9 +865,12 @@ public sealed partial class MainWindow : Window
     // a real percentage is known, spinning while a phase has none. Index by the
     // _activePage convention: 0 File Backup, 1 App Management, 2 System Image. The nav
     // ring is what keeps a job on an unfocused page discoverable; the bar no longer
-    // mirrors it, so the two surfaces don't duplicate each other. Index 3 is the
-    // Settings page: it never runs a job, but UpdateStatusBar reads the focused
-    // page's snapshot unconditionally, so it needs a (permanently empty) slot.
+    // mirrors it, so the two surfaces don't duplicate each other. Indexes 3 and 4 are
+    // Settings and Protection Status: neither runs a job, but UpdateStatusBar reads the
+    // focused page's snapshot unconditionally, so both need a (permanently empty) slot.
+    // The indexes are internal and deliberately do NOT follow the pane order - keeping
+    // the existing three where they are means adding a page cannot silently repoint an
+    // existing page's progress ring.
     private sealed class PageProgress
     {
         public bool Running;               // a job is live on this page (drives the ring)
@@ -897,19 +881,19 @@ public sealed partial class MainWindow : Window
         public bool AreaVisible;           // status-bar right area shown (running or outcome)
         public bool BarVisible;            // the moving bar shown (vs outcome text only)
     }
-    private readonly PageProgress[] _pageProg = { new(), new(), new(), new() };
+    private readonly PageProgress[] _pageProg = { new(), new(), new(), new(), new() };
 
     // Explicit per-page mapping, null for a page with no nav ring: Settings
-    // (page 3) owns a _pageProg slot for the shared status bar, and a
-    // fallthrough default would silently paint a job there onto the File
-    // Backup ring if one ever runs.
+    // (page 3) and Protection Status (page 4) own a _pageProg slot for the
+    // shared status bar, and a fallthrough default would silently paint a job
+    // there onto the File Backup ring if one ever runs.
     private ProgressRing? NavRingFor(int page) => page switch
     {
         0 => NavFileRing, 1 => NavAppsRing, 2 => NavImageRing, _ => null,
     };
     private NavigationViewItem? NavItemFor(int page) => page switch
     {
-        0 => NavFile, 1 => NavApps, 2 => NavImage, _ => null,
+        0 => NavFile, 1 => NavApps, 2 => NavImage, 4 => NavDashboard, _ => null,
     };
     private int PageOfBar(ProgressBar bar) => bar == AppProgress ? 1 : bar == ImageProgress ? 2 : 0;
 
@@ -1346,7 +1330,7 @@ public sealed partial class MainWindow : Window
     // runs; a close (or another page's job starting) during that later async
     // tail can't truncate a write that already finished.
     private bool IsAnyJobRunning =>
-        _backupRunning || _imageRunning || _reinstalling || _exporting || _imageListing || _scanning || _updateAllElevated;
+        _backupRunning || _restoreRunning || _imageRunning || _reinstalling || _exporting || _imageListing || _scanning || _updateAllElevated;
 
     // Short label for whichever job IsAnyJobRunning found, for each page's
     // start-guard message ("<Label> is currently running. Wait for it to
@@ -1361,6 +1345,7 @@ public sealed partial class MainWindow : Window
         : _exporting ? "copying app settings"
         : _imageListing ? "reading the list of existing system images"
         : _scanning ? "scanning installed apps"
+        : _restoreRunning ? "a restore"
         : _backupRunning ? "a backup"
         : null;
 
@@ -1431,6 +1416,9 @@ public sealed partial class MainWindow : Window
                 : _exporting ? "Copying app settings is still running. Closing GUARD now will leave an incomplete export."
                 : _imageListing ? "Reading the list of existing system images is still running."
                 : _scanning ? "Scanning installed apps is still running."
+                // A stopped restore leaves the folder it was copying into
+                // half-filled, which is worth saying before the window goes.
+                : _restoreRunning ? "A restore is still running. Closing GUARD stops it, and the folder it is copying into will hold only part of what was being restored."
                 : "A backup is still running. Closing GUARD stops it.";
             if (!await ShowConfirmAsync("GUARD", what + " Close anyway?")) return;
             // Cancel both jobs so no cmd/robocopy/winget tree outlives the

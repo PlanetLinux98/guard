@@ -28,7 +28,9 @@ open this manual from inside the app at any time.
 
 - [Getting GUARD](#getting-guard)
 - [Your first backup](#your-first-backup)
+- [The Protection Status page](#the-protection-status-page)
 - [The File Backup tab](#the-file-backup-tab)
+- [Restoring files from a backup](#restoring-files-from-a-backup)
 - [The System Image tab](#the-system-image-tab)
 - [The App Management tab](#the-app-management-tab)
 - [The Settings page](#the-settings-page)
@@ -128,6 +130,33 @@ steps work for any folders and any destination.
    when GUARD is closed.
 
 The rest of this manual covers every control and function in detail.
+
+## The Protection Status page
+
+The first page in the navigation (Ctrl+1) answers one question: **are you
+actually protected right now?** It shows a line for each of the three things
+GUARD looks after, with a plain-language state and what to do about it:
+
+- **Your files** - the File Backup tab: when the last backup ran, whether it
+  succeeded, whether a scheduled one is overdue, and whether the destination
+  still holds anything.
+- **Your whole PC** - the System Image tab: when the last image was made, or
+  that imaging is unavailable on this Windows edition (which is not something
+  you can fix, and does not count against you here).
+- **Your programs** - the App Management tab: when you last exported an app
+  list, and how many programs it recorded.
+
+Every line comes from evidence rather than from your settings: GUARD reads its
+run logs and looks at the destinations themselves. That matters because
+"configured" and "protected" come apart in exactly the cases that hurt - a
+schedule that has silently stopped firing, a backup drive that was reformatted,
+an app list exported to a stick you no longer have. A tick in a settings box
+cannot tell you any of that.
+
+**Check Again** (Alt+C) re-reads everything, which is worth doing after
+plugging a drive in. Each line also has a button that takes you to the page
+where you can act on it, and the overall verdict is repeated in the status bar,
+so a screen reader can read the whole answer with one status-bar hotkey.
 
 ## The File Backup tab
 
@@ -325,7 +354,11 @@ Six situations GUARD handles for you:
   shows what the backup *would* copy or delete, but nothing changes. Always
   preview after switching to Mirror or changing exclusions.
 - **Stop Backup** (Alt+T) cancels a running backup (the whole script and robocopy
-  process tree is stopped). It is available only while a backup is running.
+  process tree is stopped). It is available only while a backup is running. It
+  reads **Stop Restore** while a restore is running, and stops that instead.
+- **Restore...** (Alt+F) copies files from your backup back into the folders
+  they came from. See [Restoring files from a
+  backup](#restoring-files-from-a-backup) below.
 - **Open Last Log** (Alt+L) opens the log of the most recent real backup
   (`Logs\backup_last.log`), including scheduled runs. Previews keep their own
   separate log, so a dry run never poses as the last real backup.
@@ -342,6 +375,65 @@ same-named folder, or vice versa, and could not reconcile them), and any extra
 files at the destination (noting whether Mirror removed them). The summary also
 appears on the progress line and in the status bar, so you rarely need to read
 the raw log.
+
+## Restoring files from a backup
+
+**Restore...** (Alt+F) on the File Backup tab copies files out of your backup
+and back into the folders they came from. Use it when a file or folder has been
+deleted, damaged, or encrypted, and when setting up a replacement PC.
+
+GUARD lists **what is actually in the backup**, not what your settings say
+should be there. That is deliberate: on a new PC your settings are fresh
+defaults, so a list built from them would look plausible while quietly leaving
+out every folder you had added yourself. Where GUARD can work out where a folder
+belongs it fills the location in for you - from your own settings if this PC has
+them, otherwise from where Windows keeps that folder (so a backup of
+`Documents` finds its way home on a machine that has never been set up).
+
+### Choosing what to restore
+
+- **Restore from** picks which backup, and appears only when there is more than
+  one. If you keep dated versions, each one is listed newest first; if the
+  destination also holds an older single copy from before you turned versioning
+  on, that is offered too.
+- Tick the folders you want back. A folder whose location GUARD could not work
+  out starts unticked and reads *(choose a folder)*.
+- **Change Restore Location...** (Alt+C) points the highlighted row somewhere
+  else. GUARD refuses a location inside the backup itself (which would copy the
+  backup into itself), the root of a drive, and the folder GUARD is running
+  from.
+- **Select All** (Alt+L) ticks every row that has a location; **Select None**
+  (Alt+N) unticks everything.
+
+### What happens to files that are already there
+
+- **Put back what is missing** (Alt+A) is the default and cannot lose anything.
+  It restores files that are gone and updates a file the backup has a *newer*
+  copy of. A file you have changed since the backup is left exactly as it is.
+- **Replace files with the backup copies** (Alt+R) overwrites files of the same
+  name whatever their dates, which is what you need when a live file has been
+  damaged or encrypted (those often carry a *newer* timestamp, so the safe mode
+  would leave them alone). Before it writes anything, GUARD checks what would
+  change and asks you to confirm, naming the folders and how many files are
+  involved.
+
+**Neither mode ever deletes anything.** A file that is in your folder but not in
+the backup - anything you created since it ran - is always left alone. There is
+deliberately no "make this folder exactly like the backup" option: on a new PC
+it would do nothing the safe mode does not already do, and on a live folder it
+would delete your newest work.
+
+### While it runs
+
+Progress and output appear on the File Backup tab, and **Stop Restore** (Alt+T)
+cancels it. A restore and a backup can never run at the same time - each holds
+the other off - so a scheduled backup cannot start partway through a restore and
+mirror a half-restored folder back over your backup.
+
+When it finishes, GUARD reports what was restored and offers to open the restore
+log (`Logs\restore_last.log`), which lists every file. The restore log is kept
+separate from the backup log, so restoring never overwrites the record of your
+last backup.
 
 ## The System Image tab
 
@@ -671,7 +763,7 @@ or pin GUARD to **Light** or **Dark** regardless of the system.
 ### Startup
 
 **Page shown when GUARD opens** (Alt+P) picks which page is selected at launch:
-File Backup (the default), System Image, or App Management.
+Protection Status, File Backup (the default), System Image, or App Management.
 
 ### Notifications
 
@@ -811,10 +903,11 @@ screen reader. A few specifics worth knowing:
 - **Alt access keys** reach the important controls directly (the access key for
   each control is given in parentheses throughout this manual), and **F1** opens
   this manual from anywhere.
-- **Ctrl+1 to Ctrl+4** switch pages from anywhere in the window: Ctrl+1 File
-  Backup, Ctrl+2 System Image, Ctrl+3 App Management, Ctrl+4 Settings. Focus
-  lands on the page in the navigation, so you can arrow to a neighbouring page
-  from there.
+- **Ctrl+1 to Ctrl+5** switch pages from anywhere in the window, in the order
+  the navigation lists them: Ctrl+1 Protection Status, Ctrl+2 File Backup,
+  Ctrl+3 System Image, Ctrl+4 App Management, Ctrl+5 Settings. Focus lands on
+  the page in the navigation, so you can arrow to a neighbouring page from
+  there.
 - **At launch, focus starts on the navigation** (the current page's item), so
   the first thing you reach is the page list rather than an empty pane.
 - **Dark and light Mica theming** follows your Windows setting automatically,

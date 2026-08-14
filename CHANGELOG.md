@@ -8,6 +8,27 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+### Added
+- **Restore files from a backup.** A new Restore button on the File Backup page
+  copies files from your backup back into the folders they came from. It lists
+  what is actually in the backup rather than what your settings describe, so it
+  works on a PC that has never been set up, and offers a version to restore from
+  when dated backups are kept. Restoring adds what is missing and updates files
+  the backup has a newer copy of; anything you have changed since the backup is
+  left alone and nothing is ever deleted. A second mode replaces files whatever
+  their date, for a file that has been damaged or encrypted, and it says what
+  would change and asks first. Any folder can be redirected somewhere else, and
+  a backup running at the time holds the restore off (and the other way round).
+- **Protection Status page**, first in the navigation pane: whether your files,
+  your whole PC and your programs are actually protected right now, read from
+  the backup logs and destinations rather than from your settings, so a backup
+  that stopped running or a destination that was wiped shows up.
+
+### Changed
+- The Ctrl+number page shortcuts follow the navigation pane, which now starts
+  with Protection Status: Ctrl+1 Protection Status, Ctrl+2 File Backup, Ctrl+3
+  System Image, Ctrl+4 App Management, Ctrl+5 Settings.
+
 ### Fixed
 - Restoring app settings could rename your existing settings folder aside and
   then restore nothing over it, while reporting that the restore had succeeded.
