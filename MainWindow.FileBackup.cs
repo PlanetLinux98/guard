@@ -64,6 +64,18 @@ public sealed partial class MainWindow : Window
     // Returns false (after showing a message) when a required value is missing.
     private async System.Threading.Tasks.Task<bool> SaveAllAsync()
     {
+        // Everything on screen came from defaults, not from the saved file (see
+        // _settingsUnreadable), so a save here would commit those defaults over
+        // settings that are still intact on disk.
+        if (_settingsUnreadable)
+        {
+            await ShowMessageAsync("GUARD",
+                "GUARD could not read its saved settings when it started, so this page is showing"
+                + " defaults rather than your settings. Saving now would replace what is on disk"
+                + " with them.\n\nClose anything that has this file open, then close and reopen"
+                + " GUARD:\n\n" + GuardPaths.IniPath);
+            return false;
+        }
         HarvestUi();
         if (string.IsNullOrEmpty(_cfg.Dest))
         {
@@ -571,13 +583,25 @@ public sealed partial class MainWindow : Window
         {
             DebugLog.Log("tasks", "backup task actions stale (folder moved or legacy style); re-registering");
             // On-disk settings, not _cfg: by the time this background check
-            // lands the user may already be editing the page.
-            var applied = await System.Threading.Tasks.Task.Run(
-                () => ScheduledTasks.ApplyAll(SettingsStore.Load()));
-            if (applied.Error != null)
-                DebugLog.Log("tasks", "silent re-register failed: " + applied.Error);
-            else if (applied.NextRun != null)
-                LblNextRun.Text = "Next run: " + applied.NextRun;
+            // lands the user may already be editing the page. LoadOrNull, not
+            // Load: an unreadable file degraded to defaults reads as "no
+            // schedules", and ApplyAll would then UNREGISTER the user's tasks
+            // rather than repoint them - a silent heal that deletes what it was
+            // meant to repair. Leave them alone instead and try again next launch.
+            var onDisk = await System.Threading.Tasks.Task.Run(() => SettingsStore.LoadOrNull());
+            if (onDisk is null)
+            {
+                DebugLog.Log("tasks", "settings unreadable; skipping the silent re-register");
+            }
+            else
+            {
+                var applied = await System.Threading.Tasks.Task.Run(
+                    () => ScheduledTasks.ApplyAll(onDisk));
+                if (applied.Error != null)
+                    DebugLog.Log("tasks", "silent re-register failed: " + applied.Error);
+                else if (applied.NextRun != null)
+                    LblNextRun.Text = "Next run: " + applied.NextRun;
+            }
         }
         if (imageStale)
         {
@@ -907,7 +931,16 @@ public sealed partial class MainWindow : Window
         // above and launch a second robocopy run sharing _runCts, which then
         // races the first run's finally block for the field and can NRE-crash
         // the app when the loser Disposes an already-nulled CTS.
+        //
+        // The token is created BEFORE SetFileBusy, which is what enables Stop and
+        // hands it focus: created afterwards (as it used to be), every Stop press
+        // during the pre-run phase - a save, its scheduled-task registration, the
+        // source scans, which is up to SourceCheckCap seconds - hit a null field
+        // and did nothing at all, silently. Disposal moves to the outer finally
+        // so the early returns below cannot leak it.
         _backupRunning = true;
+        _runCts = new CancellationTokenSource();
+        var ct = _runCts.Token;
         SetFileBusy(true);
         try
         {
@@ -941,6 +974,19 @@ public sealed partial class MainWindow : Window
                 await ShowMessageAsync("GUARD", "Backup script not found. Click Save Settings first.");
                 return;
             }
+            // Stop pressed during the pre-run phase above. None of those steps is
+            // interruptible mid-way, so this is where the press takes effect: the
+            // run never starts, and it still ends the way every other run does -
+            // a spoken outcome and a progress line that is not the pre-run one.
+            if (ct.IsCancellationRequested)
+            {
+                TxtOutput.Text = "";
+                AppendOut(TxtOutput, "--- cancelled before the backup started ---\r\n");
+                SetProgress(FileProgress, FileProgressLabel, 1, 0, "Backup cancelled.");
+                ShowStatusBarProgress(0, false);
+                AnnounceSettled("Backup cancelled.", 2000);
+                return;
+            }
 
             TxtOutput.Text = "";
             AppendOut(TxtOutput, "> " + Path.GetFileName(script) + (arg.Length > 0 ? " " + arg : "") + "\r\n");
@@ -969,8 +1015,6 @@ public sealed partial class MainWindow : Window
             SetProgress(FileProgress, FileProgressLabel, 1, 0, "Measuring folders...");
             ShowStatusBarProgress(0, true);
 
-            _runCts = new CancellationTokenSource();
-            var ct = _runCts.Token;
             try
             {
                 // Best-effort: pre-scan the included folders so the bar can advance by
@@ -1055,19 +1099,38 @@ public sealed partial class MainWindow : Window
                 else
                 {
                     AppendOut(TxtOutput, "\r\n--- finished ---\r\n");
+                    // A run that gives up before the first folder never emits an
+                    // @@PROGRESS@@ marker, so there is no summary to speak and no
+                    // progress line to replace the pre-run "Measuring folders...":
+                    // the destination being unreachable, the run lock being held by
+                    // a scheduled backup, or the version stamp failing all abort
+                    // ahead of the folder loop. Left alone, those runs ended with
+                    // the bar still claiming to be measuring and nothing said at
+                    // all - on the one page whose whole point is being heard. The
+                    // script's exit code is the documented contract (see
+                    // BackupScript), so it supplies the outcome instead.
+                    if (_runDoneAnnounce == null)
+                    {
+                        string done = DescribeScriptExit(proc.ExitCode, _runIsPreview);
+                        SetProgress(FileProgress, FileProgressLabel, 1, 0, done);
+                        _runDoneAnnounce = done;
+                    }
                 }
             }
             catch (Exception ex)
             {
                 AppendOut(TxtOutput, "ERROR launching script: " + ex.Message + "\r\n");
+                // Announced like any other ending: the output box this was written
+                // to lives inside a collapsed expander, so on its own it is silent.
+                string failed = (_runIsPreview ? "Preview" : "Backup") + " could not start: " + ex.Message;
+                SetProgress(FileProgress, FileProgressLabel, 1, 0, failed);
+                _runDoneAnnounce = failed;
             }
             finally
             {
                 // Whatever the outcome (finish, cancel, launch error), the bar's
                 // progress area must not outlive the job it mirrors.
                 ShowStatusBarProgress(0, false);
-                _runCts?.Dispose();
-                _runCts = null;
                 // The run just rewrote the log, so the health line has news; the
                 // end-of-run summary below is the spoken part, the line updates
                 // silently.
@@ -1078,12 +1141,55 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            // Disposed HERE, not in the inner finally: the token is created before
+            // the pre-run phase now, so the early returns above (validation
+            // refused, script missing, cancelled before the start) exit through
+            // this block and would otherwise leak it. Both fields are touched on
+            // the UI thread only, so Stop can never race this.
+            _runCts?.Dispose();
+            _runCts = null;
             _backupRunning = false;
             SetFileBusy(false);
         }
     }
 
-    private void OnStopBackup(object sender, RoutedEventArgs e) => _runCts?.Cancel();
+    // The generated script's documented exit codes (see BackupScript's header):
+    // 0 ok, 1 finished with errors, 2 could not run, 3 nothing to do. Only used
+    // when the run produced no summary of its own, which means it gave up before
+    // the first folder - so each line has to stand alone as the whole outcome.
+    private static string DescribeScriptExit(int code, bool preview)
+    {
+        string what = preview ? "Preview" : "Backup";
+        return code switch
+        {
+            0 => what + " finished.",
+            1 => what + " finished with errors - open the last log.",
+            2 => what + " could not run. The destination was not reachable, or the run could not"
+                 + " start - see the output details.",
+            // From the app this can only be the run lock: a scheduled or
+            // on-connect backup is already running in its own process.
+            3 => what + " skipped: another backup is already running.",
+            _ => what + " did not complete (exit code " + code + ") - see the output details.",
+        };
+    }
+
+    private void OnStopBackup(object sender, RoutedEventArgs e)
+    {
+        if (_runCts is null || _runCts.IsCancellationRequested) return;
+        _runCts.Cancel();
+        // Acknowledged at once. During the run the kill is immediate and the
+        // "cancelled" line follows within moments, but during the pre-run phase
+        // the press cannot take effect until the current step ends, and a Stop
+        // that appears to do nothing is indistinguishable from one that failed.
+        //
+        // Text only, the way the cancelled path below writes its own line: going
+        // through SetProgress would also clear Indeterminate and reset the max,
+        // turning the nav ring from a spinner into a stalled 0% arc and snapping
+        // a run that was at 60% back to zero.
+        FileProgressLabel.Text = "Stopping the backup...";
+        Progress(0, p => p.Text = "Stopping the backup...");
+        AnnounceNotification("Stopping the backup...");
+    }
 
     // Lock out the actions that conflict with a running backup. Save Settings is
     // included because it rewrites guard-backup.cmd, and cmd.exe reads batch files

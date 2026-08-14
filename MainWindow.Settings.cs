@@ -270,11 +270,23 @@ public sealed partial class MainWindow
         bool persisted = true;
         try
         {
-            var onDisk = SettingsStore.Load();
-            onDisk.ScheduleEnabled = false;
-            onDisk.TriggerOnConnect = false;
-            if (alsoImage) onDisk.ImageScheduleEnabled = false;
-            SettingsStore.Save(onDisk);
+            // LoadOrNull, not Load: Load degrades an unreadable file to
+            // defaults, and writing that back here would replace the whole
+            // configuration - folder list, destination, exclusions - with stock
+            // values while only meaning to switch two schedules off.
+            var onDisk = SettingsStore.LoadOrNull();
+            if (onDisk is null)
+            {
+                persisted = false;
+                DebugLog.Log("tasks", "settings unreadable; schedule-off state not persisted");
+            }
+            else
+            {
+                onDisk.ScheduleEnabled = false;
+                onDisk.TriggerOnConnect = false;
+                if (alsoImage) onDisk.ImageScheduleEnabled = false;
+                SettingsStore.Save(onDisk);
+            }
         }
         catch (Exception ex)
         {

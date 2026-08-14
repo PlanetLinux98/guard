@@ -8,6 +8,36 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 
 ## [Unreleased]
 
+### Fixed
+- Restoring app settings could rename your existing settings folder aside and
+  then restore nothing over it, while reporting that the restore had succeeded.
+  It happened when the drive holding the saved copy was disconnected during the
+  reinstall that runs first. The saved copy is now checked again just before
+  each folder is restored, a restore that cannot read it leaves your folder
+  exactly where it is, and the summary says which folders were left alone.
+- Stopping a reinstall while settings were being restored reported only the app
+  counts, hiding the tally and, with it, the location of any folder that had
+  been moved aside and could not be put back.
+- A backup that gave up before it started - destination unreachable, or a
+  scheduled backup already running - said nothing at all when it ended and left
+  the progress line reading "Measuring folders...". Every run now ends with a
+  spoken outcome, and one skipped because another backup holds the lock says so
+  rather than leaving the previous run's success on screen.
+- Stop Backup did nothing at all if pressed before the backup itself started,
+  during the save and folder checks that precede it. It now takes effect at the
+  next step, and acknowledges the press immediately either way.
+- Importing an app list whose JSON contained an empty entry closed GUARD
+  without a message; such entries are now skipped.
+- Saving one page's settings could silently replace the other page's with
+  defaults if the settings file could not be read at that moment, and starting
+  GUARD while it was unreadable could then overwrite it entirely. GUARD now
+  tells the difference between "no settings yet" and "settings could not be
+  read", refuses to save over what it could not read, and says so.
+- A destination subfolder of "." or "\" was accepted even though both mean the
+  destination itself, so a Mirror backup would have deleted everything else
+  kept there. Both are now refused when a folder is added or edited; folders
+  already saved that way keep working and are left alone.
+
 ## [0.5.4] - 2026-08-06
 
 ### Changed

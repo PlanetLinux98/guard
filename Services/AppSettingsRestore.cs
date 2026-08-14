@@ -15,6 +15,12 @@ public sealed class AppSettingsRestoreStats
     public int Replaced;       // existing targets renamed aside before replacing
     public int SkippedFolders; // targets left untouched (locked, or move-aside failed)
     public int SkippedFiles;   // individual files that could not be copied
+    // The saved copy could not be read at all (the drive holding the bundle was
+    // disconnected, the folder was deleted). Counted apart from SkippedFolders
+    // because the REASON differs and the wording the user sees has to match:
+    // "in use" sends them to close an app, which would not help here. The
+    // target is left exactly as it was either way.
+    public int SourceUnavailable;
     // A subtree FileTreeCopy could not fully enumerate while copying back (e.g.
     // an ACL-restricted subfolder in the saved copy), distinct from
     // SkippedFolders above: the target folder WAS restored, just not
@@ -83,6 +89,10 @@ public static class AppSettingsRestore
         catch { return list; }
         foreach (var e in manifest.Entries)
         {
+            // A literal "entries": [null] deserializes to a real null ELEMENT,
+            // which the Length check above cannot see; dereferencing it took the
+            // whole app down rather than dropping one bad row.
+            if (e is null) continue;
             if (string.IsNullOrEmpty(e.Folder) || string.IsNullOrEmpty(e.RootAnchor)
                 || string.IsNullOrEmpty(e.DestRelativePath)) continue;
             if (!IsSafeFolderName(e.Folder)) continue;
@@ -125,16 +135,18 @@ public static class AppSettingsRestore
         return list;
     }
 
-    // Restores the confirmed folders. An existing target is renamed to
-    // <name>.guard-old-<timestamp> first; if that rename fails (a file inside is
-    // locked by the running app) the target is left untouched and counted
-    // skipped, never half-overwritten. If the rename succeeds but the copy-back
-    // then fails, the rename is undone (best effort) so the original still ends
-    // up back at TargetPath; only if THAT also fails is the folder left under its
-    // aside name and reported via ManualRecoveryPaths, never miscounted as
-    // "skipped" (which would wrongly imply nothing changed). progress gets one
-    // line per folder; the walk honours the cancellation token between folders so
-    // Stop Reinstall halts cleanly.
+    // Restores the confirmed folders. The saved copy is re-checked first, so a
+    // bundle that has gone away (the drive was unplugged during the install
+    // phase) never disturbs the live folder at all. An existing target is then
+    // renamed to <name>.guard-old-<timestamp>; if that rename fails (a file
+    // inside is locked by the running app) the target is left untouched and
+    // counted skipped, never half-overwritten. If the rename succeeds but the
+    // copy-back then does not complete, the rename is undone (best effort) so the
+    // original still ends up back at TargetPath; only if THAT also fails is the
+    // folder left under its aside name and reported via ManualRecoveryPaths,
+    // never miscounted as "skipped" (which would wrongly imply nothing changed).
+    // progress gets one line per folder; the walk honours the cancellation token
+    // between folders so Stop Reinstall halts cleanly.
     public static AppSettingsRestoreStats RestoreCandidates(
         List<AppSettingsRestoreCandidate> picked, Action<string>? progress, CancellationToken ct)
     {
@@ -144,6 +156,13 @@ public static class AppSettingsRestore
             if (ct.IsCancellationRequested) break;
             var c = picked[i];
             progress?.Invoke("Restoring settings: " + c.DisplayPath + " (" + (i + 1) + " of " + picked.Count + ")...");
+
+            // Re-checked HERE, not just when the candidates were built: the
+            // install phase runs between the two and can take many minutes, so
+            // the drive holding the bundle may be long gone by now. Checked
+            // BEFORE the move-aside below, so the common case never disturbs
+            // the live folder at all.
+            if (!Directory.Exists(c.SourcePath)) { stats.SourceUnavailable++; continue; }
 
             string? aside = null;
             try
@@ -161,32 +180,45 @@ public static class AppSettingsRestore
             }
             catch { stats.SkippedFolders++; continue; }
 
-            // Copy-back gets its own catch, separate from the move-aside above: if
-            // the move already succeeded (Replaced counted) and THIS then throws,
-            // the original is no longer at TargetPath, so falling into a shared
-            // catch and reporting SkippedFolders (which means "left untouched")
-            // would be a lie. Try to put the original back first; only when that
-            // also fails does the user need to go find it themselves.
+            // The copy-back is judged by its RETURN VALUE, not only by whether it
+            // threw: FileTreeCopy reports every per-file and per-subfolder problem
+            // through counters and throws nothing, so a source that vanished
+            // between the check above and here comes back as a silent no-op. Left
+            // unchecked that counted as a restored folder while the move-aside had
+            // already emptied TargetPath - the user was told the restore succeeded
+            // and their real settings were sitting under an aside name nothing
+            // named. Anything short of a completed walk therefore undoes the move.
+            bool restored = false;
             try
             {
                 var folderStats = new TreeCopyStats();
-                FileTreeCopy.Copy(new DirectoryInfo(c.SourcePath), c.TargetPath, folderStats);
-                stats.Folders++;
-                stats.Files += folderStats.Files;
-                stats.SkippedFiles += folderStats.SkippedFiles;
-                stats.PartialFolders += folderStats.SkippedFolders;
-            }
-            catch
-            {
-                if (aside == null) { stats.SkippedFolders++; continue; }
-                try
+                if (FileTreeCopy.Copy(new DirectoryInfo(c.SourcePath), c.TargetPath, folderStats))
                 {
-                    if (Directory.Exists(c.TargetPath)) Directory.Delete(c.TargetPath, true);
-                    Directory.Move(aside, c.TargetPath);
-                    stats.SkippedFolders++;
+                    restored = true;
+                    stats.Folders++;
+                    stats.Files += folderStats.Files;
+                    stats.SkippedFiles += folderStats.SkippedFiles;
+                    stats.PartialFolders += folderStats.SkippedFolders;
                 }
-                catch { stats.ManualRecoveryPaths.Add(aside); }
             }
+            catch { }
+            if (restored) continue;
+
+            // Nothing reached the target. FileTreeCopy returns false before it
+            // creates anything, so there is no half-written folder to clear here
+            // beyond the defensive check below.
+            stats.SourceUnavailable++;
+            if (aside == null) continue;                  // target was never touched
+            try
+            {
+                if (Directory.Exists(c.TargetPath)) Directory.Delete(c.TargetPath, true);
+                Directory.Move(aside, c.TargetPath);
+                // The move-aside is undone, so nothing was replaced after all;
+                // leaving Replaced counted would report an aside copy that is no
+                // longer there.
+                stats.Replaced--;
+            }
+            catch { stats.ManualRecoveryPaths.Add(aside); }
         }
         return stats;
     }

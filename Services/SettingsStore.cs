@@ -13,17 +13,30 @@ public static class SettingsStore
     // Not a valid identity, so it can never collide with a folder name.
     private const string PinnedMarker = "-";
 
+    // Defaults for a missing file AND for an unreadable one. Kept for the
+    // read-only consumers that have no better option than degrading (the
+    // headless scheduled run, the launch-time task query). Anything that
+    // re-writes the file must use LoadOrNull/LoadForMerge instead - see below.
     public static Settings Load()
+        => LoadOrNull() ?? new Settings { Folders = Settings.DefaultFolders() };
+
+    // Null ONLY when the file exists but could not be read (locked by an AV
+    // scan or an editor, a laggy portable/network copy). A missing file is not
+    // a failure - it is a first run, and comes back as defaults.
+    //
+    // The difference is not cosmetic. Every section-scoped save re-reads this
+    // file to carry forward the fields it does not own, so a read failure that
+    // silently became "defaults" made saving the File Backup page wipe the
+    // System Image settings (and vice versa) with no error anywhere. The same
+    // trap sits behind the launch-time task heal, which would have unregistered
+    // the user's schedules because a defaulted config says there are none.
+    public static Settings? LoadOrNull()
     {
         var cfg = new Settings { Folders = Settings.DefaultFolders() };
         if (!File.Exists(GuardPaths.IniPath)) return cfg;
 
-        // The read+parse below mutates cfg field-by-field as it goes; a locked
-        // file (AV scan, open in another editor, a laggy portable/network copy)
-        // must not crash the interactive launch (constructor-time) or the
-        // headless scheduled run, and must not leave cfg half-populated from
-        // whichever lines parsed before the fault. Catch around the whole
-        // thing and hand back a fresh default Settings, same as a missing file.
+        // The read+parse below mutates cfg field-by-field as it goes, so a fault
+        // partway must not hand back a half-populated object either.
         try
         {
             return LoadFrom(cfg, File.ReadAllLines(GuardPaths.IniPath));
@@ -31,9 +44,20 @@ public static class SettingsStore
         catch (Exception ex)
         {
             DebugLog.Log("settings", "could not read " + GuardPaths.IniPath, ex);
-            return new Settings { Folders = Settings.DefaultFolders() };
+            return null;
         }
     }
+
+    // The read half of a read-modify-write. Throws rather than degrading: the
+    // caller is about to overwrite the file, and writing defaults over settings
+    // that are merely unreadable right now destroys them for good. Every caller
+    // already surfaces the failure, so the save simply does not happen and the
+    // page stays dirty.
+    private static Settings LoadForMerge()
+        => LoadOrNull() ?? throw new IOException(
+            "GUARD could not read its existing settings file, so saving now would replace the"
+            + " settings this page does not own with defaults. Close anything that has this file"
+            + " open and try again:\n\n" + GuardPaths.IniPath);
 
     // Lines passed in rather than read here, so the parse can be exercised
     // without an on-disk ini: GuardPaths.IniPath is fixed to the running exe's
@@ -273,7 +297,7 @@ public static class SettingsStore
     // overlays only the fields it owns.
     public static void SaveFileBackup(Settings live)
     {
-        var s = Load();
+        var s = LoadForMerge();
         s.Dest = live.Dest;
         s.DestVolumeSerial = live.DestVolumeSerial;
         s.DestVolumeLabel = live.DestVolumeLabel;
@@ -296,7 +320,7 @@ public static class SettingsStore
 
     public static void SaveSystemImage(Settings live)
     {
-        var s = Load();
+        var s = LoadForMerge();
         s.ImageTarget = live.ImageTarget;
         s.ImageTargetKind = live.ImageTargetKind;
         s.ImageScheduleEnabled = live.ImageScheduleEnabled;
@@ -309,7 +333,7 @@ public static class SettingsStore
 
     public static void SaveAppList(Settings live)
     {
-        var s = Load();
+        var s = LoadForMerge();
         s.AppListDest = live.AppListDest;
         s.ExportAppSettings = live.ExportAppSettings;
         Save(s);

@@ -377,7 +377,12 @@ public sealed partial class MainWindow : Window
                 }
             }
 
-            SettingsStore.SaveAppList(_cfg);
+            // Remembering the list destination is a convenience, not part of the
+            // export: the files are already written by this point, so a failure
+            // here must not fall into the catch below and report a finished
+            // export as failed.
+            try { SettingsStore.SaveAppList(_cfg); }
+            catch (Exception ex) { DebugLog.Log("settings", "could not persist the app list destination", ex); }
             // Outcome goes in the progress slot (like a backup/reinstall outcome),
             // not the main line: it is not announced here (the dialog below reads
             // it), and the main line keeps the inventory status so reading the bar
@@ -482,6 +487,11 @@ public sealed partial class MainWindow : Window
         int auto = 0, man = 0;
         foreach (var it in f.Apps)
         {
+            // A literal "apps": [null] deserializes to a real null ELEMENT, which
+            // the Length check above cannot see; dereferencing it crashed GUARD
+            // outright (async void, and nothing marks it handled) instead of
+            // skipping one unusable row.
+            if (it is null) continue;
             var a = new AppEntry
             {
                 Name = it.Name ?? "",
@@ -495,6 +505,15 @@ public sealed partial class MainWindow : Window
             };
             if (a.CanAuto) auto++; else man++;
             imported.Add(a);
+        }
+        // Re-checked after the loop, not only before it: a file whose entries
+        // were ALL unusable passes the Length check but leaves nothing to show,
+        // and an import dialog listing "0 app(s)" says less than the plain
+        // empty-list message does.
+        if (imported.Count == 0)
+        {
+            await ShowMessageAsync("GUARD", "The app list is empty.");
+            return;
         }
 
         // Settings bundle written beside the list (sibling AppSettings folder +
@@ -746,25 +765,44 @@ public sealed partial class MainWindow : Window
         AnnounceSettled(outcome, 2000);
     }
 
-    // The end-of-job line, covering whichever phases ran: a cancelled run
-    // reports how far the installs got; a completed run reports install counts
-    // (when any) and the restore tally (when settings were restored).
+    // The end-of-job line, covering whichever phases ran: install counts (when
+    // any apps were targeted) plus the restore tally (whenever the restore phase
+    // ran at all).
+    //
+    // The restore tally is reported on the CANCELLED path too. It used to be
+    // dropped there, which mattered most in the one case it could not afford to:
+    // ManualRecoveryPaths is the only place GUARD ever names where a displaced
+    // settings folder ended up, so stopping a job mid-restore hid the one line
+    // the user needed to get their data back. A restore-only run also read
+    // "Cancelled after 0 of 0 app(s): 0 installed, 0 failed", which describes
+    // nothing that happened.
     private static string BuildReinstallOutcome(
         bool cancelled, int targetCount, int attempted, int ok, int fail, AppSettingsRestoreStats? rstats)
     {
+        string s;
         if (cancelled)
-            return "Cancelled after " + attempted + " of " + targetCount + " app(s): " + ok +
-                " installed, " + fail + " failed. Apps already installed stay installed.";
-
-        string s = "";
-        if (targetCount > 0)
+            s = targetCount > 0
+                ? "Cancelled after " + attempted + " of " + targetCount + " app(s): " + ok +
+                  " installed, " + fail + " failed. Apps already installed stay installed."
+                : "Cancelled.";
+        else if (targetCount > 0)
             s = "Done. " + ok + " installed, " + fail + " failed.";
+        else
+            s = "";
+
         if (rstats != null)
         {
-            string r = "Restored " + rstats.Folders + " settings folder(s)"
+            string r = (cancelled ? "Settings restore stopped partway: restored " : "Restored ")
+                + rstats.Folders + " settings folder(s)"
                 + (rstats.Replaced > 0 ? " (" + rstats.Replaced + " existing folder(s) kept aside)" : "") + ".";
             if (rstats.SkippedFolders > 0)
                 r += " " + rstats.SkippedFolders + " folder(s) were in use and skipped.";
+            // Named apart from "in use": nothing about the target was the
+            // problem, so telling the user to close an app would send them the
+            // wrong way. Their existing settings are exactly as they were.
+            if (rstats.SourceUnavailable > 0)
+                r += " " + rstats.SourceUnavailable + " folder(s) could not be read from the saved copy"
+                    + " (is the drive holding it still connected?) and were left as they were.";
             if (rstats.SkippedFiles > 0)
                 r += " " + rstats.SkippedFiles + " file(s) were locked and skipped.";
             if (rstats.PartialFolders > 0)
@@ -777,7 +815,7 @@ public sealed partial class MainWindow : Window
                     + string.Join("; ", rstats.ManualRecoveryPaths);
             s = s.Length > 0 ? s + " " + r : r;
         }
-        return s.Length > 0 ? s : "Done.";
+        return s.Length > 0 ? s : (cancelled ? "Cancelled." : "Done.");
     }
 
     private void OnStopReinstall(object sender, RoutedEventArgs e) => _reinstallCts?.Cancel();
