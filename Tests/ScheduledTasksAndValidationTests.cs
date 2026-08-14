@@ -149,6 +149,10 @@ public class SaveValidationTests
         Assert.Equal("", SaveValidation.NormalizeSubFolder(null));
         Assert.Equal("", SaveValidation.NormalizeSubFolder("."));
         Assert.Equal("", SaveValidation.NormalizeSubFolder(@".\"));
+        // The bare separator resolves to the root too. These three are exactly
+        // what FolderDialog.Validate refuses: not blank, but they name the
+        // destination itself rather than a folder under it.
+        Assert.Equal("", SaveValidation.NormalizeSubFolder(@"\"));
         Assert.Equal("Docs", SaveValidation.NormalizeSubFolder(@".\Docs"));
         Assert.Equal("Docs", SaveValidation.NormalizeSubFolder(@"\Docs\"));
         Assert.Equal("Docs", SaveValidation.NormalizeSubFolder("  Docs  "));
@@ -197,12 +201,183 @@ public class AppSettingsRestoreTests
         }
     }
 
+    // A hand-edited manifest can carry a literal "entries": [null], which
+    // deserializes to a real null ELEMENT that the Length check cannot see.
+    // Reading one used to take the whole app down instead of dropping a row.
+    [Fact]
+    public void BuildCandidatesDropsNullEntriesInsteadOfThrowing()
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "guard-test-" + Guid.NewGuid().ToString("N"));
+        string bundle = System.IO.Path.Combine(root, "bundle");
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(bundle, @"AppSettings\AppData\GoodApp"));
+        try
+        {
+            var manifest = new AppSettingsManifest
+            {
+                Entries = new[] { null!, Entry("GoodApp", @"AppSettings\AppData\GoodApp"), null! },
+            };
+            var rows = AppSettingsRestore.BuildCandidates(manifest, bundle);
+            Assert.Single(rows);
+            Assert.Equal("GoodApp", rows[0].FolderName);
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
+    // The bundle's drive is gone by the time the restore runs (the install phase
+    // between the confirmation and here can take many minutes). The live folder
+    // must be left exactly as it was, and above all must not be counted as
+    // restored - it used to be renamed aside and then reported as a success,
+    // leaving the user's real settings under a name nothing mentioned.
+    [Fact]
+    public void RestoreLeavesTheLiveFolderAloneWhenTheSavedCopyIsGone()
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "guard-test-" + Guid.NewGuid().ToString("N"));
+        string live = System.IO.Path.Combine(root, "live");
+        string target = System.IO.Path.Combine(live, "MyApp");
+        System.IO.Directory.CreateDirectory(target);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(target, "settings.json"), "the user's real settings");
+        try
+        {
+            var picked = new List<AppSettingsRestoreCandidate>
+            {
+                new()
+                {
+                    // Never created: this is the bundle that went away.
+                    SourcePath = System.IO.Path.Combine(root, "bundle", @"AppSettings\AppData\MyApp"),
+                    FolderName = "MyApp",
+                    RootAnchor = "%APPDATA%",
+                    TargetPath = target,
+                    TargetExists = true,
+                },
+            };
+            var stats = AppSettingsRestore.RestoreCandidates(
+                picked, null, System.Threading.CancellationToken.None);
+
+            Assert.Equal(0, stats.Folders);            // nothing claimed as restored
+            Assert.Equal(0, stats.Replaced);           // nothing displaced
+            Assert.Equal(1, stats.SourceUnavailable);
+            Assert.Empty(stats.ManualRecoveryPaths);
+            Assert.True(System.IO.Directory.Exists(target));
+            Assert.Equal("the user's real settings",
+                System.IO.File.ReadAllText(System.IO.Path.Combine(target, "settings.json")));
+            Assert.Empty(System.IO.Directory.GetDirectories(live, "*.guard-old-*"));
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
+    // The source passes the existence pre-check but still cannot be walked, so
+    // the copy comes back empty AFTER the live folder has been moved aside. The
+    // move has to be undone, and "kept aside" must not be reported for a folder
+    // that was put back. A junction stands in for the general case, since
+    // FileTreeCopy refuses to walk a link as a copy root.
+    [Fact]
+    public void RestorePutsTheOriginalBackWhenTheCopyCannotRun()
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "guard-test-" + Guid.NewGuid().ToString("N"));
+        string live = System.IO.Path.Combine(root, "live");
+        string target = System.IO.Path.Combine(live, "MyApp");
+        string real = System.IO.Path.Combine(root, "real");
+        string link = System.IO.Path.Combine(root, "link");
+        System.IO.Directory.CreateDirectory(target);
+        System.IO.Directory.CreateDirectory(real);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(target, "settings.json"), "the user's real settings");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(real, "other.json"), "not theirs");
+        try
+        {
+            var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                "cmd.exe", "/c mklink /J \"" + link + "\" \"" + real + "\"")
+            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true });
+            mk!.WaitForExit();
+            // No junction support on this volume: nothing to assert, and a
+            // filesystem-dependent failure would be a false alarm.
+            if (mk.ExitCode != 0) return;
+
+            var picked = new List<AppSettingsRestoreCandidate>
+            {
+                new()
+                {
+                    SourcePath = link,
+                    FolderName = "MyApp",
+                    RootAnchor = "%APPDATA%",
+                    TargetPath = target,
+                    TargetExists = true,
+                },
+            };
+            var stats = AppSettingsRestore.RestoreCandidates(
+                picked, null, System.Threading.CancellationToken.None);
+
+            Assert.Equal(0, stats.Folders);
+            Assert.Equal(0, stats.Replaced);           // the move-aside was undone
+            Assert.Equal(1, stats.SourceUnavailable);
+            Assert.Empty(stats.ManualRecoveryPaths);
+            Assert.True(System.IO.Directory.Exists(target));
+            Assert.Equal("the user's real settings",
+                System.IO.File.ReadAllText(System.IO.Path.Combine(target, "settings.json")));
+            Assert.Empty(System.IO.Directory.GetDirectories(live, "*.guard-old-*"));
+        }
+        finally
+        {
+            // The junction goes first and NON-recursively: a recursive delete
+            // walks through it and fails on the link itself, which would turn a
+            // passing test into a teardown error.
+            try { System.IO.Directory.Delete(link); } catch { }
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static AppSettingsManifestEntry Entry(string folder, string rel) => new()
     {
         Folder = folder,
         RootAnchor = "%APPDATA%",
         DestRelativePath = rel,
     };
+}
+
+public class FileTreeCopyTests
+{
+    // The signal the restore depends on. FileTreeCopy reports every per-file and
+    // per-subfolder problem through counters and throws nothing, so "the root
+    // could not be walked at all" has to come back some other way - otherwise a
+    // caller that has already moved the live folder aside reads a silent no-op
+    // as a finished copy.
+    [Fact]
+    public void CopyReportsWhetherTheSourceRootCouldBeWalked()
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "guard-test-" + Guid.NewGuid().ToString("N"));
+        string src = System.IO.Path.Combine(root, "src");
+        System.IO.Directory.CreateDirectory(src);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(src, "a.txt"), "x");
+        try
+        {
+            var ok = new TreeCopyStats();
+            Assert.True(FileTreeCopy.Copy(new System.IO.DirectoryInfo(src),
+                System.IO.Path.Combine(root, "dst"), ok));
+            Assert.Equal(1, ok.Files);
+
+            var gone = new TreeCopyStats();
+            string dst2 = System.IO.Path.Combine(root, "dst2");
+            Assert.False(FileTreeCopy.Copy(
+                new System.IO.DirectoryInfo(System.IO.Path.Combine(root, "not-here")), dst2, gone));
+            Assert.Equal(0, gone.Files);
+            // Nothing is created for a root that cannot be walked, so a caller
+            // rolling back has no half-written folder to clear.
+            Assert.False(System.IO.Directory.Exists(dst2));
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
 }
 
 public class UpdaterVersionTests

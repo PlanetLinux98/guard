@@ -213,8 +213,15 @@ public static class AppSettingsExport
             // Cache subfolders are skipped (the ticked root itself never is),
             // and the walker must never descend into our own output when the
             // export destination sits inside a folder being copied.
-            FileTreeCopy.Copy(new DirectoryInfo(c.FolderPath), dest, folderStats,
-                skipDirName: IsCacheDir, skipFullPath: outBase, addBytes: prog.Add);
+            //
+            // A false return means the folder became unreadable between the
+            // confirmation dialog and now, so NOTHING was copied: it must not be
+            // counted as exported, and above all it must not get a manifest entry
+            // - a restore reads that manifest, and an entry for a folder the
+            // bundle does not contain is a promise the bundle cannot keep.
+            if (!FileTreeCopy.Copy(new DirectoryInfo(c.FolderPath), dest, folderStats,
+                    skipDirName: IsCacheDir, skipFullPath: outBase, addBytes: prog.Add))
+                continue;
             stats.Folders++;
             stats.Files += folderStats.Files;
             stats.Bytes += folderStats.Bytes;

@@ -27,10 +27,29 @@ public static class FileTreeCopy
     // skipFullPath: one absolute path never to descend into (export skips its
     // own output when the export destination sits inside a copied folder).
     // addBytes: per-file byte callback; throttling is the caller's business.
-    public static void Copy(DirectoryInfo src, string dest, TreeCopyStats stats,
+    //
+    // Returns FALSE when the source root could not be walked at all - it is
+    // missing, unreadable, or itself a link - and so nothing whatsoever was
+    // copied. That case has to be distinguishable from a completed copy: the
+    // recursion below reports every other problem through the counters and
+    // throws nothing, so a caller that has already moved the live folder aside
+    // (AppSettingsRestore) would otherwise take a silent no-op for a finished
+    // restore and leave the user's data stranded under its aside name. The
+    // root check is separate from the per-directory reparse skip inside the
+    // walk, which is a deliberate "do not follow links" rule for SUBfolders.
+    public static bool Copy(DirectoryInfo src, string dest, TreeCopyStats stats,
         Func<string, bool>? skipDirName = null, string? skipFullPath = null,
         Action<long>? addBytes = null)
-        => CopyCore(src, dest, stats, skipDirName, skipFullPath, addBytes, top: true);
+    {
+        // Refreshed first: DirectoryInfo caches its existence/attribute state
+        // from whenever it was constructed, and the callers build theirs from a
+        // path that was checked earlier (an app install can run for minutes in
+        // between - long enough for the USB holding the bundle to be pulled).
+        src.Refresh();
+        if (!src.Exists || IsReparse(src)) return false;
+        CopyCore(src, dest, stats, skipDirName, skipFullPath, addBytes, top: true);
+        return true;
+    }
 
     private static void CopyCore(DirectoryInfo src, string dest, TreeCopyStats stats,
         Func<string, bool>? skipDirName, string? skipFullPath, Action<long>? addBytes, bool top)

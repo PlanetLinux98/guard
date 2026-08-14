@@ -1,5 +1,6 @@
 using System;
 using GuardWui3.Models;
+using GuardWui3.Services;
 using Microsoft.UI.Xaml.Controls;
 
 namespace GuardWui3.Views;
@@ -72,6 +73,18 @@ public sealed partial class FolderDialog : ContentDialog
     {
         if (SourcePath.Length == 0 || SubFolder.Length == 0)
             return "Fill in both the source folder and the subfolder.";
+        // "." and "\" are not blank, but they resolve to the destination ROOT -
+        // the very thing the blank check above rejects. Left through, a Mirror
+        // run would /MIR the destination itself, deleting everything stored
+        // there that is not in this one source; the pair-wise conflict check
+        // cannot catch it because a single row has no pair to conflict with.
+        // Asked through NormalizeSubFolder so this dialog, the conflict check
+        // and the generated script can never disagree about what a subfolder
+        // resolves to. Deliberately NOT added to the ini parser's own checks:
+        // that would silently drop an existing row, quietly stopping a backup.
+        if (SaveValidation.NormalizeSubFolder(SubFolder).Length == 0)
+            return "The destination subfolder must name a folder.\n\n\".\" and \"\\\" mean the "
+                + "destination itself, so a Mirror backup would delete everything else kept there.";
         if (SourcePath.Contains('"') || SourcePath.Contains('|'))
             return "The source folder cannot contain quote (\") or pipe (|) characters.";
         foreach (char c in SubFolder)

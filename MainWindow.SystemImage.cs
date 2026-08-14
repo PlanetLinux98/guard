@@ -259,6 +259,17 @@ public sealed partial class MainWindow : Window
     // needs a UAC prompt, so an unchanged save must not re-prompt).
     private async System.Threading.Tasks.Task<bool> SaveImageAsync()
     {
+        // Same guard as SaveAllAsync: with the saved settings unreadable at
+        // launch this page is showing defaults, and saving would commit them.
+        if (_settingsUnreadable)
+        {
+            await ShowMessageAsync("GUARD",
+                "GUARD could not read its saved settings when it started, so this page is showing"
+                + " defaults rather than your settings. Saving now would replace what is on disk"
+                + " with them.\n\nClose anything that has this file open, then close and reopen"
+                + " GUARD:\n\n" + GuardPaths.IniPath);
+            return false;
+        }
         HarvestImageUi();
         if (string.IsNullOrEmpty(_cfg.ImageTarget))
         {

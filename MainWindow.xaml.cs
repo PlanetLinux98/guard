@@ -36,6 +36,13 @@ public sealed partial class MainWindow : Window
     private bool _dirty;
     private int _progTotal;
 
+    // The settings file exists but could not be read at launch, so every control
+    // on screen is showing a DEFAULT rather than what is saved. Saving would
+    // commit those defaults over the real file, so both save paths refuse while
+    // this is set; a restart is the way out, since the read is a launch-time
+    // one-shot. Not the same as "no settings yet", which is a normal first run.
+    private bool _settingsUnreadable;
+
     // Byte-weighted backup progress. When a pre-run scan of the included folders
     // succeeds (_progByBytes), the bar tracks bytes copied / total source bytes:
     // _progOffsets[i] is the cumulative bytes BEFORE folder i, _progSizes[i] its
@@ -221,7 +228,15 @@ public sealed partial class MainWindow : Window
         }
         catch { }
 
-        _cfg = SettingsStore.Load();
+        // LoadOrNull, not Load: the section-scoped saves can protect what is on
+        // disk from a read failure at SAVE time, but not from one at LAUNCH -
+        // there the whole window seeds from defaults, and the first Save would
+        // then write those defaults over settings that were merely locked when
+        // GUARD started. Both saves refuse while this flag is set, and the
+        // deferred block at the end of this constructor says so once.
+        var loaded = SettingsStore.LoadOrNull();
+        _settingsUnreadable = loaded is null;
+        _cfg = loaded ?? new Settings { Folders = Settings.DefaultFolders() };
 
         // Populate the file-tab inputs from settings.
         TxtDest.Text = _cfg.Dest;
@@ -343,10 +358,35 @@ public sealed partial class MainWindow : Window
             // bare pane: NVDA otherwise announces only "GUARD, pane" and the
             // user must Tab once before the nav is reachable.
             (Nav.SelectedItem as Control)?.Focus(FocusState.Programmatic);
-            // Awaited, and ahead of the update check: only one ContentDialog may
-            // be open at a time, and "your documents may not be in the backup"
-            // outranks "a new version is available".
-            await CheckMovedFoldersAsync();
+            // Content.XamlRoot is still null for a moment after this callback
+            // starts, and a ContentDialog needs it. The moved-folder check below
+            // only ever got away with showing one because its own background walk
+            // yielded first; anything that prompts straight away did not, and
+            // took the window down. Wait for the tree once, here, so every prompt
+            // downstream is safe rather than accidentally ordered.
+            for (int waited = 0; waited < 2000 && Content?.XamlRoot is null; waited += 25)
+                await System.Threading.Tasks.Task.Delay(25);
+            if (_settingsUnreadable)
+            {
+                // Said instead of the moved-folder check, not before it: the
+                // folder list on screen is the DEFAULT one, so that check would
+                // be reasoning about rows the user never configured - and a
+                // decline it recorded (in the readable prefs file) would go on
+                // silencing a real move long after the settings file is fine.
+                await ShowMessageAsync("GUARD",
+                    "GUARD could not read its saved settings, so it has opened with default settings."
+                    + " Your saved settings have NOT been changed.\n\n" + GuardPaths.IniPath
+                    + "\n\nGUARD will refuse to save while this is so, to keep the defaults on screen"
+                    + " from replacing them. Close anything that has that file open, then close and"
+                    + " reopen GUARD.");
+            }
+            else
+            {
+                // Awaited, and ahead of the update check: only one ContentDialog may
+                // be open at a time, and "your documents may not be in the backup"
+                // outranks "a new version is available".
+                await CheckMovedFoldersAsync();
+            }
             _ = AutoUpdateCheckAsync();
         });
     }
@@ -1214,6 +1254,13 @@ public sealed partial class MainWindow : Window
     private async System.Threading.Tasks.Task<ContentDialogResult> ShowDialogAsync(ContentDialog dlg)
     {
         if (_dialogOpen) return ContentDialogResult.None;
+        // A dialog whose XamlRoot is null throws straight across the WinRT ABI
+        // and takes the window down with it (the same fail-fast family as
+        // UpdateSaveEnabled's focus guard). Every caller sets it from
+        // Content.XamlRoot, which is still null until the tree goes live - so a
+        // launch-time caller could kill the app with a message box. Treated like
+        // the already-open case: no dialog, and callers read that as no/cancel.
+        if (dlg.XamlRoot is null) return ContentDialogResult.None;
         // Dialogs render in the popup layer, which does not pick up the root
         // element's RequestedTheme override; mirror it so a pinned Light/Dark
         // theme (Settings page) applies to every dialog too.
