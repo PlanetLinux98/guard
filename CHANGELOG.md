@@ -29,6 +29,8 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   with Protection Status: Ctrl+1 Protection Status, Ctrl+2 File Backup, Ctrl+3
   System Image, Ctrl+4 App Management, Ctrl+5 Settings.
 
+## [0.5.5] - 2026-08-14
+
 ### Fixed
 - Restoring app settings could rename your existing settings folder aside and
   then restore nothing over it, while reporting that the restore had succeeded.
@@ -933,7 +935,8 @@ shipping as a single self-contained `GUARD.exe`.
 - Screen-reader-first design: real check-box rows, single-tab-stop lists,
   arrow-key navigation, and re-entry focus memory.
 
-[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/PlanetLinux98/guard/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/PlanetLinux98/guard/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/PlanetLinux98/guard/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/PlanetLinux98/guard/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/PlanetLinux98/guard/compare/v0.5.1...v0.5.2
