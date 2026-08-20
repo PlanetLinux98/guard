@@ -399,9 +399,10 @@ them, otherwise from where Windows keeps that folder (so a backup of
 - Tick the folders you want back. A folder whose location GUARD could not work
   out starts unticked and reads *(choose a folder)*.
 - **Change Restore Location...** (Alt+C) points the highlighted row somewhere
-  else. GUARD refuses a location inside the backup itself (which would copy the
-  backup into itself), the root of a drive, and the folder GUARD is running
-  from.
+  else. GUARD refuses a folder inside the backup, or one that contains it
+  (either way the restore would copy the backup over itself), the root of a
+  drive or network share, and the folders GUARD runs from and keeps its
+  settings in.
 - **Select All** (Alt+L) ticks every row that has a location; **Select None**
   (Alt+N) unticks everything.
 

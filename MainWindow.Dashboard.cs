@@ -47,6 +47,19 @@ public sealed partial class MainWindow : Window
         if (DashOverallText == null) return;
         int seq = ++_dashSeq;
 
+        // Whether the destination still holds anything is answered by the
+        // source-health walk, not by the probe below, and that walk otherwise
+        // only runs at launch and around a save or a run - so this page, and
+        // Check Again with it, reported whatever was left over. Started before
+        // the probe and awaited after it, so the two walks overlap. Only once
+        // something is saved: before that there is nothing to compare against.
+        var health = System.IO.File.Exists(GuardPaths.ScriptPath)
+            ? RefreshSourceHealthAsync()
+            : System.Threading.Tasks.Task.CompletedTask;
+        // That walk is capped in seconds, and a button whose whole job is to
+        // re-check and tell you must not go quiet while it runs.
+        if (announce) AnnounceNotification("Checking your protection...");
+
         string appDest = Environment.ExpandEnvironmentVariables((_cfg.AppListDest ?? "").Trim());
         var probe = await System.Threading.Tasks.Task.Run(() =>
         {
@@ -60,6 +73,7 @@ public sealed partial class MainWindow : Window
             bool backupSaved = System.IO.File.Exists(GuardPaths.ScriptPath);
             return (backup, image, appReachable, newest, imageSaved, backupSaved);
         });
+        await health;
         // A newer refresh (or a page switch that started one) has already
         // repainted; dropping this result keeps the older answer off the screen.
         if (seq != _dashSeq) return;

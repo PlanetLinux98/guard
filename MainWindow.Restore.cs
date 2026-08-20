@@ -104,8 +104,19 @@ public sealed partial class MainWindow : Window
         // the preview and its confirmation too, so nothing can start in the gap
         // while the user reads the dialog.
         FileStream? runLock = null;
+        // Non-null once this run has an outcome for the caller to report, which
+        // it does in a dialog carrying this same text - so the finally below
+        // must not also speak it.
+        string? reported = null;
         try
         {
+            // Reset BEFORE the first thing that can return, not after it: the
+            // finally announces _runDoneAnnounce, so a restore refused by the
+            // run lock spoke the PREVIOUS job's outcome (a backup's cheerful
+            // "complete" line, moments after being told the restore never ran).
+            _summaryParser = new RobocopySummaryParser();
+            _runIsPreview = false;
+            _runDoneAnnounce = null;
             runLock = RestoreRunner.TryTakeRunLock(out bool heldByBackup);
             if (runLock == null)
             {
@@ -120,9 +131,6 @@ public sealed partial class MainWindow : Window
 
             TxtOutput.Text = "";
             AppendOut(TxtOutput, "> Restore from " + snapshot.Label + "\r\n");
-            _summaryParser = new RobocopySummaryParser();
-            _runIsPreview = false;
-            _runDoneAnnounce = null;
             SetProgress(FileProgress, FileProgressLabel, 1, 0, "Measuring folders...");
             ShowStatusBarProgress(0, true);
             await MeasureRestoreAsync(picked, ct);
@@ -181,15 +189,15 @@ public sealed partial class MainWindow : Window
             if (ct.IsCancellationRequested)
             {
                 EndRestoreCancelled("Restore stopped. Some folders may be only partly restored.");
-                return "The restore was stopped before it finished, so some folders may hold only part of"
-                    + " what was being copied back. Nothing was deleted.";
+                return reported = "The restore was stopped before it finished, so some folders may hold"
+                    + " only part of what was being copied back. Nothing was deleted.";
             }
 
             string summary = BuildRestoreSummary(hadErrors);
             SetProgress(FileProgress, FileProgressLabel, 1, 1, summary);
             _runDoneAnnounce = summary;
             AppendOut(TxtOutput, "\r\n" + summary + "\r\n--- finished ---\r\n");
-            return summary;
+            return reported = summary;
         }
         catch (Exception ex)
         {
@@ -197,7 +205,7 @@ public sealed partial class MainWindow : Window
             AppendOut(TxtOutput, "ERROR: " + ex.Message + "\r\n");
             SetProgress(FileProgress, FileProgressLabel, 1, 0, failed);
             _runDoneAnnounce = failed;
-            return failed;
+            return reported = failed;
         }
         finally
         {
@@ -213,8 +221,12 @@ public sealed partial class MainWindow : Window
             // The caller clears it again for the paths that never got this far.
             _restoreRunning = false;
             SetRestoreBusy(false);
-            string? spoken = _runDoneAnnounce;
-            if (spoken != null) AnnounceSettled(spoken, 2000);
+            // Nothing spoken where the outcome dialog follows: it carries this
+            // same sentence, so the notification is a second reading of it, and
+            // one raised two seconds later lands on top of the dialog. The paths
+            // that report no outcome keep their spoken line, since it is the only
+            // one they have.
+            if (reported == null && _runDoneAnnounce != null) AnnounceSettled(_runDoneAnnounce, 2000);
         }
     }
 
@@ -373,12 +385,22 @@ public sealed partial class MainWindow : Window
         string copied = CountPhrase(p.FilesCopied, "file");
         string bytes = FormatBytes(p.BytesCopied);
         if (bytes.Length > 0 && p.FilesCopied > 0) copied += " (" + bytes + ")";
+        // "left unchanged", NOT "already up to date": robocopy counts a file the
+        // default mode deliberately left alone - the LIVE copy is newer, which
+        // /XO excludes - in the same Skipped column as one that matches the
+        // backup exactly. Calling those up to date tells the user their newer
+        // work agrees with the backup, which is the opposite of what happened.
+        // (The Replace confirmation says "already match the backup" and is right
+        // to: that pass runs without /XO.)
         string skipped = p.FilesSkipped.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
         if (hadErrors || p.FilesFailed > 0)
-            return "Restore finished with problems: " + CountPhrase(p.FilesFailed, "file")
-                + " could not be restored - open the restore log. " + copied + " restored, "
-                + skipped + " already up to date.";
-        return "Restore complete: " + copied + " restored, " + skipped + " already up to date.";
+            // A failure the parser never saw (the run could not launch at all)
+            // leaves FilesFailed at zero, and "0 files could not be restored"
+            // reads as good news; say only what is known in that case.
+            return "Restore finished with problems: "
+                + (p.FilesFailed > 0 ? CountPhrase(p.FilesFailed, "file") + " could not be restored - " : "")
+                + "open the restore log. " + copied + " restored, " + skipped + " left unchanged.";
+        return "Restore complete: " + copied + " restored, " + skipped + " left unchanged.";
     }
 
     private void EndRestoreCancelled(string text)

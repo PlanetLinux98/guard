@@ -339,7 +339,7 @@ public sealed partial class MainWindow : Window
         // Only once something is saved: the check compares each source against
         // what the backup already holds, so before the first save there is
         // nothing to compare against.
-        if (File.Exists(GuardPaths.ScriptPath)) StartSourceHealthCheck();
+        if (File.Exists(GuardPaths.ScriptPath)) _ = RefreshSourceHealthAsync();
 
         AppWindow.Closing += OnAppWindowClosing;
         // A staged update (Install and Relaunch, or the install-on-exit mode) is
@@ -391,7 +391,7 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    // Ctrl+1..4 jump straight to a page from anywhere in the window (the nav is
+    // Ctrl+1..5 jump straight to a page from anywhere in the window (the nav is
     // otherwise several Tabs away). Wired as accelerators on the root Grid, so
     // they fire regardless of where focus sits. Setting SelectedItem runs the
     // normal page-switch path; focusing the item makes a screen reader follow.
@@ -1381,6 +1381,18 @@ public sealed partial class MainWindow : Window
         bool busy = IsAnyJobRunning;
         if (!_dirty && !_imageDirty && !busy) return;
         args.Cancel = true;
+
+        // Every prompt below is a ContentDialog and only one may be open at a
+        // time, so with one already up they are all suppressed and the close is
+        // cancelled having said nothing - the window button simply looking dead.
+        // Say why instead, as the recovery-USB branch above does. Deliberately
+        // after the early return, so a close over a purely informational dialog
+        // still goes through when there is nothing to ask about.
+        if (_dialogOpen)
+        {
+            AnnounceNotification("GUARD cannot close while one of its dialogs is open. Close the dialog first.");
+            return;
+        }
 
         // Unsaved changes first (the common case): Save / Don't Save / Cancel.
         // Covers either page's unsaved edits; Save persists whichever are dirty.

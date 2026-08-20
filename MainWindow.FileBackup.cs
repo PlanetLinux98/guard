@@ -370,7 +370,13 @@ public sealed partial class MainWindow : Window
     // Repaints only when something was actually found, so the usual no-news run
     // cannot bump the sequence counter and discard an in-flight space check's
     // own rewrite of the same line.
-    private async void StartSourceHealthCheck()
+    //
+    // Awaitable, because the Protection Status page reports the
+    // destination-empty state this computes: fire-and-forget, that page answered
+    // from whatever the last save or run had left behind, which on a wiped
+    // destination is a green "last backup succeeded" no amount of Check Again
+    // could correct.
+    private async System.Threading.Tasks.Task RefreshSourceHealthAsync()
     {
         int seq = _spaceCheckSeq;
         var snapshot = SnapshotConfig();

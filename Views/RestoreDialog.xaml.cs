@@ -78,7 +78,11 @@ public sealed partial class RestoreDialog : ContentDialog
     private void LoadCandidates()
     {
         Items.Clear();
+        // Both halves of the focus memory, never one: OnItemGotFocus sets them
+        // together, so clearing only the item leaves the element pointing into
+        // the list that was just replaced.
         _current = null;
+        _currentElement = null;
         foreach (var c in RestorePlan.BuildCandidates(Snapshot.Path, _folders))
             Items.Add(new RestoreItem(c));
     }

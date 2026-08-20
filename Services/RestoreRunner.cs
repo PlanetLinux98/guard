@@ -154,7 +154,9 @@ public static class RestoreRunner
             return new FileStream(GuardPaths.RunLockPath, FileMode.OpenOrCreate,
                 FileAccess.ReadWrite, FileShare.None);
         }
-        // Caught BEFORE IOException, which both of these derive from:
+        // DirectoryNotFoundException must be caught BEFORE IOException, which it
+        // derives from; UnauthorizedAccessException does not, and sits here only
+        // to keep the two "GUARD's own folder is unwritable" cases together.
         // EnsureLogsDir swallows its own failure, so on a read-only or missing
         // data folder the open below throws one of these - and reporting that as
         // "a backup is running" sends the user off to wait for something that is

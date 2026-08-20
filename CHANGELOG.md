@@ -29,6 +29,11 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   with Protection Status: Ctrl+1 Protection Status, Ctrl+2 File Backup, Ctrl+3
   System Image, Ctrl+4 App Management, Ctrl+5 Settings.
 
+### Fixed
+- Closing GUARD with unsaved changes, or while a job was running, could cancel
+  the close without saying why if one of GUARD's dialogs was open at the time,
+  so the close button appeared to do nothing.
+
 ## [0.5.5] - 2026-08-14
 
 ### Fixed
