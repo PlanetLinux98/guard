@@ -22,7 +22,9 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
 - **Protection Status page**, first in the navigation pane: whether your files,
   your whole PC and your programs are actually protected right now, read from
   the backup logs and destinations rather than from your settings, so a backup
-  that stopped running or a destination that was wiped shows up.
+  that stopped running or a destination that was wiped shows up. GUARD now opens
+  on this page; **Page shown when GUARD opens** on the Settings page changes
+  that.
 
 ### Changed
 - The Ctrl+number page shortcuts follow the navigation pane, which now starts
@@ -30,6 +32,9 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   System Image, Ctrl+4 App Management, Ctrl+5 Settings.
 
 ### Fixed
+- Opening GUARD on a startup page other than File Backup left File Backup marked
+  as selected as well, so the navigation pane showed two selected pages and a
+  screen reader announced both.
 - Closing GUARD with unsaved changes, or while a job was running, could cancel
   the close without saying why if one of GUARD's dialogs was open at the time,
   so the close button appeared to do nothing.

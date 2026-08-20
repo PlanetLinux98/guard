@@ -109,7 +109,7 @@
                         <FontIcon Glyph="&#xE9D9;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="NavFile" Tag="file" IsSelected="True"
+                <NavigationViewItem x:Name="NavFile" Tag="file"
                                     AutomationProperties.Name="File Backup">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8B7;" />
@@ -181,8 +181,13 @@
                      it. None of the status lines carries an
                      AutomationProperties.Name: a static name would override the
                      live text as the UIA Name, and the review cursor would then
-                     read the label instead of the state. -->
-                <Grid x:Name="DashboardPage" Visibility="Collapsed">
+                     read the label instead of the state.
+
+                     They do carry seed text, which RefreshDashboard replaces:
+                     this is the page GUARD opens on (hence the only page not
+                     Collapsed here) and its check runs off the UI thread, so the
+                     first frame would otherwise be a screenful of empty cards. -->
+                <Grid x:Name="DashboardPage">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
@@ -196,7 +201,8 @@
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <Ellipse x:Name="DashOverallDot" Width="14" Height="14" VerticalAlignment="Center"
                                                  AutomationProperties.AccessibilityView="Raw" />
-                                        <TextBlock x:Name="DashOverallText" FontSize="18" FontWeight="SemiBold"
+                                        <TextBlock x:Name="DashOverallText" Text="Checking your protection..."
+                                                   FontSize="18" FontWeight="SemiBold"
                                                    TextWrapping="Wrap" VerticalAlignment="Center" />
                                     </StackPanel>
                                     <TextBlock x:Name="DashOverallDetail" TextWrapping="Wrap"
@@ -210,7 +216,8 @@
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <Ellipse x:Name="DashFileDot" Width="10" Height="10" VerticalAlignment="Center"
                                                  AutomationProperties.AccessibilityView="Raw" />
-                                        <TextBlock x:Name="DashFileText" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="DashFileText" Text="Checking..."
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
                                     </StackPanel>
                                     <TextBlock x:Name="DashFileDetail" TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -227,7 +234,8 @@
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <Ellipse x:Name="DashImageDot" Width="10" Height="10" VerticalAlignment="Center"
                                                  AutomationProperties.AccessibilityView="Raw" />
-                                        <TextBlock x:Name="DashImageText" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="DashImageText" Text="Checking..."
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
                                     </StackPanel>
                                     <TextBlock x:Name="DashImageDetail" TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -243,7 +251,8 @@
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <Ellipse x:Name="DashAppsDot" Width="10" Height="10" VerticalAlignment="Center"
                                                  AutomationProperties.AccessibilityView="Raw" />
-                                        <TextBlock x:Name="DashAppsText" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="DashAppsText" Text="Checking..."
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
                                     </StackPanel>
                                     <TextBlock x:Name="DashAppsDetail" TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -269,7 +278,7 @@
                 </Grid>
 
                 <!-- ============================ FILE BACKUP ============================ -->
-                <Grid x:Name="FileBackupPage">
+                <Grid x:Name="FileBackupPage" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />

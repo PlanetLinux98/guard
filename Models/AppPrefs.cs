@@ -10,8 +10,13 @@ public sealed class AppPrefs
     public bool UpdateAutoInstall = false;
     public string SkippedVersion = "";   // release tag the user chose to skip
     public string LastUpdateCheck = "";  // yyyy-MM-dd of the last successful check
-    public string Theme = "System";      // System | Light | Dark
-    public string StartupPage = "file";  // Tag of the nav page shown at launch
+    public string Theme = "System";         // System | Light | Dark
+    public string StartupPage = "status";   // Tag of the nav page shown at launch
+    // Schema marker for one-time migrations, written by Save and read by Load.
+    // Absent from the file means it was written before 0.6, which is the only
+    // way to tell an old written default apart from a deliberate choice.
+    public const int CurrentPrefsVersion = 2;
+    public int PrefsVersion;
     // Windows toasts for unattended (scheduled / on-connect) backup runs.
     // Failures on, successes off by default: a failure needs acting on, a
     // nightly success toast is noise most people will not want.

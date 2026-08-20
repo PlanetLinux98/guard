@@ -130,9 +130,13 @@ public sealed partial class MainWindow : Window
 
     private bool _appScanned;
     // Which page the nav has selected (0 = File Backup, 1 = App Management,
-    // 2 = System Image); the status bar, its announcements, and the per-page
-    // progress array key off this, as they did off the old Pivot's SelectedIndex.
-    private int _activePage;
+    // 2 = System Image, 3 = Settings, 4 = Protection Status); the status bar, its
+    // announcements, and the per-page progress array key off this, as they did off
+    // the old Pivot's SelectedIndex. Starts on Protection Status because that is
+    // the page the XAML leaves visible, and nothing sets this until
+    // ApplyStartupPage runs; at 0 the first frame paints File Backup's status line
+    // under the dashboard.
+    private int _activePage = 4;
     private bool _scanning;
     private bool _reinstalling;
     private bool _exporting;
@@ -315,9 +319,9 @@ public sealed partial class MainWindow : Window
         // reflects the on-disk script.
         _dirty = false;
         _imageDirty = false;
-        // Seed both pages' status text without announcing at launch. File Backup
-        // is the active page, so refresh it last - its text is what the bar shows
-        // and what _lastAnnouncedStatus should match.
+        // Seed both pages' status text without announcing at launch. Neither owns
+        // the bar yet (the launch page does, and sets _lastAnnouncedStatus when its
+        // own status lands), so these only fill in their own text for the switch.
         RefreshImageStatus(announce: false);
         RefreshScriptStatus(announce: false);
 
@@ -338,8 +342,11 @@ public sealed partial class MainWindow : Window
 
         // Only once something is saved: the check compares each source against
         // what the backup already holds, so before the first save there is
-        // nothing to compare against.
-        if (File.Exists(GuardPaths.ScriptPath)) _ = RefreshSourceHealthAsync();
+        // nothing to compare against. Skipped when the dashboard is the launch
+        // page: RefreshDashboard starts the same walk moments later, and both
+        // would walk every source twice on every launch.
+        if (File.Exists(GuardPaths.ScriptPath) && _prefs.StartupPage != "status")
+            _ = RefreshSourceHealthAsync();
 
         AppWindow.Closing += OnAppWindowClosing;
         // A staged update (Install and Relaunch, or the install-on-exit mode) is
@@ -418,9 +425,11 @@ public sealed partial class MainWindow : Window
     // =====================================================================
     private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        // FileBackupPage / AppMgmtPage are created by InitializeComponent; this
-        // can fire during it (NavFile.IsSelected="True"), before the rest of the
-        // constructor runs, so guard on the pages existing.
+        // FileBackupPage / AppMgmtPage are created by InitializeComponent, so a
+        // page preselected in the XAML fires this before the rest of the
+        // constructor runs; guard on the pages existing. No page is preselected
+        // now (see ApplyStartupPage, which selects the launch page once the tree
+        // is live), and that guard is why it may not be.
         if (FileBackupPage == null || AppMgmtPage == null || SystemImagePage == null
             || SettingsPage == null || DashboardPage == null) return;
         // The built-in Settings footer item has no Tag; it flags itself here.
@@ -438,8 +447,17 @@ public sealed partial class MainWindow : Window
             UpdateStatusBar();
             return;
         }
+        ShowPage((args.SelectedItem as NavigationViewItem)?.Tag as string ?? "file");
+    }
+
+    // The page switch itself: visibilities, the page's lazy work, and the status
+    // bar. Separate from the handler so ApplyStartupPage can drive it directly for
+    // a page whose selection change never reached the handler (see there).
+    // Settings is not reachable here (its footer item carries no Tag and is not in
+    // the startup combo); the handler keeps that branch.
+    private void ShowPage(string tag)
+    {
         SettingsPage.Visibility = Visibility.Collapsed;
-        string tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "file";
         if (tag == "status")
         {
             _activePage = 4;
@@ -829,10 +847,18 @@ public sealed partial class MainWindow : Window
     // silence). The delay lets the focus announcement clear first. Start works at
     // 800ms because script startup already adds ~1s; end fires straight after the
     // focus restore and needs the full two seconds.
-    private async void AnnounceSettled(string text, int delayMs = 800)
+    // notWhileDialog drops the announcement if a dialog is up when the delay
+    // ends (checked then, not when it was scheduled: at launch the moved-folder
+    // and update prompts open while it is waiting). A notification raised over a
+    // modal talks across what the dialog is saying.
+    private async void AnnounceSettled(string text, int delayMs = 800, bool notWhileDialog = false)
     {
         await System.Threading.Tasks.Task.Delay(delayMs);
-        DispatcherQueue.TryEnqueue(() => AnnounceNotification(text));
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (notWhileDialog && _dialogOpen) return;
+            AnnounceNotification(text);
+        });
     }
 
     private static void Announce(UIElement el)

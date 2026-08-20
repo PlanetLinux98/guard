@@ -56,12 +56,21 @@ public static class AppPrefsStore
                 // Any tag is accepted here; the startup combo falls back to the
                 // first page when the tag no longer matches a nav item.
                 case "App.StartupPage": p.StartupPage = val; break;
+                case "App.PrefsVersion": int.TryParse(val, out p.PrefsVersion); break;
                 case "Notifications.OnFailure": p.NotifyFailure = val == "1"; break;
                 case "Notifications.OnSuccess": p.NotifySuccess = val == "1"; break;
                 case "App.DeclinedMoves": p.DeclinedMoves = val; break;
                 case "App.AcknowledgedEmpty": p.AcknowledgedEmpty = val; break;
             }
         }
+        // One-time 0.6 migration: GUARD now opens on Protection Status, but
+        // every pre-0.6 file carries the old default explicitly (Save rewrites
+        // the whole file, and the daily update check saves), so the new default
+        // would otherwise reach fresh installs only. A saved "file" from before
+        // 0.6 is read as that written default, not a choice; the marker stops
+        // this firing again once anything saves.
+        if (p.PrefsVersion < AppPrefs.CurrentPrefsVersion && p.StartupPage == "file")
+            p.StartupPage = "status";
         return p;
     }
 
@@ -76,6 +85,7 @@ public static class AppPrefsStore
         sb.AppendLine("LastCheck=" + p.LastUpdateCheck);
         sb.AppendLine();
         sb.AppendLine("[App]");
+        sb.AppendLine("PrefsVersion=" + AppPrefs.CurrentPrefsVersion);
         sb.AppendLine("Theme=" + p.Theme);
         sb.AppendLine("StartupPage=" + p.StartupPage);
         sb.AppendLine("DeclinedMoves=" + p.DeclinedMoves);

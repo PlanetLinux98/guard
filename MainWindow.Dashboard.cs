@@ -23,6 +23,9 @@ public sealed partial class MainWindow : Window
     private string _dashStatusText = "Checking your protection...";
     private Brush? _dashStatusBrush;
     private int _dashSeq;
+    // Armed by ApplyStartupPage when GUARD opens on this page, spent by the first
+    // refresh that lands.
+    private bool _announceDashOnLaunch;
 
     private void OnDashRefresh(object sender, RoutedEventArgs e) => RefreshDashboard(announce: true);
 
@@ -117,6 +120,15 @@ public sealed partial class MainWindow : Window
         // could not tell that from the button doing nothing at all.
         CommitPageStatus(4, announce: false);
         if (announce) AnnounceNotification(_dashStatusText);
+        // Opening here, nothing else says how protected you are: the nav speaks
+        // the page name when focus lands on it and this check finishes after
+        // that. Settled by two seconds like the scan summary, or the focus
+        // announcement cuts it off, and dropped if a launch dialog is up by then.
+        else if (_announceDashOnLaunch)
+        {
+            _announceDashOnLaunch = false;
+            AnnounceSettled(_dashStatusText, 2000, notWhileDialog: true);
+        }
     }
 
     // Colour reinforces the level but never carries it alone; the text always

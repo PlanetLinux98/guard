@@ -108,7 +108,8 @@ not remove that folder, so delete it too if you want no trace left.
 This walkthrough backs up your Documents folder to an external drive. The same
 steps work for any folders and any destination.
 
-1. Start GUARD. It opens on the **File Backup** tab.
+1. Start GUARD. It opens on **Protection Status**; click **File Backup**
+   in the navigation on the left, or press Ctrl+2.
 2. In **Backup destination** (Alt+D), type the folder your backups go to, for
    example `E:\Backups`, or use **Browse...** to pick it. Click **Test** to
    confirm GUARD can reach it; if the folder does not exist yet, Test offers to
@@ -133,9 +134,10 @@ The rest of this manual covers every control and function in detail.
 
 ## The Protection Status page
 
-The first page in the navigation (Ctrl+1) answers one question: **are you
-actually protected right now?** It shows a line for each of the three things
-GUARD looks after, with a plain-language state and what to do about it:
+The first page in the navigation (Ctrl+1), and the page GUARD opens on, answers
+one question: **are you actually protected right now?** It shows a line for each
+of the three things GUARD looks after, with a plain-language state and what to
+do about it:
 
 - **Your files** - the File Backup tab: when the last backup ran, whether it
   succeeded, whether a scheduled one is overdue, and whether the destination
@@ -156,7 +158,9 @@ cannot tell you any of that.
 **Check Again** (Alt+C) re-reads everything, which is worth doing after
 plugging a drive in. Each line also has a button that takes you to the page
 where you can act on it, and the overall verdict is repeated in the status bar,
-so a screen reader can read the whole answer with one status-bar hotkey.
+so a screen reader can read the whole answer with one status-bar hotkey. When
+GUARD opens on this page, that verdict is also announced once, a couple of
+seconds after the window appears.
 
 ## The File Backup tab
 
@@ -764,7 +768,7 @@ or pin GUARD to **Light** or **Dark** regardless of the system.
 ### Startup
 
 **Page shown when GUARD opens** (Alt+P) picks which page is selected at launch:
-Protection Status, File Backup (the default), System Image, or App Management.
+Protection Status (the default), File Backup, System Image, or App Management.
 
 ### Notifications
 

@@ -249,10 +249,15 @@ public static class ProtectionStatus
         return worst;
     }
 
+    // Named "on this Protection Status page", never "below": the same sentence is
+    // the page's headline, the status bar's line at the bottom of the window, and
+    // what Check Again speaks, and only the first of those is above anything.
     public static string OverallHeadline(ProtectionLevel level) => level switch
     {
         ProtectionLevel.Protected => "You are protected. Everything GUARD looks after is set up and healthy.",
-        ProtectionLevel.Attention => "Something needs your attention. Check the items marked below.",
-        _ => "You are not fully protected yet. Set up the items marked below.",
+        ProtectionLevel.Attention =>
+            "Something needs your attention. Check the items marked on this Protection Status page.",
+        _ =>
+            "You are not fully protected yet. Set up the items marked on this Protection Status page.",
     };
 }

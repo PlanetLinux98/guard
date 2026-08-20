@@ -81,19 +81,43 @@ public sealed partial class MainWindow
         CmbStartupPage.SelectedIndex = selected;
     }
 
-    // Deferred out of the constructor (see the TryEnqueue there): selecting a
-    // page triggers its lazy work (app scan, wbadmin probe), which must not run
-    // before the visual tree is live.
+    // Deferred out of the constructor (see the TryEnqueue there): showing a page
+    // triggers its lazy work (app scan, wbadmin probe, protection check), which
+    // must not run before the visual tree is live. Nothing is IsSelected in the
+    // XAML on purpose: selecting a page there and moving off it here left BOTH
+    // marked selected (NavigationView re-asserts the item's own flag after a
+    // switch this early, and clearing it by hand does not stick), which the pane
+    // showed as two pills and a screen reader read as two selected pages. The
+    // launch page is DashboardPage's XAML visibility plus the selection made
+    // here, so there is no "which page does XAML preselect" literal to keep in
+    // sync either.
     private void ApplyStartupPage()
     {
-        if (_prefs.StartupPage == "file") return; // the XAML default selection
+        NavigationViewItem? first = null, target = null;
         foreach (var obj in Nav.MenuItems)
-            if (obj is NavigationViewItem item && item.Tag as string == _prefs.StartupPage)
-            {
-                Nav.SelectedItem = item;
-                return;
-            }
-        // Stale tag: File Backup stays selected.
+        {
+            if (obj is not NavigationViewItem item || item.Tag is not string tag) continue;
+            first ??= item;
+            if (tag == _prefs.StartupPage) { target = item; break; }
+        }
+        // Stale tag (a renamed or removed page): the first page, which is what the
+        // startup combo falls back to as well.
+        target ??= first;
+        if (target?.Tag is not string want) return;
+        // Nothing is selected at this point today (NavigationView does not select
+        // a first item on its own), so this is the guard for a page being
+        // preselected again: that selection change fires during
+        // InitializeComponent and is dropped, and assigning the same item back
+        // raises no second one, leaving a page on screen that never initialized.
+        // Compared by tag, not by instance: the selection comes back as object,
+        // and an identity test on a projected WinRT object is not the thing to
+        // lean on.
+        // Opening ON the dashboard is the one time its verdict is worth speaking
+        // (see RefreshDashboard); arriving there later is a page switch, which the
+        // nav announces itself.
+        _announceDashOnLaunch = want == "status";
+        if ((Nav.SelectedItem as NavigationViewItem)?.Tag as string == want) ShowPage(want);
+        else Nav.SelectedItem = target;  // the normal switch path runs from here
     }
 
     private void OnUpdatePrefChanged(object sender, RoutedEventArgs e)
