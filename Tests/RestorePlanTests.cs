@@ -193,4 +193,98 @@ public class RestorePlanTests
             @"C:\Users\Someone\AppData\Local\GUARD\Logs", dest, app,
             @"C:\Users\Someone\AppData\Local\GUARD"));
     }
+
+    // A portable GUARD unzipped to the root of a USB stick does not own that
+    // whole drive, but the prefix test used to say it did - refusing every
+    // restore location on it. What actually needs protecting there is the one
+    // subtree GUARD writes into.
+    [Fact]
+    public void AGuardInstalledAtADriveRootDoesNotOwnTheWholeDrive()
+    {
+        const string dest = @"F:\Backups";
+        Assert.Null(RestorePlan.ValidateTarget(@"E:\Photos", dest, @"E:\"));
+        Assert.Null(RestorePlan.ValidateTarget(@"E:\Photos\2026", dest, @"E:\"));
+        // Its logs still are its own, and the drive root itself is still refused.
+        Assert.NotNull(RestorePlan.ValidateTarget(@"E:\Logs", dest, @"E:\"));
+        Assert.NotNull(RestorePlan.ValidateTarget(@"E:\", dest, @"E:\"));
+        // A share root reads the same way.
+        Assert.Null(RestorePlan.ValidateTarget(@"\\server\share\Photos", dest, @"\\server\share"));
+        // A normal install is unaffected.
+        Assert.NotNull(RestorePlan.ValidateTarget(@"C:\Tools\GUARD\Logs", dest, @"C:\Tools\GUARD"));
+    }
+
+    // Additive lets two pairs share one destination subfolder, so the backup
+    // merges both sources into one folder. Dropping the second pair silently
+    // left ONE row aimed at the first pair's path, ticked by default - so
+    // restoring it put the second folder's files there too and never said the
+    // second folder existed.
+    [Fact]
+    public void TwoSourcesSharingOneSubfolderAskRatherThanGuess()
+    {
+        string dest = TempRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dest, "Data"));
+            var folders = new List<FolderPair>
+            {
+                new(true, @"C:\ProjectA\Data", "Data"),
+                new(true, @"C:\ProjectB\Data", "Data"),
+            };
+            var list = RestorePlan.BuildCandidates(dest, folders);
+            var row = Assert.Single(list);
+            Assert.Equal("Data", row.FolderName);
+            Assert.Equal(RestoreDoubt.MergedSources, row.Doubt);
+            // No guess, so no tick: the user has to say where the merged files go.
+            Assert.Equal("", row.SuggestedTarget);
+            Assert.Equal(TargetOrigin.None, row.Origin);
+            Assert.False(new RestoreItem(row).Include);
+
+            // One pair on its own is untouched by any of this.
+            var single = RestorePlan.BuildCandidates(dest, folders.GetRange(0, 1));
+            Assert.Equal(RestoreDoubt.None, Assert.Single(single).Doubt);
+            Assert.Equal(@"C:\ProjectA\Data", single[0].SuggestedTarget);
+        }
+        finally { Directory.Delete(dest, true); }
+    }
+
+    // Windows puts hidden+system bookkeeping folders at the root of every
+    // volume, so a destination of "E:\" listed them as things to restore and
+    // offered a "Latest backup (not versioned)" snapshot that held no backup at
+    // all. The filter is deliberately narrow - name AND attributes AND a volume
+    // root - because robocopy carries a source folder's attributes into the
+    // backup, so an attribute test alone could hide real content.
+    [Fact]
+    public void WindowsOwnRootFoldersAreNotBackupContent()
+    {
+        string dest = TempRoot();
+        try
+        {
+            var svi = Directory.CreateDirectory(Path.Combine(dest, "System Volume Information"));
+            svi.Attributes |= FileAttributes.Hidden | FileAttributes.System;
+            var hidden = Directory.CreateDirectory(Path.Combine(dest, "Secrets"));
+            hidden.Attributes |= FileAttributes.Hidden | FileAttributes.System;
+
+            // A temp folder is not a volume root, so nothing is filtered there:
+            // the filter must never touch an ordinary destination.
+            var names = RestorePlan.BuildCandidates(dest, new List<FolderPair>())
+                .ConvertAll(c => c.FolderName);
+            Assert.Contains("System Volume Information", names);
+            Assert.Contains("Secrets", names);
+        }
+        finally
+        {
+            foreach (var d in new DirectoryInfo(dest).GetDirectories()) d.Attributes = FileAttributes.Directory;
+            Directory.Delete(dest, true);
+        }
+    }
+
+    [Fact]
+    public void IsWholeVolumeKnowsADriveFromAFolderOnIt()
+    {
+        Assert.True(RestorePlan.IsWholeVolume(@"E:\"));
+        Assert.True(RestorePlan.IsWholeVolume(@"\\server\share"));
+        Assert.False(RestorePlan.IsWholeVolume(@"E:\Backups"));
+        Assert.False(RestorePlan.IsWholeVolume(@"\\server\share\Backups"));
+        Assert.False(RestorePlan.IsWholeVolume(""));
+    }
 }

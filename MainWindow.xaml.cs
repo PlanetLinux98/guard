@@ -678,12 +678,12 @@ public sealed partial class MainWindow : Window
         if (!File.Exists(GuardPaths.ScriptPath))
         {
             _fileStatusBrush = new SolidColorBrush(StatusAmber);
-            _fileStatusText = "No backup settings saved yet - click Save Settings first.";
+            _fileStatusText = "No backup settings saved yet. Click Save Settings first.";
         }
         else if (_dirty)
         {
             _fileStatusBrush = new SolidColorBrush(StatusAmber);
-            _fileStatusText = "Unsaved changes - click Save Settings to apply them.";
+            _fileStatusText = "Unsaved changes. Click Save Settings to apply them.";
         }
         else
         {
@@ -700,7 +700,7 @@ public sealed partial class MainWindow : Window
             // one bug nobody would think to check for.
             var last = BackupHealth.ReadLog(GuardPaths.LogPath);
             var status = ProtectionStatus.FileBackup(_cfg, last, DateTime.Now,
-                _sourceHealth.DestinationEmpty, VanishedToReport.Count, MirrorPurges);
+                _sourceHealth.Destination, VanishedToReport.Count, MirrorPurges, MirrorHeld);
             // The dot reports the SETTINGS state as well as health, so a saved
             // configuration that simply has not run yet stays green here, as it
             // always has, even though the dashboard counts it as not protected
@@ -714,6 +714,7 @@ public sealed partial class MainWindow : Window
             _fileStatusText = status.Headline;
         }
         UpdateSaveEnabled();
+        UpdateMirrorHoldBar();
         CommitPageStatus(0, announce);
     }
 
@@ -727,6 +728,12 @@ public sealed partial class MainWindow : Window
     // dated folder, so the previous days' copies survive until the prune and the
     // "will delete" wording would be false.
     private bool MirrorPurges => _cfg.Mode == "Mirror" && !_cfg.Versioned;
+
+    // Whether a restore has paused Mirror's deleting. Asked of the file system
+    // every time rather than cached: the generated script reads the same file,
+    // and a cached answer would drift from a hold the user cleared, or from one
+    // a restore armed while this window sat on another page.
+    private bool MirrorHeld => MirrorPurges && File.Exists(GuardPaths.RestoreHoldPath);
 
     // Save Settings is redundant once the on-disk script already matches the
     // saved config (nothing edited since the last save): a no-op save would just
@@ -891,9 +898,12 @@ public sealed partial class MainWindow : Window
     // a real percentage is known, spinning while a phase has none. Index by the
     // _activePage convention: 0 File Backup, 1 App Management, 2 System Image. The nav
     // ring is what keeps a job on an unfocused page discoverable; the bar no longer
-    // mirrors it, so the two surfaces don't duplicate each other. Indexes 3 and 4 are
-    // Settings and Protection Status: neither runs a job, but UpdateStatusBar reads the
-    // focused page's snapshot unconditionally, so both need a (permanently empty) slot.
+    // mirrors it, so the two surfaces don't duplicate each other. Index 3 is Settings,
+    // which runs no job but still needs a (permanently empty) slot because
+    // UpdateStatusBar reads the focused page's snapshot unconditionally. Index 4 is
+    // Protection Status, which runs no JOB but does use its slot: the protection check
+    // has no nav ring of its own (NavRingFor returns null), so the status bar's own
+    // progress area is the only visible sign that Check Again is working.
     // The indexes are internal and deliberately do NOT follow the pane order - keeping
     // the existing three where they are means adding a page cannot silently repoint an
     // existing page's progress ring.
@@ -1196,6 +1206,29 @@ public sealed partial class MainWindow : Window
         public POINT ptMaxTrackSize;
     }
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MONITORINFO
+    {
+        public uint cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint MonitorFromWindow(nint hWnd, uint dwFlags);
+
+    // The plain MONITORINFO (no name field), so there is no ANSI/Unicode
+    // marshalling to get wrong; the W entry point is named outright because
+    // the subclass proc runs with no marshalling context to infer it from.
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetMonitorInfoW(nint hMonitor, ref MONITORINFO lpmi);
+
     [System.Runtime.InteropServices.DllImport("comctl32.dll", SetLastError = true)]
     private static extern bool SetWindowSubclass(nint hWnd, nint pfnSubclass, nuint uIdSubclass, nuint dwRefData);
 
@@ -1219,8 +1252,22 @@ public sealed partial class MainWindow : Window
             uint dpi = GetDpiForWindow(hWnd);
             double scale = dpi == 0 ? 1.0 : dpi / 96.0;
             MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-            mmi->ptMinTrackSize.X = (int)(MinWidthDip * scale);
-            mmi->ptMinTrackSize.Y = (int)(MinHeightDip * scale);
+            int minW = (int)(MinWidthDip * scale);
+            int minH = (int)(MinHeightDip * scale);
+            // A floor taller than the desktop is not a minimum size, it is a
+            // window that cannot fit: at 150% scaling 620 DIPs is 930 px
+            // against an 853 px work area, and Windows then holds the bottom
+            // edge over the taskbar no matter what size is requested. Capping
+            // it at what the display actually offers is why trimming the
+            // default height could not fix that on its own.
+            var mi = new MONITORINFO { cbSize = (uint)sizeof(MONITORINFO) };
+            if (GetMonitorInfoW(MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST), ref mi))
+            {
+                minW = Math.Min(minW, mi.rcWork.Right - mi.rcWork.Left);
+                minH = Math.Min(minH, mi.rcWork.Bottom - mi.rcWork.Top);
+            }
+            mmi->ptMinTrackSize.X = minW;
+            mmi->ptMinTrackSize.Y = minH;
         }
         return DefSubclassProc(hWnd, uMsg, wParam, lParam);
     }
@@ -1236,6 +1283,19 @@ public sealed partial class MainWindow : Window
             double scale = dpi == 0 ? 1.0 : dpi / 96.0;
             int w = (int)(dipWidth * scale);
             int h = (int)(dipHeight * scale);
+            // Never ask for more than the desktop offers. Windows clamps an
+            // oversized request to the FULL screen, not to the work area, so
+            // the bottom edge lands under the taskbar; on a 150% display the
+            // 840 DIP default is 1260 px against an 853 px work area and came
+            // back as 951. Clamping here is what keeps the taskbar visible,
+            // and it scales to any display rather than to one that was tested.
+            var fit = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+                AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest);
+            if (fit is not null)
+            {
+                w = Math.Min(w, fit.WorkArea.Width);
+                h = Math.Min(h, fit.WorkArea.Height);
+            }
             AppWindow.Resize(new Windows.Graphics.SizeInt32(w, h));
             CenterInWorkArea(w, h);
         }

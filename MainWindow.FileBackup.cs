@@ -394,9 +394,34 @@ public sealed partial class MainWindow : Window
         // A save or a run that landed while this walk was out has already
         // computed a fresher answer; do not overwrite it with this one.
         if (seq != _spaceCheckSeq) return;
+        // Sampled either side of the update, because a state that CLEARS matters
+        // as much as one that appears: a destination that has been refilled has
+        // to stop reading "empty" too.
+        var before = HealthNews();
         SetSourceHealth(health);
-        if (VanishedToReport.Count > 0) RefreshScriptStatus(announce: false);
+        var after = HealthNews();
+        // Still conditional, and for the reason the old gate gave:
+        // RefreshScriptStatus bumps _spaceCheckSeq, which discards the size and
+        // free-space figures the launch-time space check is about to append to
+        // this same line. What the old gate got wrong was its idea of news - only
+        // vanished sources counted, so a destination the walk found empty went to
+        // the Protection Status page and never reached this line, and the two
+        // surfaces flatly disagreed. The ordinary Unchecked-to-HasFiles launch
+        // transition is still not news, so the figures survive it.
+        if (before != after && (HasNews(before) || HasNews(after)))
+            RefreshScriptStatus(announce: false);
     }
+
+    // The inputs to the File Backup status line that this walk owns, as one
+    // comparable value. Unreadable sources are deliberately absent: they are
+    // reported at save time, not on the line.
+    private (SaveValidation.DestState Dest, int Vanished) HealthNews()
+        => (_sourceHealth.Destination, VanishedToReport.Count);
+
+    private static bool HasNews((SaveValidation.DestState Dest, int Vanished) n)
+        => n.Vanished > 0
+           || n.Dest is SaveValidation.DestState.Empty or SaveValidation.DestState.Absent
+                     or SaveValidation.DestState.FolderMissing;
 
     // Mid-flow file-status updates (the space-check placeholder and result).
     private void SetFileStatusText(string text, bool announce = true)
@@ -629,6 +654,13 @@ public sealed partial class MainWindow : Window
             _lastImageScheduleSig = "";   // force the next save to re-apply
             RefreshImageStatus(announce: false);
         }
+        // This query lands after the launch page has already painted, so the
+        // Protection Status page needs telling: a schedule Windows has no task
+        // for means no image will ever be taken, and the page would otherwise
+        // read healthy until the overdue check caught up a week later. Same
+        // pattern as the wbadmin probe (see CheckImageAvailability).
+        if ((_imageTaskStale || _imageTaskUnapplied) && _activePage == 4)
+            RefreshDashboard(announce: false);
     }
 
     // Windows can move the personal folders GUARD backs up - OneDrive's "Back up

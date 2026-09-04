@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using GuardWui3.Models;
 using GuardWui3.Services;
+using Dest = GuardWui3.Services.SaveValidation.DestState;
 using Xunit;
 
 namespace GuardWui3.Tests;
@@ -27,17 +28,17 @@ public class ProtectionStatusTests
         var cfg = Cfg();
         var ok = new LastRunInfo(Now.AddHours(-10), RunOutcome.Ok);
 
-        var healthy = ProtectionStatus.FileBackup(cfg, ok, Now, false, 0, false);
+        var healthy = ProtectionStatus.FileBackup(cfg, ok, Now, Dest.HasFiles, 0, false, false);
         Assert.Equal(ProtectionLevel.Protected, healthy.Level);
         Assert.Equal("Last backup succeeded today at 02:00.", healthy.Headline);
 
-        Assert.Equal("Last backup had errors (today at 02:00) - open the last log.",
-            ProtectionStatus.FileBackup(cfg, new LastRunInfo(ok.When, RunOutcome.Errors), Now, false, 0, false).Headline);
-        Assert.Equal("Last backup did not complete (today at 02:00) - open the last log.",
-            ProtectionStatus.FileBackup(cfg, new LastRunInfo(ok.When, RunOutcome.DidNotComplete), Now, false, 0, false).Headline);
+        Assert.Equal("Last backup had errors (today at 02:00). Open the last log.",
+            ProtectionStatus.FileBackup(cfg, new LastRunInfo(ok.When, RunOutcome.Errors), Now, Dest.HasFiles, 0, false, false).Headline);
+        Assert.Equal("Last backup did not complete (today at 02:00). Open the last log.",
+            ProtectionStatus.FileBackup(cfg, new LastRunInfo(ok.When, RunOutcome.DidNotComplete), Now, Dest.HasFiles, 0, false, false).Headline);
 
         // Settings saved but never run is not protection.
-        var never = ProtectionStatus.FileBackup(cfg, null, Now, false, 0, false);
+        var never = ProtectionStatus.FileBackup(cfg, null, Now, Dest.HasFiles, 0, false, false);
         Assert.Equal(ProtectionLevel.Attention, never.Level);
         Assert.Equal("Backup settings saved. No backup has run yet.", never.Headline);
     }
@@ -49,15 +50,15 @@ public class ProtectionStatusTests
         cfg.ScheduleEnabled = true;
         cfg.ScheduleTime = "02:00";
         var old = new LastRunInfo(Now.AddDays(-3), RunOutcome.Ok);
-        var overdue = ProtectionStatus.FileBackup(cfg, old, Now, false, 0, false);
+        var overdue = ProtectionStatus.FileBackup(cfg, old, Now, Dest.HasFiles, 0, false, false);
         Assert.Equal(ProtectionLevel.Attention, overdue.Level);
-        Assert.StartsWith("Backup overdue - last succeeded", overdue.Headline);
+        Assert.StartsWith("Backup overdue; last succeeded", overdue.Headline);
 
         var onConnect = Cfg();
         onConnect.TriggerOnConnect = true;
-        var stale = ProtectionStatus.FileBackup(onConnect, new LastRunInfo(Now.AddDays(-9), RunOutcome.Ok), Now, false, 0, false);
+        var stale = ProtectionStatus.FileBackup(onConnect, new LastRunInfo(Now.AddDays(-9), RunOutcome.Ok), Now, Dest.HasFiles, 0, false, false);
         Assert.Equal(ProtectionLevel.Attention, stale.Level);
-        Assert.Contains("connect your backup drive", stale.Headline);
+        Assert.Contains("Connect your backup drive", stale.Headline);
     }
 
     // The log lives next to the exe, so it keeps reporting a successful run long
@@ -66,9 +67,54 @@ public class ProtectionStatusTests
     public void AnEmptyDestinationOutranksASuccessfulRun()
     {
         var wiped = ProtectionStatus.FileBackup(Cfg(), new LastRunInfo(Now.AddHours(-2), RunOutcome.Ok),
-            Now, destinationEmpty: true, vanishedCount: 0, mirrorPurges: false);
+            Now, Dest.Empty, vanishedCount: 0, mirrorPurges: false, mirrorHeld: false);
         Assert.Equal(ProtectionLevel.Attention, wiped.Level);
         Assert.StartsWith("Backup destination is empty", wiped.Headline);
+    }
+
+    // An unplugged backup drive is the RESTING state of the on-connect workflow,
+    // so it must never read as a fault; a destination folder deleted off a drive
+    // that IS connected means the backup itself is gone, so it must. And a state
+    // no sweep has answered yet has to say nothing at all, or every launch would
+    // report a fault before the first walk lands.
+    [Fact]
+    public void AnUnpluggedDriveIsNotAFaultButADeletedFolderIs()
+    {
+        var ok = new LastRunInfo(Now.AddHours(-2), RunOutcome.Ok);
+
+        var unchecked_ = ProtectionStatus.FileBackup(Cfg(), ok, Now, Dest.Unchecked, 0, false, false);
+        Assert.Equal(ProtectionLevel.Protected, unchecked_.Level);
+        Assert.Equal("Last backup succeeded today at 10:00.", unchecked_.Headline);
+
+        var absent = ProtectionStatus.FileBackup(Cfg(), ok, Now, Dest.Absent, 0, false, false);
+        Assert.Equal(ProtectionLevel.Protected, absent.Level);
+        Assert.Contains("not connected right now", absent.Headline);
+
+        var onConnect = Cfg();
+        onConnect.TriggerOnConnect = true;
+        Assert.Contains("GUARD will back up when it is",
+            ProtectionStatus.FileBackup(onConnect, ok, Now, Dest.Absent, 0, false, false).Headline);
+
+        var gone = ProtectionStatus.FileBackup(Cfg(), ok, Now, Dest.FolderMissing, 0, false, false);
+        Assert.Equal(ProtectionLevel.Attention, gone.Level);
+        Assert.StartsWith("Backup destination folder is missing", gone.Headline);
+    }
+
+    // The pause is a standing state in which the mode the user configured is not
+    // in force, so it has to outrank a run that went perfectly well.
+    [Fact]
+    public void APausedMirrorOutranksAHealthyRun()
+    {
+        var held = ProtectionStatus.FileBackup(Cfg(), new LastRunInfo(Now.AddHours(-2), RunOutcome.Ok),
+            Now, Dest.HasFiles, 0, mirrorPurges: true, mirrorHeld: true);
+        Assert.Equal(ProtectionLevel.Attention, held.Level);
+        Assert.StartsWith("Mirror deleting is paused", held.Headline);
+
+        // But an empty destination still outranks the pause: the backup being
+        // gone is the bigger fact.
+        Assert.StartsWith("Backup destination is empty",
+            ProtectionStatus.FileBackup(Cfg(), new LastRunInfo(Now.AddHours(-2), RunOutcome.Ok),
+                Now, Dest.Empty, 0, true, true).Headline);
     }
 
     // A vanished source never makes the run fail, so the healthy line is exactly
@@ -77,7 +123,7 @@ public class ProtectionStatusTests
     public void AVanishedSourceDowngradesAnOtherwiseHealthyBackup()
     {
         var s = ProtectionStatus.FileBackup(Cfg(), new LastRunInfo(Now.AddHours(-2), RunOutcome.Ok),
-            Now, false, vanishedCount: 1, mirrorPurges: true);
+            Now, Dest.HasFiles, vanishedCount: 1, mirrorPurges: true, mirrorHeld: false);
         Assert.Equal(ProtectionLevel.Attention, s.Level);
         Assert.Contains("the next backup will delete the copies", s.Headline);
         Assert.Equal(" Warning: 2 folders have nothing left to back up.",
@@ -89,18 +135,45 @@ public class ProtectionStatusTests
     public void SystemImageSeparatesUnavailableFromUnconfigured()
     {
         var cfg = Cfg();
-        var missing = ProtectionStatus.SystemImage(cfg, available: false, settingsSaved: false, null, Now);
+        var missing = ProtectionStatus.SystemImage(cfg, available: false, settingsSaved: false,
+            ProtectionStatus.ImageTaskState.Ok, null, Now);
         Assert.Equal(ProtectionLevel.Unavailable, missing.Level);
         Assert.StartsWith("System imaging is unavailable", missing.Headline);
 
-        var unset = ProtectionStatus.SystemImage(cfg, true, false, null, Now);
+        var unset = ProtectionStatus.SystemImage(cfg, true, false, ProtectionStatus.ImageTaskState.Ok, null, Now);
         Assert.Equal(ProtectionLevel.NotSetUp, unset.Level);
-        Assert.Equal("No image settings saved yet - choose a destination and click Save Settings.", unset.Headline);
+        Assert.Equal("No image settings saved yet. Choose a destination and click Save Settings.", unset.Headline);
 
         Assert.Equal("Image settings saved. No image created yet.",
-            ProtectionStatus.SystemImage(cfg, true, true, null, Now).Headline);
+            ProtectionStatus.SystemImage(cfg, true, true, ProtectionStatus.ImageTaskState.Ok, null, Now).Headline);
         Assert.Equal("Last system image succeeded today at 02:00.",
-            ProtectionStatus.SystemImage(cfg, true, true, new LastRunInfo(Now.AddHours(-10), RunOutcome.Ok), Now).Headline);
+            ProtectionStatus.SystemImage(cfg, true, true, ProtectionStatus.ImageTaskState.Ok,
+                new LastRunInfo(Now.AddHours(-10), RunOutcome.Ok), Now).Headline);
+    }
+
+    // A schedule Windows has no task for means no image will EVER be taken, which
+    // the last run's log cannot reveal. It has to outrank a healthy run, or the
+    // page and the dashboard disagree until the overdue check catches up.
+    [Fact]
+    public void ABrokenScheduledImageTaskOutranksAHealthyLastRun()
+    {
+        var cfg = Cfg();
+        var healthy = new LastRunInfo(Now.AddHours(-10), RunOutcome.Ok);
+        var gone = ProtectionStatus.SystemImage(cfg, true, true,
+            ProtectionStatus.ImageTaskState.Missing, healthy, Now);
+        Assert.Equal(ProtectionLevel.Attention, gone.Level);
+        Assert.StartsWith("The image schedule is saved but Windows has no matching task", gone.Headline);
+
+        var moved = ProtectionStatus.SystemImage(cfg, true, true,
+            ProtectionStatus.ImageTaskState.Moved, healthy, Now);
+        Assert.Equal(ProtectionLevel.Attention, moved.Level);
+        Assert.StartsWith("GUARD's folder has moved", moved.Headline);
+
+        // A PC that cannot image at all still reports that first: a broken task
+        // is not the user's problem to fix there.
+        Assert.Equal(ProtectionLevel.Unavailable,
+            ProtectionStatus.SystemImage(cfg, false, true,
+                ProtectionStatus.ImageTaskState.Missing, healthy, Now).Level);
     }
 
     // Windows withholding wbadmin is not the user's failing, so it must not drag

@@ -31,6 +31,39 @@ public class BackupScriptTests
         Assert.DoesNotContain("/XJF", additive);
     }
 
+    // The restore hold: while GUARD's restore-hold.txt exists, a purging Mirror
+    // script must copy WITHOUT deleting, or a restore that put back less than the
+    // backup holds has its remaining copies deleted by the next run. Only the
+    // shape that can actually purge gets the gate, so every other script is
+    // untouched.
+    [Fact]
+    public void OnlyAPurgingMirrorScriptCarriesTheRestoreHoldGate()
+    {
+        var cfg = BaseSettings();
+
+        cfg.Mode = "Additive";
+        Assert.DoesNotContain("MIRHOLD", BackupScript.Generate(cfg));
+        // Versioned Mirror writes into a fresh dated folder every run, so it has
+        // nothing to purge and needs no hold (the MirrorPurges rule).
+        cfg.Mode = "Mirror";
+        cfg.Versioned = true;
+        Assert.DoesNotContain("MIRHOLD", BackupScript.Generate(cfg));
+
+        cfg.Versioned = false;
+        string s = BackupScript.Generate(cfg);
+        Assert.Contains("set \"MIRHOLD=%~dp0restore-hold.txt\"", s);
+        Assert.Contains("if exist \"%MIRHOLD%\" set \"MIRHELD=1\"", s);
+        // The held options must drop /MIR for /E and keep everything else.
+        Assert.Contains("if defined MIRHELD set \"OPTS=/E /R:2", s);
+        Assert.Contains("if defined MIRHELD if defined GUARD_UI set \"OPTS=/E /R:2", s);
+        // And they must come AFTER the GUARD_UI override, or an in-app run
+        // re-arms /MIR over the hold.
+        Assert.True(s.IndexOf("if defined MIRHELD set \"OPTS=")
+                    > s.IndexOf("if defined GUARD_UI set \"OPTS="));
+        // The run says so, in the log as well as on screen.
+        Assert.Contains("mirror deleting is paused", s);
+    }
+
     [Fact]
     public void AMissingSourceMakesTheRunReportErrorsRatherThanSuccess()
     {

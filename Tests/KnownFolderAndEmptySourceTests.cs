@@ -136,6 +136,53 @@ public class SourceHealthTests
     private static string TempRoot()
         => Path.Combine(Path.GetTempPath(), "guard-tests-" + Guid.NewGuid().ToString("N"));
 
+    // A destination the sweep could not look at and one it looked at and found
+    // gone are opposite facts, and "no sweep has run" is a third. Reported as one
+    // state precisely so a caller cannot read the never-checked case as a fault.
+    [Fact]
+    public void TheDestinationStateSeparatesNotCheckedFromGoneFromEmpty()
+    {
+        string root = TempRoot();
+        try
+        {
+            Assert.Equal(SaveValidation.DestState.Unchecked, SaveValidation.SourceHealth.None.Destination);
+            Assert.False(SaveValidation.SourceHealth.None.DestinationReachable);
+            Assert.Equal(SaveValidation.DestState.Unchecked, Run(Config("")).Destination);
+
+            string empty = Dir(root, "empty");
+            Assert.Equal(SaveValidation.DestState.Empty, Run(Config(empty)).Destination);
+
+            string full = Dir(root, "full");
+            File.WriteAllText(Path.Combine(full, "copy.txt"), "x");
+            var has = Run(Config(full));
+            Assert.Equal(SaveValidation.DestState.HasFiles, has.Destination);
+            Assert.True(has.DestinationReachable);
+            Assert.False(has.DestinationEmpty);
+
+            // The folder is gone but the drive holding it is plainly there.
+            Assert.Equal(SaveValidation.DestState.FolderMissing,
+                Run(Config(Path.Combine(root, "deleted"))).Destination);
+
+            // A drive letter that does not exist at all: the resting state of a
+            // removable backup drive, which must never read as the folder having
+            // been deleted.
+            string absent = FirstUnusedDriveRoot();
+            if (absent.Length > 0)
+                Assert.Equal(SaveValidation.DestState.Absent,
+                    Run(Config(absent + @"Backups")).Destination);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    // "" when every letter is in use, in which case the Absent case above is
+    // simply not asserted rather than asserted wrongly.
+    private static string FirstUnusedDriveRoot()
+    {
+        for (char c = 'Z'; c >= 'D'; c--)
+            if (!Directory.Exists(c + @":\")) return c + @":\";
+        return "";
+    }
+
     // THE regression test for the design that had to be thrown away. A folder
     // that is empty and has ALWAYS been empty - Contacts on a stock Windows
     // profile, Music on a work machine - must never produce a warning, or GUARD

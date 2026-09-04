@@ -85,6 +85,31 @@ public sealed partial class RestoreDialog : ContentDialog
         _currentElement = null;
         foreach (var c in RestorePlan.BuildCandidates(Snapshot.Path, _folders))
             Items.Add(new RestoreItem(c));
+        UpdateListNote();
+    }
+
+    // One line under the list for the cases where GUARD deliberately suggested
+    // nothing. Rebuilt with the list, since a different snapshot can be a
+    // different shape.
+    private void UpdateListNote()
+    {
+        bool merged = false, wholeVolume = false;
+        foreach (var i in Items)
+        {
+            if (i.Doubt == RestoreDoubt.MergedSources) merged = true;
+            else if (i.Doubt == RestoreDoubt.WholeVolumeDestination) wholeVolume = true;
+        }
+        string text = "";
+        if (wholeVolume)
+            text = "Your backup destination is a whole drive, so every folder on it is listed here and"
+                + " GUARD cannot tell which ones it backed up. Set a restore location for the folders"
+                + " you want back.";
+        if (merged)
+            text = (text.Length > 0 ? text + " " : "")
+                + "One backup folder holds files from more than one of the folders you back up, so GUARD"
+                + " cannot tell them apart. Choose where its files should go, or leave it unticked.";
+        ListNote.Text = text;
+        ListNote.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnSnapshotChanged(object sender, SelectionChangedEventArgs e)

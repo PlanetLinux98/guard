@@ -39,25 +39,56 @@ public static class ProtectionStatus
     // Only the SAVED-AND-CLEAN state: "unsaved changes" and "nothing saved yet"
     // are page states, not protection states, and the caller handles them.
     public static PillarStatus FileBackup(
-        Settings cfg, LastRunInfo? last, DateTime now,
-        bool destinationEmpty, int vanishedCount, bool mirrorPurges)
+        Settings cfg, LastRunInfo? last, DateTime now, SaveValidation.DestState destination,
+        int vanishedCount, bool mirrorPurges, bool mirrorHeld)
     {
         string vanished = VanishedSuffix(vanishedCount, mirrorPurges);
+        // A drive that is simply not plugged in NEVER downgrades the verdict.
+        // GUARD's headline feature backs up to a removable drive on connect, so
+        // "not here right now" is the normal resting state, and a backup that has
+        // actually stopped happening is caught on evidence instead, by the
+        // overdue and week-stale rules below. It is still said, because a page
+        // that answers "am I protected right now" must not quietly base that on
+        // something it could not look at.
+        string absent = destination != SaveValidation.DestState.Absent ? ""
+            : cfg.TriggerOnConnect
+                ? " The backup destination is not connected right now; GUARD will back up when it is."
+                : " The backup destination is not connected right now.";
         // Saved but never run is still "not protected": settings do not copy
         // anything, and this is the state a user is likeliest to mistake for done.
         if (last is null)
             return new PillarStatus(ProtectionLevel.Attention,
-                "Backup settings saved. No backup has run yet." + vanished,
+                "Backup settings saved. No backup has run yet." + vanished + absent,
                 "Your folders are not backed up until a backup actually runs. Click Run Now on the"
                 + " File Backup page, or turn on a schedule.");
 
         // A wiped destination outranks everything else: GUARD's log lives next
         // to the exe, so it keeps reporting a successful run in green long after
         // the drive it wrote to was reformatted or emptied.
-        if (destinationEmpty)
+        if (destination == SaveValidation.DestState.Empty)
             return new PillarStatus(ProtectionLevel.Attention,
-                "Backup destination is empty - the backup may have been deleted. Run a backup to rebuild it.",
+                "Backup destination is empty; the backup may have been deleted. Run a backup to rebuild it.",
                 "GUARD's records show a backup has run, but there is nothing at the destination now.");
+
+        // The same trap one step further out: the folder is gone off a drive that
+        // IS connected, so nothing could be read and nothing says so. Ranked with
+        // the empty case, and deliberately NOT with the unplugged one.
+        if (destination == SaveValidation.DestState.FolderMissing)
+            return new PillarStatus(ProtectionLevel.Attention,
+                "Backup destination folder is missing, though its drive is connected; the backup may have been deleted.",
+                "The drive is there and this folder is not: "
+                + Environment.ExpandEnvironmentVariables(cfg.Dest ?? "")
+                + ". Check it was not renamed or deleted, then run a backup to rebuild it.");
+
+        // Paused mirror deleting outranks how the last run went: backups are
+        // still running and still copying, so the run health reads fine, but the
+        // mode the user chose is not in force until they resume it.
+        if (mirrorHeld)
+            return new PillarStatus(ProtectionLevel.Attention,
+                "Mirror deleting is paused after a restore; backups still run, but nothing is deleted.",
+                "GUARD paused it because a restore left your folders holding less than the backup does,"
+                + " and Mirror would have deleted the copies that were not put back. Resume it once your"
+                + " files are as you want them.");
 
         string when = BackupHealth.FriendlyWhen(last.When, now);
         var expected = cfg.ScheduleEnabled
@@ -66,14 +97,14 @@ public static class ProtectionStatus
         bool amber = true;
         string text;
         if (last.Outcome == RunOutcome.Errors)
-            text = "Last backup had errors (" + when + ") - open the last log.";
+            text = "Last backup had errors (" + when + "). Open the last log.";
         else if (last.Outcome == RunOutcome.DidNotComplete)
-            text = "Last backup did not complete (" + when + ") - open the last log.";
+            text = "Last backup did not complete (" + when + "). Open the last log.";
         else if (BackupHealth.IsOverdue(last, expected, now))
-            text = "Backup overdue - last succeeded " + when + ".";
+            text = "Backup overdue; last succeeded " + when + ".";
         else if (cfg.TriggerOnConnect && !cfg.ScheduleEnabled
                  && now - last.When > BackupHealth.OnConnectStale)
-            text = "Last backup was over a week ago (" + when + ") - connect your backup drive.";
+            text = "Last backup was over a week ago (" + when + "). Connect your backup drive.";
         else
         {
             amber = false;
@@ -83,7 +114,7 @@ public static class ProtectionStatus
         // "succeeded" line is exactly where it has to be said.
         if (vanishedCount > 0) amber = true;
         return new PillarStatus(amber ? ProtectionLevel.Attention : ProtectionLevel.Protected,
-            text + vanished, DescribeSchedule(cfg));
+            text + vanished + absent, DescribeSchedule(cfg));
     }
 
     // The status-line tail for sources that have gone empty while the backup
@@ -116,8 +147,20 @@ public static class ProtectionStatus
     }
 
     // ---- System Image ---------------------------------------------------
+    //
+    // Whether Windows still holds a scheduled-image task that matches the saved
+    // settings. Both faults mean the schedule will never fire again, which no
+    // amount of reading the last run's log can reveal.
+    public enum ImageTaskState
+    {
+        Ok,
+        Moved,    // the task exists but points at GUARD's old folder
+        Missing,  // settings say a schedule is on, Windows has no task for it
+    }
+
     public static PillarStatus SystemImage(
-        Settings cfg, bool available, bool settingsSaved, LastRunInfo? last, DateTime now)
+        Settings cfg, bool available, bool settingsSaved, ImageTaskState task,
+        LastRunInfo? last, DateTime now)
     {
         if (!available)
             return new PillarStatus(ProtectionLevel.Unavailable,
@@ -126,9 +169,24 @@ public static class ProtectionStatus
                 + " include. Your files are still protected by File Backup.");
         if (!settingsSaved)
             return new PillarStatus(ProtectionLevel.NotSetUp,
-                "No image settings saved yet - choose a destination and click Save Settings.",
+                "No image settings saved yet. Choose a destination and click Save Settings.",
                 "Without a system image, recovering from a failed disk means reinstalling Windows and"
                 + " your programs by hand.");
+        // Ahead of the log health, and in the same order the System Image page
+        // reports them: a broken task means no image will EVER be taken, which
+        // outranks how the last one went. Without this the page and this list
+        // disagreed for as long as it took the overdue check to catch up - a
+        // week on the default cadence.
+        if (task == ImageTaskState.Moved)
+            return new PillarStatus(ProtectionLevel.Attention,
+                "GUARD's folder has moved. Click Save Settings to repoint the scheduled image (needs Administrator approval).",
+                "The scheduled task still points at the folder GUARD used to be in, so it cannot start"
+                + " the image. Nothing will be imaged until it is repointed.");
+        if (task == ImageTaskState.Missing)
+            return new PillarStatus(ProtectionLevel.Attention,
+                "The image schedule is saved but Windows has no matching task. Click Save Settings to try again (needs Administrator approval).",
+                "Registering the task needs Administrator approval; if that was declined, or the task"
+                + " was removed since, no scheduled image will ever run.");
         if (last is null)
             return new PillarStatus(ProtectionLevel.Attention,
                 "Image settings saved. No image created yet.",
@@ -142,11 +200,11 @@ public static class ProtectionStatus
         bool amber = true;
         string text;
         if (last.Outcome == RunOutcome.Errors)
-            text = "Last system image had errors (" + when + ") - open the last log.";
+            text = "Last system image had errors (" + when + "). Open the last log.";
         else if (last.Outcome == RunOutcome.DidNotComplete)
-            text = "Last system image did not complete (" + when + ") - open the last log.";
+            text = "Last system image did not complete (" + when + "). Open the last log.";
         else if (BackupHealth.IsOverdue(last, expected, now))
-            text = "System image overdue - last succeeded " + when + ".";
+            text = "System image overdue; last succeeded " + when + ".";
         else
         {
             amber = false;

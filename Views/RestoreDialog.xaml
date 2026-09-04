@@ -75,6 +75,14 @@
                 </ItemsControl>
             </ScrollViewer>
         </Border>
+        <!-- Filled by LoadCandidates for the cases where GUARD deliberately
+             chose nothing for the user (a subfolder holding two sources' files,
+             or a destination that is a whole drive). The row captions carry the
+             same reason, but only aloud; this is the half a sighted user gets.
+             No AutomationProperties.Name: a TextBlock's name is its Text. -->
+        <TextBlock x:Name="ListNote" TextWrapping="Wrap" Visibility="Collapsed"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
         <StackPanel Orientation="Horizontal" Spacing="6">
             <Button Content="Change Restore Location..." AccessKey="C"
                     ToolTipService.ToolTip="Choose a different folder for the row that last held focus"

@@ -33,6 +33,16 @@ public sealed class WingetPayload
 public static class WingetBootstrap
 {
     private const string ApiLatest = "https://api.github.com/repos/microsoft/winget-cli/releases/latest";
+    private const string RepoUrl = "https://github.com/microsoft/winget-cli";
+
+    // Only the API-free fallback needs these spelled out; the API path still
+    // matches by extension, so a rename there costs nothing. If Microsoft ever
+    // does rename them, the fallback is what stops working, not the install.
+    private static readonly string[] FallbackAssets =
+    {
+        "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle",
+        "DesktopAppInstaller_Dependencies.zip",
+    };
 
     // The bundle is a couple hundred MB; give slow links headroom.
     private static readonly HttpClient Http = GitHubDownloads.CreateClient(TimeSpan.FromMinutes(30));
@@ -45,11 +55,16 @@ public static class WingetBootstrap
         catch { return false; }
     }
 
-    // Null on any failure (offline, rate-limited, release without a bundle);
-    // callers treat that as "could not check", with their own message.
+    // Null on any failure (offline, release without a bundle); callers treat
+    // that as "could not check", with their own message. The API answer is
+    // preferred - it names the assets rather than assuming them - but a spent
+    // unauthenticated API budget is a 403 the user cannot see coming and cannot
+    // do anything about, so the redirect route gets the install through anyway.
     public static async Task<GitHubRelease?> FetchLatestAsync(CancellationToken ct = default)
     {
         var rel = await GitHubDownloads.FetchLatestAsync(Http, ApiLatest, ct);
+        if (rel is null || FindBundle(rel) is null)
+            rel = await GitHubDownloads.FetchLatestByRedirectAsync(Http, RepoUrl, FallbackAssets, ct);
         return rel is null || FindBundle(rel) is null ? null : rel;
     }
 

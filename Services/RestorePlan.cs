@@ -12,11 +12,30 @@ public sealed record RestoreCandidate(
     string FolderName,       // the subfolder under the snapshot root ("Documents", "Work\Reports")
     string SourcePath,       // <snapshot>\<FolderName>, the copies to restore FROM
     string SuggestedTarget,  // the live folder to restore INTO, expanded, or "" when unknown
-    TargetOrigin Origin);
+    TargetOrigin Origin,
+    RestoreDoubt Doubt = RestoreDoubt.None);
 
 // Where SuggestedTarget came from, so the dialog can say why it is proposing
 // that folder (and so a guessed one reads differently from a configured one).
 public enum TargetOrigin { None, Settings, WindowsFolder }
+
+// Why GUARD will not tick a row for the user even when it has a target to
+// suggest. Both cases are ones where the backup itself is ambiguous, so the
+// choice has to be made by someone who knows what the folders are: a restore
+// writes into live folders, and a wrong row ticked by default is one the user
+// never had to agree to.
+public enum RestoreDoubt
+{
+    None,
+    // More than one configured pair backs up INTO this folder, so its copies
+    // came from two different places and nothing on the destination says which
+    // file came from which.
+    MergedSources,
+    // The backup destination is a whole drive or share, so every folder on it is
+    // listed and GUARD cannot tell the ones it wrote from the ones that merely
+    // live there.
+    WholeVolumeDestination,
+}
 
 // One backup to restore from: a dated version folder, or the destination
 // itself when the backup is not versioned.
@@ -64,9 +83,19 @@ public static class RestorePlan
         catch { return snapshots; }
 
         bool anyPlainFolder = false;
+        bool wholeVolume = IsWholeVolume(root);
         var dated = new List<BackupSnapshot>();
         foreach (var d in dirs)
         {
+            // At a drive or share root, Windows' own hidden+system folders
+            // ($RECYCLE.BIN, System Volume Information) are always there, and
+            // counting them as backup content offered a "Latest backup (not
+            // versioned)" snapshot holding no backup at all beside the real
+            // dated ones. Only at a volume root, and only for hidden AND system
+            // together: robocopy carries a source folder's attributes into the
+            // backup, so a hidden folder someone deliberately backs up must
+            // still be found.
+            if (wholeVolume && IsWindowsVolumeArtifact(d)) continue;
             if (IsDateStamp(d.Name))
             {
                 // Parsed exactly, invariant: the folder name is composed from
@@ -84,6 +113,36 @@ public static class RestorePlan
         if (anyPlainFolder)
             snapshots.Add(new BackupSnapshot(root, "Latest backup (not versioned)", null));
         return snapshots;
+    }
+
+    // Whether a path IS a whole drive or network share rather than a folder on
+    // one. Public because a destination that is a whole volume changes what the
+    // restore list can be sure of, and the dialog says so in as many words.
+    public static bool IsWholeVolume(string? path)
+    {
+        string p = Environment.ExpandEnvironmentVariables((path ?? "").Trim());
+        if (p.Length == 0) return false;
+        try { p = Path.GetFullPath(p); } catch { return false; }
+        return IsVolumeRoot(p);
+    }
+
+    // The two folders Windows itself puts at the root of every volume. Matched
+    // by name AND by hidden+system together, deliberately narrowly: robocopy
+    // carries a source folder's attributes into the backup (/DCOPY:DA), so an
+    // attribute test alone could hide a hidden folder someone chose to back up.
+    // Missing some other root clutter is harmless - it is listed, untargeted and
+    // unticked - whereas hiding real backup content is not, so the test errs
+    // that way. Attributes come from the enumeration itself, at no extra cost.
+    private static bool IsWindowsVolumeArtifact(DirectoryInfo d)
+    {
+        if (!d.Name.Equals("System Volume Information", StringComparison.OrdinalIgnoreCase)
+            && !d.Name.Equals("$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            const FileAttributes both = FileAttributes.Hidden | FileAttributes.System;
+            return (d.Attributes & both) == both;
+        }
+        catch { return false; }
     }
 
     // What can be restored from one snapshot, and where each folder came from.
@@ -116,13 +175,31 @@ public static class RestorePlan
             catch { continue; }
             try { if (!Directory.Exists(source)) continue; }
             catch { continue; }
-            if (Duplicate(list, source)) continue;
+            int already = IndexOfSource(list, source);
+            if (already >= 0)
+            {
+                // A SECOND configured pair backing up into the same destination
+                // folder. Additive allows that (only Mirror blocks the
+                // collision), and the backup merges both sources into one
+                // folder. Dropping this pair silently left a single row aimed at
+                // the FIRST pair's path, so restoring it put this pair's files
+                // there too and never mentioned that this folder existed.
+                // Nothing on the destination says which file came from which, so
+                // the suggestion is withdrawn rather than guessed at.
+                list[already] = list[already] with
+                {
+                    SuggestedTarget = "",
+                    Origin = TargetOrigin.None,
+                    Doubt = RestoreDoubt.MergedSources,
+                };
+                continue;
+            }
             list.Add(new RestoreCandidate(sub, source,
                 Environment.ExpandEnvironmentVariables(f.Source ?? "").Trim(), TargetOrigin.Settings));
             claimed.Add(sub);
         }
 
-        AddUnclaimed(snapshotRoot, "", claimed, list, depth: 0);
+        AddUnclaimed(snapshotRoot, "", claimed, list, depth: 0, IsWholeVolume(snapshotRoot));
         list.Sort((a, b) => string.Compare(a.FolderName, b.FolderName, StringComparison.OrdinalIgnoreCase));
         return list;
     }
@@ -140,7 +217,7 @@ public static class RestorePlan
     // nothing in the dialog could ever restore, which is exactly the silent
     // omission this whole destination-driven design exists to avoid.
     private static void AddUnclaimed(string dir, string relative,
-        HashSet<string> claimed, List<RestoreCandidate> list, int depth)
+        HashSet<string> claimed, List<RestoreCandidate> list, int depth, bool rootIsVolume)
     {
         List<DirectoryInfo> children;
         try { children = new List<DirectoryInfo>(new DirectoryInfo(dir).EnumerateDirectories()); }
@@ -152,11 +229,15 @@ public static class RestorePlan
             // FindSnapshots and must never be restored AS a folder called
             // "2026-08-14". Only at the top, where they can actually appear.
             if (relative.Length == 0 && IsDateStamp(d.Name)) continue;
+            // Windows' own root bookkeeping, which is present on every volume and
+            // is not part of anyone's backup. Only where the snapshot root IS a
+            // volume, which is the only place it can appear.
+            if (rootIsVolume && relative.Length == 0 && IsWindowsVolumeArtifact(d)) continue;
             string rel = relative.Length == 0 ? d.Name : relative + "\\" + d.Name;
             if (claimed.Contains(rel)) continue;              // already a row of its own
             if (depth < MaxClaimDepth && ClaimedUnder(claimed, rel))
             {
-                AddUnclaimed(d.FullName, rel, claimed, list, depth + 1);
+                AddUnclaimed(d.FullName, rel, claimed, list, depth + 1, rootIsVolume);
                 continue;
             }
             if (Duplicate(list, d.FullName)) continue;
@@ -166,10 +247,17 @@ public static class RestorePlan
             // own name as the destination subfolder. Only a top-level folder is
             // asked about - a "Documents" nested inside another folder is not
             // the Windows one.
-            string? known = relative.Length == 0 ? KnownFolders.Resolve(d.Name) : null;
+            //
+            // Never at a volume root, though: there EVERY folder on the drive is
+            // listed, so a stray "E:\Music" that GUARD never backed up would be
+            // matched to the real Music folder and ticked for the user. GUARD
+            // cannot tell its own backup from the drive's other contents there,
+            // so it declines to guess and the dialog says why.
+            string? known = relative.Length == 0 && !rootIsVolume ? KnownFolders.Resolve(d.Name) : null;
             list.Add(new RestoreCandidate(rel, d.FullName,
                 known == null ? "" : Environment.ExpandEnvironmentVariables(known),
-                known == null ? TargetOrigin.None : TargetOrigin.WindowsFolder));
+                known == null ? TargetOrigin.None : TargetOrigin.WindowsFolder,
+                rootIsVolume ? RestoreDoubt.WholeVolumeDestination : RestoreDoubt.None));
         }
     }
 
@@ -183,11 +271,17 @@ public static class RestorePlan
     }
 
     private static bool Duplicate(List<RestoreCandidate> list, string source)
+        => IndexOfSource(list, source) >= 0;
+
+    // The row already listing these copies, or -1. Separate from Duplicate
+    // because a second CONFIGURED pair pointing here is not a row to skip: it is
+    // a row whose suggestion has to be withdrawn (see BuildCandidates).
+    private static int IndexOfSource(List<RestoreCandidate> list, string source)
     {
-        foreach (var c in list)
-            if (string.Equals(c.SourcePath.TrimEnd('\\'), source.TrimEnd('\\'),
-                    StringComparison.OrdinalIgnoreCase)) return true;
-        return false;
+        for (int i = 0; i < list.Count; i++)
+            if (string.Equals(list[i].SourcePath.TrimEnd('\\'), source.TrimEnd('\\'),
+                    StringComparison.OrdinalIgnoreCase)) return i;
+        return -1;
     }
 
     // Why this target cannot be restored into, or null when it can be.
@@ -234,9 +328,21 @@ public static class RestorePlan
         foreach (var folder in appFolders)
         {
             string app = Key(folder);
-            if (app.Length > 0 && (key.StartsWith(app, StringComparison.OrdinalIgnoreCase)
-                                   || app.StartsWith(key, StringComparison.OrdinalIgnoreCase)))
-                return "That folder holds GUARD itself, so restoring there would overwrite the running program.";
+            if (app.Length == 0) continue;
+            // A GUARD unzipped to the root of a drive (a portable app on a USB
+            // stick, which GuardPaths explicitly expects) does NOT own that whole
+            // drive, yet the prefix test below matches every path on it - so the
+            // restore refused every location on that drive with a message that
+            // made no sense. At a root the containment question is already
+            // settled: the root ITSELF is refused by the volume-root rule above,
+            // and a folder beside the exe cannot overwrite it. What is left to
+            // protect is the one subtree GUARD writes into. IsVolumeRoot trims
+            // the separator Key appends, so the key goes in as it is.
+            if (IsVolumeRoot(app)) app = Key(Path.Combine(folder, "Logs"));
+            if (key.StartsWith(app, StringComparison.OrdinalIgnoreCase)
+                || app.StartsWith(key, StringComparison.OrdinalIgnoreCase))
+                return "That folder holds GUARD's own files, so restoring there would overwrite the"
+                    + " running program or its settings.";
         }
         return null;
     }

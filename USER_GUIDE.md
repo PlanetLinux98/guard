@@ -31,6 +31,7 @@ open this manual from inside the app at any time.
 - [The Protection Status page](#the-protection-status-page)
 - [The File Backup tab](#the-file-backup-tab)
 - [Restoring files from a backup](#restoring-files-from-a-backup)
+  - [Mirror mode: deleting is paused](#mirror-mode-deleting-is-paused)
 - [The System Image tab](#the-system-image-tab)
 - [The App Management tab](#the-app-management-tab)
 - [The Settings page](#the-settings-page)
@@ -141,7 +142,10 @@ do about it:
 
 - **Your files** - the File Backup tab: when the last backup ran, whether it
   succeeded, whether a scheduled one is overdue, and whether the destination
-  still holds anything.
+  still holds anything. A backup drive that is simply not plugged in is not
+  counted against you - GUARD says it could not check rather than pretending it
+  did - but a destination folder that has been deleted from a drive that IS
+  connected is reported, because that means the backup itself is gone.
 - **Your whole PC** - the System Image tab: when the last image was made, or
   that imaging is unavailable on this Windows edition (which is not something
   you can fix, and does not count against you here).
@@ -410,6 +414,18 @@ them, otherwise from where Windows keeps that folder (so a backup of
 - **Select All** (Alt+L) ticks every row that has a location; **Select None**
   (Alt+N) unticks everything.
 
+GUARD will not choose a location it cannot be sure of, and says so under the
+list when that happens:
+
+- If two of the folders you back up are set to the same destination subfolder,
+  their files are mixed together in one backup folder and nothing there records
+  which came from where. That row is listed once, with no location and unticked,
+  for you to place.
+- If your backup destination is a whole drive (`E:\` rather than a folder on it)
+  then every folder on that drive is listed, because GUARD cannot tell the ones
+  it backed up from the ones that merely live there. Nothing is ticked for you.
+  Windows' own hidden folders are left out.
+
 ### What happens to files that are already there
 
 - **Put back what is missing** (Alt+A) is the default and cannot lose anything.
@@ -430,10 +446,35 @@ would delete your newest work.
 
 ### While it runs
 
+Before it starts, GUARD compares the size of the folders in the backup with the
+free space where they are going, and asks first if there may not be room. That
+figure is the most it could need, since files already on your PC are not copied
+again, so the restore may well fit; if the drive does fill up the restore stops
+partway and nothing is deleted.
+
 Progress and output appear on the File Backup tab, and **Stop Restore** (Alt+T)
 cancels it. A restore and a backup can never run at the same time - each holds
 the other off - so a scheduled backup cannot start partway through a restore and
 mirror a half-restored folder back over your backup.
+
+### Mirror mode: deleting is paused
+
+If your backup **Mode** is Mirror and versioning is off, every backup makes the
+backup match your folders, deleting anything at the destination that is no
+longer in them. That is exactly wrong during a recovery: a restore you stop
+partway - or one where you tick only some folders, or send one somewhere else -
+leaves your folder holding less than the backup does, and the next backup would
+delete the copies it never put back. Those are usually the only copies left.
+
+So a restore in that mode **pauses the deleting half of your backups**. Backups
+carry on running and carry on copying; they simply delete nothing, and each run
+says so in its log. A bar appears at the bottom of the window with **Resume
+Mirror Deleting** (Ctrl+M), and the Protection Status page and the File Backup
+status line both report the pause until you use it.
+
+GUARD never lifts the pause by itself, because finishing a restore is not the
+same as having your files back. Resume it once they are as you want them; the
+confirmation spells out that the next backup will start deleting again.
 
 When it finishes, GUARD reports what was restored and offers to open the restore
 log (`Logs\restore_last.log`), which lists every file. The restore log is kept
@@ -913,6 +954,10 @@ screen reader. A few specifics worth knowing:
   Ctrl+3 System Image, Ctrl+4 App Management, Ctrl+5 Settings. Focus lands on
   the page in the navigation, so you can arrow to a neighbouring page from
   there.
+- **Ctrl+M** reaches **Resume Mirror Deleting** while that notice is showing
+  (see [Mirror mode: deleting is paused](#mirror-mode-deleting-is-paused)), the
+  same way Ctrl+U reaches an update offer and Ctrl+I an offer to install winget.
+  Like those, it does nothing while the notice is not there.
 - **At launch, focus starts on the navigation** (the current page's item), so
   the first thing you reach is the page list rather than an empty pane.
 - **Dark and light Mica theming** follows your Windows setting automatically,

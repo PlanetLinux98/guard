@@ -26,16 +26,30 @@ public static class Updater
     // publishing. Offering betas would need /releases plus real SemVer
     // pre-release ordering in IsNewer (core-only today, by design).
     private const string ApiLatest = "https://api.github.com/repos/PlanetLinux98/guard/releases/latest";
+    private const string RepoUrl = "https://github.com/PlanetLinux98/guard";
     public const string ZipAssetName = "GUARD.zip";
     private const string ChecksumAssetName = "SHA256SUMS";
 
     private static readonly HttpClient Http = GitHubDownloads.CreateClient(TimeSpan.FromMinutes(5));
 
-    // Null on any failure (offline, rate-limited, bad response); callers treat
-    // that as "could not check", never as "up to date".
+    // Null on any failure (offline, bad response); callers treat that as "could
+    // not check", never as "up to date". The API is preferred because it is the
+    // only source of the release notes; the redirect route covers a spent
+    // unauthenticated API budget, which is a 403 shared with everything else on
+    // the same IP and so can strike a perfectly connected machine.
     public static async Task<GitHubRelease?> FetchLatestAsync(CancellationToken ct = default)
     {
         var rel = await GitHubDownloads.FetchLatestAsync(Http, ApiLatest, ct);
+        if (string.IsNullOrEmpty(rel?.TagName))
+        {
+            rel = await GitHubDownloads.FetchLatestByRedirectAsync(
+                Http, RepoUrl, new[] { ZipAssetName, ChecksumAssetName }, ct);
+            // Notes only exist in the API answer. Say where they are rather than
+            // let the dialog's empty-body placeholder claim the release has none.
+            if (rel is not null)
+                rel.Body = "Release notes are not available right now. They are on the release page:\n"
+                    + rel.HtmlUrl;
+        }
         return string.IsNullOrEmpty(rel?.TagName) ? null : rel;
     }
 

@@ -214,6 +214,19 @@ public static class GuardPaths
     // being copied back (see RestoreRunner.TryTakeRunLock); the script's own
     // path for it is composed in batch, so the two must not drift.
     public static string RunLockPath => Path.Combine(DataDir, @"Logs\backup-running.lock");
+    // Set by a restore in purging-Mirror mode, and cleared only by the user.
+    //
+    // While this file exists the generated script copies WITHOUT /PURGE. The run
+    // lock keeps a backup out for the duration of a restore, but the danger ends
+    // when the live folder is whole again, not when the lock is released: a
+    // restore that stopped early leaves the folder holding less than the backup,
+    // and the next Mirror run would delete the copies it never put back - which
+    // by then are the only ones left. The on-connect task fires every few
+    // minutes, so warning the user is not fast enough to rely on.
+    //
+    // Named here because the script composes its own path for it in batch
+    // (%~dp0), exactly like the run lock, so the two must not drift.
+    public static string RestoreHoldPath => Path.Combine(DataDir, "restore-hold.txt");
     // File Restore: its own log, kept apart from backup_last.log so a restore
     // never overwrites the record of the last backup (which is what tells the
     // user whether the copies they are restoring from are current).

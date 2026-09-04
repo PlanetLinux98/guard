@@ -19,6 +19,14 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   their date, for a file that has been damaged or encrypted, and it says what
   would change and asks first. Any folder can be redirected somewhere else, and
   a backup running at the time holds the restore off (and the other way round).
+  In Mirror mode GUARD also pauses the deleting half of your backups for the
+  duration: a restore you stop partway leaves a folder holding less than the
+  backup does, and the next backup would otherwise delete the copies it did not
+  put back. A bar at the bottom of the window (Ctrl+M) resumes deleting once
+  your files are back as you want them. GUARD warns before restoring if the
+  drive may not have room, and it never picks a restore location it cannot be
+  sure of: a backup folder holding two of your folders' files, or a destination
+  that is a whole drive, is listed with the reason and left for you to place.
 - **Protection Status page**, first in the navigation pane: whether your files,
   your whole PC and your programs are actually protected right now, read from
   the backup logs and destinations rather than from your settings, so a backup
@@ -32,12 +40,28 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   System Image, Ctrl+4 App Management, Ctrl+5 Settings.
 
 ### Fixed
+- The File Backup status line could go on reporting a healthy last backup after
+  GUARD had already found the destination emptied, because only a vanished
+  source folder made it repaint. It now also reports a destination folder that
+  has been deleted from a drive that is still connected, and says when the
+  destination is not connected at all rather than judging the backup without it.
 - Opening GUARD on a startup page other than File Backup left File Backup marked
   as selected as well, so the navigation pane showed two selected pages and a
   screen reader announced both.
 - Closing GUARD with unsaved changes, or while a job was running, could cancel
   the close without saying why if one of GUARD's dialogs was open at the time,
   so the close button appeared to do nothing.
+- Installing winget, and GUARD's own update check, could fail with "Could not
+  reach GitHub" on a PC with a working connection: both read the release through
+  GitHub's API, which allows only 60 unauthenticated requests an hour per network
+  address and shares that budget with everything else using the same address.
+  Both now fall back to GitHub's ordinary download links, which are not limited
+  that way.
+- The window could open with its bottom edge under the taskbar on a scaled or
+  short display, and could not be resized clear of it: GUARD asked for a window
+  taller than the desktop had room for, and its own minimum size was itself
+  taller than the space available at 150% scaling. Both are now capped to what
+  the display actually offers.
 
 ## [0.5.5] - 2026-08-14
 

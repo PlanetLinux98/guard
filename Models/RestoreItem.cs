@@ -47,12 +47,16 @@ public sealed partial class RestoreItem : INotifyPropertyChanged
     // is repeating the user's own setting or guessing from Windows.
     public TargetOrigin Origin { get; }
 
+    // Why GUARD would not choose for the user here, or None.
+    public RestoreDoubt Doubt { get; }
+
     public RestoreItem(RestoreCandidate c)
     {
         FolderName = c.FolderName;
         SourcePath = c.SourcePath;
         _target = c.SuggestedTarget;
         Origin = c.Origin;
+        Doubt = c.Doubt;
         // Ticked by default only when there is somewhere to put it. A row whose
         // target is unknown would otherwise fail the dialog's own validation the
         // moment Restore is pressed, on a machine where the user may not know
@@ -60,8 +64,20 @@ public sealed partial class RestoreItem : INotifyPropertyChanged
         _include = _target.Length > 0;
     }
 
-    // Spoken name for the row's checkbox (the role announces checked state).
-    public string Caption => "Backup folder " + FolderName + ", restore into " + TargetDisplay;
+    // Spoken name for the row's checkbox (the role announces checked state). The
+    // doubt rides here rather than in the visible columns, which have room for a
+    // path and nothing else; the dialog states the same thing once, beneath the
+    // list, for anyone reading rather than listening.
+    public string Caption => "Backup folder " + FolderName + ", restore into " + TargetDisplay + DoubtNote;
+
+    private string DoubtNote => Doubt switch
+    {
+        RestoreDoubt.MergedSources => ". More than one of your folders is backed up into this one, so"
+            + " GUARD cannot tell which files came from where. Choose where they should go.",
+        RestoreDoubt.WholeVolumeDestination => ". The backup destination is a whole drive, so GUARD"
+            + " cannot tell whether this folder is part of your backup. Check it before restoring.",
+        _ => "",
+    };
 
     public override string ToString() => Caption;
 

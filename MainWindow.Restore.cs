@@ -82,12 +82,24 @@ public sealed partial class MainWindow : Window
         }
         finally { _restoreRunning = false; }
 
+        // Before the report, which tells the user to resume from this bar.
+        UpdateMirrorHoldBar();
+        if (outcome == null) return;
+        // A restore changes exactly what the source-health walk measures: a
+        // folder it filled stops being "vanished", and one it never reached is
+        // still empty - which in Mirror mode is the standing warning that the
+        // next backup will delete its copies. Without this the status line and
+        // the Protection Status page both went on describing the state before
+        // the restore. Started here rather than awaited, so reading the report
+        // is not held up by a walk of every source tree.
+        if (File.Exists(GuardPaths.ScriptPath)) _ = RefreshSourceHealthAsync();
+
         // Deliberately outside the claim above and outside the run's own lock:
         // the report can sit on screen for as long as the user takes to read it,
         // and while the job still counted as running the close handler cancelled
         // the close and then suppressed its own explanation (only one dialog may
         // be open), so the window button simply did nothing.
-        if (outcome != null) await ShowRestoreOutcomeAsync(outcome);
+        await ShowRestoreOutcomeAsync(outcome);
     }
 
     // Returns the outcome to report, or null when there is nothing to say.
@@ -134,6 +146,14 @@ public sealed partial class MainWindow : Window
             SetProgress(FileProgress, FileProgressLabel, 1, 0, "Measuring folders...");
             ShowStatusBarProgress(0, true);
             await MeasureRestoreAsync(picked, ct);
+            // Stop pressed during the measure: bow out before asking anything,
+            // rather than opening a dialog about a restore that is over.
+            if (ct.IsCancellationRequested) { EndRestoreCancelled("Restore cancelled."); return null; }
+
+            // Asked before the Replace preview below, which is a second full
+            // scan: there is no point paying for it to describe a restore that
+            // will not fit.
+            if (!await ConfirmRestoreSpaceAsync(picked)) { EndRestoreCancelled("Restore cancelled."); return null; }
 
             // Replace overwrites files that are already there, including ones
             // edited since the backup, so it never runs on the strength of a
@@ -147,6 +167,24 @@ public sealed partial class MainWindow : Window
                 _summaryParser = new RobocopySummaryParser();
             }
             if (ct.IsCancellationRequested) { EndRestoreCancelled("Restore cancelled."); return null; }
+
+            // Armed after every question has been answered, so a restore the user
+            // backed out of does not leave the mode paused for nothing - but
+            // BEFORE the first file is copied, because a crash or a power cut
+            // partway through is precisely the state this protects. Never cleared
+            // automatically: "the restore finished" does not mean the folders are
+            // whole, since rows can be left unticked or redirected elsewhere, so
+            // only the user can say when their files are back.
+            if (MirrorPurges && !TryArmMirrorHold(snapshot.Label)
+                && !await ShowConfirmAsync("GUARD",
+                    "GUARD could not pause mirror deleting, so if this restore does not put everything"
+                    + " back, the next backup will delete the copies it missed.\n\nThis folder must be"
+                    + " writable:\n\n" + GuardPaths.DataDir + "\n\nRestore anyway?",
+                    "Restore anyway", "Cancel"))
+            {
+                EndRestoreCancelled("Restore cancelled.");
+                return null;
+            }
 
             RestoreRunner.BeginLog(preview: false, snapshot.Label, snapshot.Path, mode);
             string? partLog = RestoreRunner.TryPreparePartLog();
@@ -190,14 +228,17 @@ public sealed partial class MainWindow : Window
             {
                 EndRestoreCancelled("Restore stopped. Some folders may be only partly restored.");
                 return reported = "The restore was stopped before it finished, so some folders may hold"
-                    + " only part of what was being copied back. Nothing was deleted.";
+                    + " only part of what was being copied back. Nothing was deleted." + MirrorPurgeNote();
             }
 
             string summary = BuildRestoreSummary(hadErrors);
             SetProgress(FileProgress, FileProgressLabel, 1, 1, summary);
             _runDoneAnnounce = summary;
             AppendOut(TxtOutput, "\r\n" + summary + "\r\n--- finished ---\r\n");
-            return reported = summary;
+            // The note goes on the REPORT only, never on the status line or the
+            // spoken outcome: both of those are one line, and a paragraph
+            // appended to them would truncate the part that says what happened.
+            return reported = summary + MirrorPurgeNote();
         }
         catch (Exception ex)
         {
@@ -230,6 +271,73 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // Opens or closes the standing "mirror deleting is paused" bar. Driven from
+    // RefreshScriptStatus, which already runs at launch, on every save (the mode
+    // itself may have changed) and at the end of a run, so there is one hook
+    // rather than a list of call sites to keep in step.
+    private void UpdateMirrorHoldBar()
+    {
+        if (MirrorHoldInfoBar != null) MirrorHoldInfoBar.IsOpen = MirrorHeld;
+    }
+
+    private async void OnResumeMirrorDeleting(object sender, RoutedEventArgs e)
+    {
+        // Asked, and in the plainest terms available: resuming is the step that
+        // lets the next backup start deleting again, and the user is the only
+        // one who knows whether their files are back.
+        if (!await ShowConfirmAsync("GUARD",
+                "Resume mirror deleting?\n\nMirror mode makes the backup match your folders, so the"
+                + " next backup will DELETE anything in the backup that is not in the folders being"
+                + " backed up.\n\nOnly resume once the files you restored are back where you want them."
+                + " Until then backups keep running and nothing is deleted.",
+                "Resume deleting", "Keep it paused")) return;
+        try { File.Delete(GuardPaths.RestoreHoldPath); }
+        catch (Exception ex)
+        {
+            await ShowMessageAsync("GUARD", "GUARD could not remove the pause, so backups will go on"
+                + " copying without deleting.\n\n" + GuardPaths.RestoreHoldPath + "\n\n" + ex.Message);
+            return;
+        }
+        // announce:false plus one explicit notification: the status line only
+        // speaks while the File Backup page is focused, and this can be pressed
+        // from any of them, so the confirmation must not depend on where you are.
+        RefreshScriptStatus(announce: false);
+        if (_activePage == 4) RefreshDashboard(announce: false);
+        AnnounceNotification("Mirror deleting resumed. The next backup will delete anything in the"
+            + " backup that is not in your folders.");
+    }
+
+    // The file the generated script reads to decide whether to purge. Reports
+    // failure rather than throwing, because the caller has to ask before going
+    // on: in this one mode, running without the hold is the data-loss case.
+    private static bool TryArmMirrorHold(string snapshotLabel)
+    {
+        try
+        {
+            GuardPaths.EnsureLogsDir();   // creates the data folder with it
+            File.WriteAllText(GuardPaths.RestoreHoldPath,
+                "Mirror deleting was paused by a restore from " + snapshotLabel + " on "
+                + DateTime.Now.ToString("yyyy-MM-dd HH:mm",
+                    System.Globalization.CultureInfo.InvariantCulture) + Environment.NewLine
+                + "While this file is here, GUARD's backup copies without deleting anything."
+                + Environment.NewLine
+                + "Use Resume Mirror Deleting in GUARD to remove it." + Environment.NewLine);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    // What the report says about the paused mode, or "" when nothing is paused.
+    // Said on EVERY Mirror restore, not only a stopped one: the pause is now in
+    // force either way, and a user who is not told will not know to resume it.
+    private string MirrorPurgeNote()
+        => MirrorHeld
+            ? "\n\nGUARD has paused mirror deleting, so the next backup cannot delete the copies of"
+              + " anything this restore did not put back. Backups keep running and keep copying."
+              + " Resume it from the bar at the bottom of the window once your files are as you want"
+              + " them."
+            : "";
+
     // The end-of-restore report, with the log one press away: a restore is rare,
     // high-stakes and writes into the user's own folders, so unlike a backup it
     // does not end on a status line alone. The log carries the exact file names
@@ -247,6 +355,64 @@ public sealed partial class MainWindow : Window
         };
         if (await ShowDialogAsync(dlg) == ContentDialogResult.Secondary)
             OpenPath(GuardPaths.RestoreLogPath, "No restore log was written.");
+    }
+
+    // Whether there is room for what is about to be copied back. Returns false
+    // only when the user decides not to go ahead.
+    //
+    // A restore writes into the LIVE folders, which are normally on the system
+    // drive, so filling it is worse than filling a backup drive. The figures
+    // come free from the measure above.
+    //
+    // Advisory, like the backup page's own space line, and never a refusal: the
+    // total is the size of the folders IN THE BACKUP, and the default mode
+    // copies only what is missing, so it is an upper bound rather than a
+    // prediction. Blocking on it would refuse restores that would have fitted
+    // easily.
+    private async System.Threading.Tasks.Task<bool> ConfirmRestoreSpaceAsync(List<RestoreItem> picked)
+    {
+        // No figures at all when the walk hit its cap (MeasureIncludedFolderSizes
+        // returns null then), which is exactly the case of a very large backup.
+        // Nothing to say beats a guess.
+        if (!_progByBytes || _progSizes == null || _progSizes.Length != picked.Count)
+        {
+            // Said rather than passed over in silence: on a large backup this is
+            // the likeliest branch, and a restore that fills the drive would
+            // otherwise look like one GUARD had checked.
+            AppendOut(TxtOutput, "NOTE: GUARD could not measure the backup in time, so it did not"
+                + " check whether there is room for it.\r\n");
+            return true;
+        }
+        // Summed per drive: two folders going to the same one have to fit
+        // together, and a third going elsewhere must not be counted against it.
+        var needed = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < picked.Count; i++)
+        {
+            string root;
+            try { root = Path.GetPathRoot(Path.GetFullPath(picked[i].Target)) ?? ""; }
+            catch { continue; }
+            if (root.Length == 0) continue;
+            needed[root] = (needed.TryGetValue(root, out long n) ? n : 0) + _progSizes[i];
+        }
+        var tight = new List<string>();
+        foreach (var kv in needed)
+        {
+            long? free = await System.Threading.Tasks.Task.Run(() => SaveValidation.TryGetFreeSpace(kv.Key));
+            // A drive whose free space cannot be read says nothing: "could not
+            // check" is not "will not fit".
+            if (free is long f && kv.Value > f)
+                tight.Add(kv.Key + " needs up to " + SaveValidation.FormatBytes(kv.Value)
+                    + " and has " + SaveValidation.FormatBytes(f) + " free");
+        }
+        if (tight.Count == 0) return true;
+        var sb = new System.Text.StringBuilder();
+        foreach (var t in tight) sb.Append('\n').Append(t);
+        return await ShowConfirmAsync("GUARD",
+            "There may not be room for this restore." + sb
+            + "\n\nThat is the size of the folders in the backup, so it is the most that could be"
+            + " copied; anything already on this PC is not copied again. If the drive does fill up,"
+            + " the restore stops partway and nothing is deleted.\n\nRestore anyway?",
+            "Restore anyway", "Cancel");
     }
 
     // A /L pass over the picked folders, then the confirmation it feeds. Returns
@@ -419,8 +585,11 @@ public sealed partial class MainWindow : Window
         {
             // The Stop button is shared with the backup run, so it says what it
             // would stop; a button labelled "Stop Backup" during a restore would
-            // be read out as exactly the wrong reassurance.
+            // be read out as exactly the wrong reassurance. The tooltip goes with
+            // it: a screen reader reads it after the label, so the XAML one left
+            // in place had the button contradict itself on every focus.
             BtnStopBackup.Content = "Stop Restore";
+            ToolTipService.SetToolTip(BtnStopBackup, "Stop the running restore");
             _fileRunLauncher = BeginRunBusy(BtnStopBackup, BtnSave, BtnRunNow, BtnPreview, BtnRestore);
             BtnSave.IsEnabled = false;
             BtnRunNow.IsEnabled = false;
@@ -435,6 +604,7 @@ public sealed partial class MainWindow : Window
             UpdateSaveEnabled();
             EndRunBusy(BtnStopBackup, _fileRunLauncher);
             BtnStopBackup.Content = "Stop Backup";
+            ToolTipService.SetToolTip(BtnStopBackup, "Stop the running backup");
             _fileRunLauncher = null;
         }
     }

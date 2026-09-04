@@ -89,22 +89,41 @@ public static class SaveValidation
     // holds files it copied from that source before.
     public sealed record VanishedSource(string Source, string SubFolder);
 
-    // DestinationEmpty: the destination is reachable and holds nothing at all.
-    // Combined by the caller with "a backup has run before", that means the
-    // backup itself is gone - a reformatted or emptied backup drive. Worth
-    // singling out because GUARD's own log lives next to the exe, not on the
-    // destination, so every other signal keeps reporting the last successful run
-    // in green while there is nothing left at the other end.
-    // DestinationReachable: whether this check was able to look at the
-    // destination at all. Without it an unplugged backup drive is
-    // indistinguishable from "nothing is wrong", and callers that act on an
-    // empty Vanished list - notably the acknowledgement pruning - would treat
-    // "could not measure" as "measured, and it is fine".
+    // Destination: what this sweep could learn about the other end (see
+    // DestState). It is singled out at all because GUARD's own log lives next to
+    // the exe, not on the destination, so every other signal keeps reporting the
+    // last successful run in green while there is nothing left over there. And
+    // the derived DestinationReachable exists because callers that act on an
+    // empty Vanished list - notably the acknowledgement pruning - would
+    // otherwise treat "could not measure" as "measured, and it is fine".
     public sealed record SourceHealth(
-        List<VanishedSource> Vanished, List<string> Unreadable,
-        bool DestinationEmpty, bool DestinationReachable)
+        List<VanishedSource> Vanished, List<string> Unreadable, DestState Destination)
     {
-        public static readonly SourceHealth None = new(new(), new(), false, false);
+        public static readonly SourceHealth None = new(new(), new(), DestState.Unchecked);
+        // Derived, so every existing reader keeps its exact meaning while the
+        // state itself gains the two cases they never had to tell apart.
+        public bool DestinationReachable => Destination is DestState.Empty or DestState.HasFiles;
+        public bool DestinationEmpty => Destination == DestState.Empty;
+    }
+
+    // What GUARD was able to learn about the destination on one sweep.
+    //
+    // ONE value rather than two bools, because SourceHealth.None has to mean "no
+    // sweep has run" - and as a bare DestinationReachable=false that is
+    // indistinguishable from "swept, and the drive is gone", which would report
+    // every launch as unreachable before the first walk lands.
+    //
+    // Absent and FolderMissing are opposite facts, not shades of one: a backup
+    // drive that is unplugged is the normal resting state of the on-connect
+    // workflow, while a destination folder deleted off a drive that IS connected
+    // means the backup itself is gone.
+    public enum DestState
+    {
+        Unchecked,      // no sweep has run, or no destination is configured
+        Absent,         // the drive or share itself is not there
+        FolderMissing,  // the drive or share is there; the destination folder is not
+        Empty,          // reachable, and holds nothing at all
+        HasFiles,       // reachable, and holds something
     }
 
     // The check that answers "does my backup still contain what I think it
@@ -165,26 +184,39 @@ public static class SaveValidation
             catch { }
         }
 
-        // Only meaningful when the destination is actually there: an unplugged
-        // drive is a different, already-reported condition, and roots is empty
-        // for both cases, so reachability is asked separately.
-        bool destEmpty = false, destReachable = false;
+        var destination = DestState.Unchecked;
         try
         {
             string dest = Environment.ExpandEnvironmentVariables((cfg.Dest ?? "").Trim());
-            if (dest.Length > 0 && Directory.Exists(dest))
-            {
-                destReachable = true;
+            if (dest.Length == 0) { }
+            else if (Directory.Exists(dest))
                 // Empty is the ALARM for this caller, unlike everywhere else, so
                 // a walk that ran out of budget must not answer it: Unknown
-                // leaves destEmpty false and stays quiet.
-                destEmpty = Scan(dest, Array.Empty<string>(), Array.Empty<string>(), deadline)
-                            == TreeContent.Empty;
-            }
+                // reads as HasFiles and stays quiet.
+                destination = Scan(dest, Array.Empty<string>(), Array.Empty<string>(), deadline)
+                              == TreeContent.Empty ? DestState.Empty : DestState.HasFiles;
+            else
+                // One extra Directory.Exists, already on a worker thread, tells
+                // "the drive is not plugged in" from "the folder was deleted off
+                // a drive that is". See DestState for why that matters.
+                destination = RootPresent(dest) ? DestState.FolderMissing : DestState.Absent;
         }
         catch { }
 
-        return new SourceHealth(vanished, unreadable, destEmpty, destReachable);
+        return new SourceHealth(vanished, unreadable, destination);
+    }
+
+    // Whether the drive or share a path sits on is there at all. GetPathRoot
+    // answers the drive root for a letter path and the share for a UNC one,
+    // which is exactly what goes missing when a drive is unplugged.
+    private static bool RootPresent(string full)
+    {
+        try
+        {
+            string? root = Path.GetPathRoot(Path.GetFullPath(full));
+            return !string.IsNullOrEmpty(root) && Directory.Exists(root);
+        }
+        catch { return false; }
     }
 
     // Cheap reachability probe for callers that would otherwise walk every

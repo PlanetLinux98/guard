@@ -18,6 +18,7 @@ guard-backup.cmd
 guard-system-image.cmd
 guard-prefs.ini
 onconnect-stamp.txt
+restore-hold.txt
 Logs/
 
 # Personal Claude Code project context

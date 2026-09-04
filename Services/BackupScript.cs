@@ -49,6 +49,14 @@ public static class BackupScript
         // a longer log on interactive runs only.
         string optsCompact = optsCommon + " /NFL" + optsTail;
         string optsUi = optsCommon + " /BYTES" + optsTail;
+        // The same options with /MIR swapped for /E, for the restore hold below.
+        // Only Mirror without versioning can purge (a versioned run mirrors into
+        // a fresh dated folder), so only that shape gets the gate at all, and an
+        // Additive or versioned script stays byte-for-byte what it was. Built by
+        // replacing the leading token so the two variants cannot drift.
+        bool holdable = cfg.Mode == "Mirror" && !cfg.Versioned;
+        string optsCompactHeld = holdable ? "/E" + optsCompact.Substring(mirror.Length) : "";
+        string optsUiHeld = holdable ? "/E" + optsUi.Substring(mirror.Length) : "";
         string dest = DestValue(cfg.Dest);
         // Drive-letter drift: only a letter-rooted destination with a recorded
         // volume serial gets the re-find prologue (UNC paths have no letter to
@@ -153,6 +161,21 @@ public static class BackupScript
         // UI runs (launched by GUARD.exe, which sets GUARD_UI) stream per-file
         // byte lines so the app can show within-folder progress.
         sb.AppendLine("if defined GUARD_UI set \"OPTS=" + optsUi + "\"");
+        // Restore hold. GUARD writes this file when a restore starts in this
+        // mode and only the user clears it, because a restore that stopped
+        // early - or that left rows unticked, or sent one somewhere else -
+        // leaves the live folder holding LESS than the backup does, and /MIR
+        // would then delete the copies it never put back, which by then are the
+        // only ones left. The run lock covers the restore itself; this covers
+        // the gap afterwards, which the on-connect task can reach within
+        // minutes. Placed AFTER the GUARD_UI line, or an in-app run re-arms /MIR.
+        if (holdable)
+        {
+            sb.AppendLine("set \"MIRHOLD=%~dp0restore-hold.txt\"");
+            sb.AppendLine("if exist \"%MIRHOLD%\" set \"MIRHELD=1\"");
+            sb.AppendLine("if defined MIRHELD set \"OPTS=" + optsCompactHeld + "\"");
+            sb.AppendLine("if defined MIRHELD if defined GUARD_UI set \"OPTS=" + optsUiHeld + "\"");
+        }
         sb.AppendLine();
         sb.AppendLine("if not exist \"%LOGDIR%\" md \"%LOGDIR%\"");
         sb.AppendLine();
@@ -224,6 +247,14 @@ public static class BackupScript
         sb.AppendLine("   goto :eof");
         sb.AppendLine(")");
         sb.AppendLine();
+        if (holdable)
+        {
+            sb.AppendLine("if defined MIRHELD (");
+            sb.AppendLine("   echo NOTE: mirror deleting is paused after a restore, so nothing will be deleted from the backup.");
+            sb.AppendLine("   >>\"%LOG%\" echo  NOTE: mirror deleting is PAUSED after a restore; this run copied without deleting.");
+            sb.AppendLine(")");
+            sb.AppendLine();
+        }
         sb.AppendLine("set \"HADERR=\"");
         sb.AppendLine();
         // @@PROGRESS@@ markers feed the app's progress bar; emitted only under

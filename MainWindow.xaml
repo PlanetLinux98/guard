@@ -1205,6 +1205,30 @@
                     </Button>
                 </InfoBar.ActionButton>
             </InfoBar>
+            <!-- Mirror hold: a restore paused the DELETING half of Mirror mode,
+                 because a restore that put back less than the backup holds would
+                 otherwise have the next run delete the copies it missed. Same
+                 non-modal shape as the two above, but Warning severity and NOT
+                 closable: the other two are offers a user may decline, while this
+                 is a standing state in which the mode they configured is not in
+                 force, and hiding it would leave that permanent and invisible.
+                 Ctrl+M for the View Update reasoning - the bar overlays every
+                 page, so an Alt mnemonic would have to be unique across all of
+                 them; the accelerator is inert while the bar is closed. -->
+            <InfoBar x:Name="MirrorHoldInfoBar" Margin="12,4" IsOpen="False"
+                     Severity="Warning" IsClosable="False"
+                     Title="Mirror deleting is paused"
+                     Message="A restore may have left your folders holding less than the backup does, so backups are copying without deleting anything. Resume once your files are as you want them.">
+                <InfoBar.ActionButton>
+                    <Button x:Name="BtnResumeMirror" Content="Resume Mirror Deleting"
+                            ToolTipService.ToolTip="Let backups delete files from the backup again to match your folders (Ctrl+M)"
+                            Click="OnResumeMirrorDeleting">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Control" Key="M" />
+                        </Button.KeyboardAccelerators>
+                    </Button>
+                </InfoBar.ActionButton>
+            </InfoBar>
         </StackPanel>
 
         <!-- Status bar. Shows the FOCUSED page's status (settings state on File

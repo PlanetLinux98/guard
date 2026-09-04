@@ -84,22 +84,12 @@ public sealed partial class MainWindow : Window
             // below; see RefreshScriptStatus for why there is only one copy.
             _imageStatusBrush = new SolidColorBrush(StatusAmber);
             _imageStatusText = ProtectionStatus
-                .SystemImage(_cfg, _imageAvailable, imageSaved, null, DateTime.Now).Headline;
+                .SystemImage(_cfg, _imageAvailable, imageSaved, ImageTaskState, null, DateTime.Now).Headline;
         }
         else if (_imageDirty)
         {
             _imageStatusBrush = new SolidColorBrush(StatusAmber);
-            _imageStatusText = "Unsaved changes - click Save Settings to apply them.";
-        }
-        else if (_imageTaskStale)
-        {
-            _imageStatusBrush = new SolidColorBrush(StatusAmber);
-            _imageStatusText = "GUARD's folder has moved - click Save Settings to repoint the scheduled image (needs Administrator approval).";
-        }
-        else if (_imageTaskUnapplied)
-        {
-            _imageStatusBrush = new SolidColorBrush(StatusAmber);
-            _imageStatusText = "The image schedule is saved but Windows has no matching task - click Save Settings to try again (needs Administrator approval).";
+            _imageStatusText = "Unsaved changes. Click Save Settings to apply them.";
         }
         else
         {
@@ -108,17 +98,29 @@ public sealed partial class MainWindow : Window
             // settings file was written. The SYSTEM scheduled image cannot
             // toast (session 0), so this line is where its outcome surfaces.
             var last = BackupHealth.ReadLog(GuardPaths.SystemImageLogPath);
-            var status = ProtectionStatus.SystemImage(_cfg, true, true, last, DateTime.Now);
+            var status = ProtectionStatus.SystemImage(_cfg, true, true, ImageTaskState, last, DateTime.Now);
             // "No image created yet" keeps its green dot here (the settings ARE
             // saved), while the dashboard still counts it as not protected; see
-            // the matching carve-out in RefreshScriptStatus.
-            bool green = status.Level == ProtectionLevel.Protected || last is null;
+            // the matching carve-out in RefreshScriptStatus. A broken scheduled
+            // task is excluded: nothing will ever be imaged, which is not green
+            // on any page.
+            bool green = status.Level == ProtectionLevel.Protected
+                || (last is null && ImageTaskState == ProtectionStatus.ImageTaskState.Ok);
             _imageStatusBrush = new SolidColorBrush(green ? StatusGreen : StatusAmber);
             _imageStatusText = status.Headline;
         }
         UpdateImageSaveEnabled();
         CommitPageStatus(2, announce);
     }
+
+    // The scheduled-image task's health, as ProtectionStatus names it. Both
+    // flags are set by CheckScheduledTasksAtLaunch and cleared by a save that
+    // re-registers; Moved is reported first because it is the more specific of
+    // the two.
+    private ProtectionStatus.ImageTaskState ImageTaskState =>
+        _imageTaskStale ? ProtectionStatus.ImageTaskState.Moved
+        : _imageTaskUnapplied ? ProtectionStatus.ImageTaskState.Missing
+        : ProtectionStatus.ImageTaskState.Ok;
 
     // Mirror of UpdateSaveEnabled for the System Image page: disable Save once the
     // saved script matches the config, keep it enabled for unsaved edits or a
