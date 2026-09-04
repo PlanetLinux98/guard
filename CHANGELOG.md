@@ -53,15 +53,15 @@ While GUARD is in the `0.x` series, behaviour may change between minor versions.
   so the close button appeared to do nothing.
 - Installing winget, and GUARD's own update check, could fail with "Could not
   reach GitHub" on a PC with a working connection: both read the release through
-  GitHub's API, which allows only 60 unauthenticated requests an hour per network
-  address and shares that budget with everything else using the same address.
+  GitHub's API, which allows a limited number of unauthenticated requests an
+  hour and shares that budget with everything else using the same IP address.
   Both now fall back to GitHub's ordinary download links, which are not limited
   that way.
 - The window could open with its bottom edge under the taskbar on a scaled or
-  short display, and could not be resized clear of it: GUARD asked for a window
-  taller than the desktop had room for, and its own minimum size was itself
-  taller than the space available at 150% scaling. Both are now capped to what
-  the display actually offers.
+  short display, and would be difficult to resize clear of it: GUARD asked for a
+  window taller than the desktop had room for, and its own minimum size was
+  itself taller than the space available at 150% scaling. Both are now capped to
+  what the display actually offers.
 
 ## [0.5.5] - 2026-08-14
 
